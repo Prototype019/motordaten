@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "components": [
+    { "id": "km_motordaten", "kind": "app", "path": "apps/km_motordaten", "build": "unit", "mguHmi": ["ID8"] }
+  ]
+}

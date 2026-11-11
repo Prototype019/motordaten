@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "1.3.0",
+  "application": {
+    "uuid": "da40fc2d-3f65-47c7-846b-4f8c438fe835",
+    "type": "OnlineApp",
+    "name": "km_motordaten",
+    "vendor": "owner",
+    "version": "0.1.0",
+    "defaultLanguage": "de_DE",
+    "uiDescriptions": [
+      {
+        "applicationFilePath": "./uiDescriptions/ID8/application.xml",
+        "uiDescriptionFilePath": "./uiDescriptions/ID8/uiDescription.json",
+        "hmi": [
+          "ID8"
+        ]
+      }
+    ],
+    "stringBundleUuid": "a0ee1d78-27ba-4996-9355-df9bace162a4",
+    "resourceBundleUuid": "1e3a9ac0-607b-4ad6-a2c1-6562b2965d03",
+    "variantGroups": [
+      {
+        "stringsPath": "./variantGroups/Common/texts",
+        "resourcesPath": "./variantGroups/Common/images",
+        "hmi": [
+          "ID8"
+        ],
+        "brands": [
+          "BMW"
+        ]
+      }
+    ],
+    "entryPoints": [
+      {
+        "name": "km_motordaten",
+        "uuid": "3f2cb455-d92b-4ae5-8e24-fdd887f1a6d0",
+        "textId": "SID_MD_TITLE",
+        "icon": "motordaten_icon.png",
+        "insertionStateId": 20974,
+        "insertionFocusId": 2,
+        "insertionMode": "INSERT_BELOW",
+        "insertionOrder": 0,
+        "insertionPriority": 0,
+        "previewType": "NONE",
+        "bookmarkable": true,
+        "private": null,
+        "appearance": "DEFAULT",
+        "isGroupHeader": false,
+        "insertionGroup": 0
+      }
+    ]
+  }
+}
