@@ -9,7 +9,7 @@ fehlgeschlagen ist.
 
 ## Installieren
 
-Im Store: **Settings → Add source** → `<github-user>/motordaten`, Kanal
+Im Store: **Settings → Add source** → `Prototype019/motordaten`, Kanal
 **Branch main**. Dann **Motordaten** installieren und die Headunit neu
 starten (auf iDrive 8 wird eine Installation erst nach dem Neustart aktiv).
 
