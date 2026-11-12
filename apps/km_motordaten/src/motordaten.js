@@ -41,6 +41,7 @@ class Motordaten extends OnlineApp {
         this._data = { rpm: null, oil: null, coolant: null };
         this._status = 'Warte auf Fahrzeugdaten …';
         this._timer = null;
+        this._visible = false;
         this._shutdownPromise = null;
         this.on('initialized', () => {
             this._appInitialized().catch((err) => logger.error(`init failed: ${err && err.message}`));
@@ -82,6 +83,12 @@ class Motordaten extends OnlineApp {
             this._written = {};
             this._render();
         });
+        rhmi.on('applicationStackChanged', (stack) => {
+            const keys = stack && typeof stack === 'object' ? Object.keys(stack) : [];
+            if (keys.length) {
+                this._report(Object.prototype.hasOwnProperty.call(stack, 'ROOT_APP'));
+            }
+        });
         return Promise.resolve();
     }
 
@@ -105,15 +112,33 @@ class Motordaten extends OnlineApp {
         }
         this._written = {};
         this._render();
+        this._report(true);
         return Promise.resolve(this.rhmiApplication.openEntryState(uuid))
             .catch((err) => logger.warn(`openEntryState failed: ${err && err.message}`));
+    }
+
+    /* Tells MainApp the app is (no longer) in front, as the MGU Store does. */
+    _report(visible) {
+        if (this._shutdownPromise || this._visible === visible) {
+            return;
+        }
+        this._visible = visible;
+        (visible ? ['registerActive', 'registerHmiVisible'] : ['unregisterHmiVisible', 'registerInactive']).forEach((name) => {
+            if (typeof this[name] === 'function') {
+                Promise.resolve()
+                    .then(() => this[name]())
+                    .catch((err) => logger.warn(`${name} failed: ${err && err.message}`));
+            }
+        });
     }
 
     /* ---- vehicle data ---- */
 
     _subscribe() {
         let proxy;
-        someipBuilders.buildTypedProxy(IF_CDS, '1')
+        // from a fresh tick, as the SDK does: the native binding can deadlock inline
+        new Promise((resolve) => setImmediate(resolve))
+            .then(() => someipBuilders.buildTypedProxy(IF_CDS, '1'))
             .then((p) => { proxy = p; return proxy.init(); })
             .then(() => proxy.waitUntilAvailable())
             .then(() => Promise.all([

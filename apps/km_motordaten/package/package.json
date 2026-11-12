@@ -1,6 +1,6 @@
 {
   "name": "km_motordaten",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Motordaten: Drehzahl und Temperaturen",
   "private": false,
   "main": "javascript/runner.js",

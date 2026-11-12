@@ -9,7 +9,7 @@ const assert = require('assert');
 const path = require('path');
 const Module = require('module');
 const EventEmitter = require('events');
-const gen = require('./gen.js');
+const spec = require('../spec.js');
 
 const writes = {};
 const props = {};
@@ -17,7 +17,7 @@ const subs = {};
 let opened = null;
 
 const names = new Set();
-gen.STATES.forEach((s) => { names.add(s.name); s.components.forEach((c) => names.add(c.name)); });
+spec.states.forEach((s) => { names.add(s.name); s.components.forEach((c) => names.add(c.name)); });
 
 function component(name) {
     return {

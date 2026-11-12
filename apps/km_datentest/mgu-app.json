@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "id": "km_datentest",
+  "version": "0.1.0",
+  "tree": "package",
+  "modules": ["src/datentest.js", "src/screen.js"],
+  "sdk": [
+    "oap-sdk/src/core/OnlineApp.js",
+    "oap-sdk/src/logging/logging"
+  ]
+}

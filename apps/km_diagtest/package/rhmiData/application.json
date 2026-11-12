@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "1.3.0",
+  "application": {
+    "uuid": "688b4f56-c87c-42d5-9c08-92bedfdabce1",
+    "type": "OnlineApp",
+    "name": "km_diagtest",
+    "vendor": "owner",
+    "version": "0.1.0",
+    "defaultLanguage": "de_DE",
+    "uiDescriptions": [
+      {
+        "applicationFilePath": "./uiDescriptions/ID8/application.xml",
+        "uiDescriptionFilePath": "./uiDescriptions/ID8/uiDescription.json",
+        "hmi": [
+          "ID8"
+        ]
+      }
+    ],
+    "stringBundleUuid": "0d35b12e-c307-4787-ad8d-cab45547ecbe",
+    "resourceBundleUuid": "e1ef0a5e-a976-4d4d-a579-e0b09d1ec13f",
+    "variantGroups": [
+      {
+        "stringsPath": "./variantGroups/Common/texts",
+        "resourcesPath": "./variantGroups/Common/images",
+        "hmi": [
+          "ID8"
+        ],
+        "brands": [
+          "BMW"
+        ]
+      }
+    ],
+    "entryPoints": [
+      {
+        "name": "km_diagtest",
+        "uuid": "b1ffcaf4-4624-4e22-8c3b-48147817c658",
+        "textId": "SID_DG_TITLE",
+        "icon": "diagtest_icon.png",
+        "insertionStateId": 20974,
+        "insertionFocusId": 2,
+        "insertionMode": "INSERT_BELOW",
+        "insertionOrder": 0,
+        "insertionPriority": 0,
+        "previewType": "NONE",
+        "bookmarkable": true,
+        "private": null,
+        "appearance": "DEFAULT",
+        "isGroupHeader": false,
+        "insertionGroup": 0
+      }
+    ]
+  }
+}

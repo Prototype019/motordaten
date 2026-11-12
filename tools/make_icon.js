@@ -1,15 +1,22 @@
 'use strict';
 /**
- * Draws the tile icon (140 x 140, transparent): a gauge arc with a needle.
+ * Draws an app's tile icon (140 x 140, transparent): a gauge arc with a needle,
+ * as apps/<id>/package/rhmiData/variantGroups/Common/images/<icon of its spec.js>.
+ * The needle's colour tells the apps apart.
  *
- *   node tools/make_icon.js
+ *   node tools/make_icon.js <id> [needle colour as r,g,b]
  */
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
 const S = 140;
-const OUT = path.join(__dirname, '..', 'package', 'rhmiData', 'variantGroups', 'Common', 'images', 'motordaten_icon.png');
+const ID = process.argv[2];
+if (!ID) {
+    throw new Error('usage: node tools/make_icon.js <id> [r,g,b]');
+}
+const APP = path.join(__dirname, '..', 'apps', ID);
+const OUT = path.join(APP, 'package', 'rhmiData', 'variantGroups', 'Common', 'images', require(path.join(APP, 'spec.js')).icon);
 const px = Buffer.alloc(S * S * 4);
 
 function blend(x, y, c, a) {
@@ -27,6 +34,7 @@ function blend(x, y, c, a) {
 
 const WHITE = [255, 255, 255];
 const RED = [230, 40, 40];
+const NEEDLE = process.argv[3] ? process.argv[3].split(',').map(Number) : RED;
 const cx = 70, cy = 76;
 const START = Math.PI * 0.75, SWEEP = Math.PI * 1.5;
 
@@ -55,7 +63,7 @@ for (let s = 0; s <= 46; s += 0.25) {
     for (let oy = -3; oy <= 3; oy++) {
         for (let ox = -3; ox <= 3; ox++) {
             const d = Math.hypot(ox, oy);
-            blend(Math.round(x + ox), Math.round(y + oy), RED, Math.max(0, Math.min(1, 3.5 - d)));
+            blend(Math.round(x + ox), Math.round(y + oy), NEEDLE, Math.max(0, Math.min(1, 3.5 - d)));
         }
     }
 }
