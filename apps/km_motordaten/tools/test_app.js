@@ -103,6 +103,13 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     assert.ok(/^-0\.00 bar · max 2\.10$/.test(get('Ladedruck')), get('Ladedruck'));
     assert.strictEqual(get('Drehzahl'), '900 U/min · max 6500');
 
+    // overrun: negative torque at the clutch shows as 0, and so does the power
+    ANSWERS['22 58 91'] = '62 58 91 FF 38';          // -100 Nm
+    await unit.wait(500);
+    assert.ok(/^0 Nm/.test(get('Drehmoment')), get('Drehmoment'));
+    assert.ok(/^0 PS/.test(get('Leistung')), get('Leistung'));
+    ANSWERS['22 58 91'] = '62 58 91 00 07';
+
     // the button resets the peaks
     unit.press('mdRun');
     await unit.wait(600);

@@ -323,8 +323,9 @@ class Motordaten extends ListApp {
             intake: m.intake, charge: m.charge, boost: above(m.boostAbs), boostTarget: above(m.boostTargetAbs),
             oilPress: above(m.oilPressAbs), gearbox: m.gearbox, exhaust: m.exhaust, voltage: m.voltage
         };
-        v.torque = m.torque;
-        v.power = isNum(m.torque) && isNum(m.rpm) ? Math.max(0, m.torque) * m.rpm / 9549 * PS_PER_KW : null;
+        // on the overrun the DME reports the engine's drag as negative torque: shown as 0
+        v.torque = isNum(m.torque) ? Math.max(0, m.torque) : null;
+        v.power = isNum(v.torque) && isNum(m.rpm) ? v.torque * Math.max(0, m.rpm) / 9549 * PS_PER_KW : null;
         v.rpmPeak = this._peakOf('rpm', v.rpm);
         v.torquePeak = this._peakOf('torque', v.torque);
         v.powerPeak = this._peakOf('power', v.power);
