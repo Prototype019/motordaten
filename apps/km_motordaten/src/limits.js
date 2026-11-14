@@ -26,6 +26,8 @@ const ITEMS = Object.freeze([
     { key: 'knockMax', label: 'Klopf-Warnung ab', unit: '°', def: 3, min: 1, max: 8, step: 0.5, d: 1 },
     { key: 'batteryMin', label: 'Batterie-Warnung unter', unit: '%', def: 50, min: 20, max: 90, step: 5, d: 0 },
     { key: 'voltageMin', label: 'Bordnetz-Warnung (Motor an) unter', unit: 'V', def: 13.0, min: 11, max: 14, step: 0.1, d: 1 },
+    // MHD: the Max Cooling button on the live page (off: no button, nothing sent)
+    { key: 'mhdCoolingOn', group: 'mhd', def: 0, min: 0, max: 1, step: 1, d: 0, toggle: true },
     // ready for full load: each temperature on or off, and the one it has to reach
     { key: 'oilReadyOn', group: 'ready', def: 1, min: 0, max: 1, step: 1, d: 0, toggle: true },
     { key: 'oilReady', group: 'ready', label: 'Öltemperatur', unit: '°C', def: 80, min: 50, max: 110, step: 5, d: 0 },

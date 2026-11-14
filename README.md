@@ -22,7 +22,8 @@ Mit Zündung an öffnen.
 Motordaten liest über das Diagnose-Gateway der Headunit, als Tester 0xF4:
 `22 <ID>` (ReadDataByIdentifier, bis zu 8 Kennungen), OBD-II `01` / `09` mit einer PID und den
 Fehlerspeicher `19 02` (auch an alle Steuergeräte gleichzeitig); Einzelanfragen nur an DME und Getriebe.
-Die einzige Änderung im Auto ist Fehler löschen (`14 FF FF FF`): nur auf Wunsch mit Rückfrage, nur bei Motor aus
+Änderungen im Auto gibt es zwei: MHD Max Cooling (`2F 03 01` / `2F 03 00` an die DME, nur wenn in den Einstellungen
+eingeschaltet, an nur bei laufendem Motor, mit Rückfrage) und Fehler löschen (`14 FF FF FF`): nur auf Wunsch mit Rückfrage, nur bei Motor aus
 und Zündung an, je Steuergerät einzeln, nie die Headunit.
 Alles andere lehnt `shared/tasu.js` ab, bevor es das Gateway erreicht: keine
 Sitzungswechsel, kein Löschen, kein Schreiben, keine Routinen. Eine Anfrage

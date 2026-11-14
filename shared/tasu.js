@@ -271,6 +271,20 @@ class Tasu extends EventEmitter {
         return p;
     }
 
+    /**
+     * MHD's Max Cooling in a DME that runs MHD's code: 2F 03 01 on, 2F 03 00 off, to the DME only (the commands of
+     * cauliflowermossgrape/idrive7-apps' Live Adjustments, MIT, validated on an MG1 with MHD). Resolves to true when
+     * the DME echoes it (6F 03 0x), false when it refuses (an untuned DME) or stays silent. Nothing else is
+     * written; the caller lets On go only with the engine running.
+     */
+    maxCooling(on) {
+        const data = [0x03, on ? 0x01 : 0x00];
+        const run = () => this._request(0x2F, data, 2500, DME);
+        const p = this._chain.then(run, run).then((u) => !!(u && u[0] === 0x6F && u[1] === 0x03 && u[2] === data[1]));
+        this._chain = p.catch(() => undefined);
+        return p;
+    }
+
     _collect(sid, data, idleMs, maxMs) {
         if (!this._proxy()) {
             return Promise.reject(new Error('Diagnose-Dienst nicht offen'));

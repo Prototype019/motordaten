@@ -197,7 +197,14 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.on('targets', (t) => told.push(t.length));
     d.setPage('settings');
     assert.deepStrictEqual(told, [dash.targets('settings', d.extra).length]);
-    assert.deepStrictEqual(dash.targets('settings').slice(4).map((t) => t.id), ['menu:limits', 'menu:ready']);
+    assert.deepStrictEqual(dash.targets('settings').slice(4).map((t) => t.id), ['menu:limits', 'menu:ready', 'menu:mhd']);
+    assert.deepStrictEqual(dash.targets('mhd').slice(4).map((t) => t.id), ['toggle:mhdCoolingOn', 'settings:back']);
+    // the Max Cooling button only while switched on (extra.cooling), its confirm step, its on state
+    assert.ok(!dash.targets('main', {}).some((t) => /^cooling/.test(t.id)), 'no button while off');
+    assert.strictEqual(dash.targets('main', { cooling: { state: null } }).pop().label, 'Max Cooling');
+    assert.strictEqual(dash.targets('main', { cooling: { confirm: true } }).pop().id, 'cooling!');
+    assert.ok(dash.targets('main', { cooling: { state: 'ON' } }).pop().on);
+    ['mhd'].forEach((p) => dash.draw(new (require('../src/kit_record.js').Recorder)(dash.W, dash.H), p, {}, Limits.defaults(), null, {}));
     const menuReady = dash.targets('settings').find((t) => t.id === 'menu:ready');
     g.emit('touch', 'down', ...center(menuReady));
     g.emit('touch', 'up', ...center(menuReady));

@@ -66,7 +66,18 @@ function mainTargets(extra) {
     return [
         { id: 'record', x, y: 650, w: BW, h: BH, label: rec ? `Stopp ${time}` : 'Aufnehmen', live: !!rec },
         { id: 'reset', x: x + BW + 24, y: 650, w: BW, h: BH, label: 'Reset' }
-    ];
+    ].concat(coolingTarget(extra));
+}
+
+/* MHD's Max Cooling, while switched on in the settings (extra.cooling): its button beside Klopfen. */
+function coolingTarget(extra) {
+    const c = extra && extra.cooling;
+    if (!c) {
+        return [];
+    }
+    const label = c.note ? c.note : c.busy ? 'Sende …' : c.confirm ? 'Wirklich an?' : c.state === 'ON' ? 'Max Cooling an' : 'Max Cooling';
+    return [{ id: c.confirm ? 'cooling!' : 'cooling', x: COL.right.x + 216, y: 578, w: 392, h: 60, label,
+        danger: !!c.confirm, live: false, on: c.state === 'ON' }];
 }
 
 /* The tabs, on every page: first in controller order. */
@@ -89,9 +100,14 @@ const BACK_SET = { id: 'settings:back', x: W - PAD - 300, y: 64, w: 300, h: 84, 
 
 /* The settings menu: one card per sub-page. */
 const MENU = [
-    { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann jeder Wert rot wird: Drehzahl, Temperaturen, Drücke, Klopfen, Bordnetz' },
-    { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen, bis die Live-Seite „Bereit“ zeigt' }
-].map((m, i) => Object.assign(m, { x: X0 + i * 1288, y: 220, w: 1236, h: 300 }));
+    { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann die Werte rot werden' },
+    { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen' },
+    { id: 'menu:mhd', page: 'mhd', label: 'MHD-Tuning', text: 'Max Cooling direkt aus der App' }
+].map((m, i, all) => {
+    const gap = 52;
+    const w = Math.floor((W - PAD - X0 - gap * (all.length - 1)) / all.length);
+    return Object.assign(m, { x: X0 + i * (w + gap), y: 220, w, h: 300 });
+});
 
 function settingsTargets() {
     const out = [];
@@ -124,6 +140,10 @@ function readyTargets() {
     return out;
 }
 const READY_TARGETS = readyTargets();
+
+/* The MHD page: the switch for the Max Cooling button. */
+const MHD_SWITCH = { id: 'toggle:mhdCoolingOn', x: X0, y: SET_TOP + 30, w: 220, h: BTN, label: '' };
+const MHD_TARGETS = [MHD_SWITCH, BACK_SET];
 
 /* ---- the logs pages ---- */
 
@@ -228,6 +248,8 @@ function targets(page, extra) {
         own = SETTINGS_TARGETS;
     } else if (page === 'ready') {
         own = READY_TARGETS;
+    } else if (page === 'mhd') {
+        own = MHD_TARGETS;
     } else if (page === 'logs') {
         own = logsTargets(extra);
     } else if (page === 'log') {
@@ -244,7 +266,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' ? 'settings' : page;
+    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' || page === 'mhd' ? 'settings' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) {
@@ -274,12 +296,12 @@ function button(rec, t, ui, opts) {
     if (ui && ui.pressed === t.id) {
         rec.roundRect(t.x, t.y, t.w, t.h, r, C.line);
     }
-    if (live) {
-        rec.roundRect(t.x, t.y, t.w, t.h, r, C.limit);
+    if (live || t.on) {
+        rec.roundRect(t.x, t.y, t.w, t.h, r, live ? C.limit : C.cold);
     }
-    rec.strokeRoundRect(t.x, t.y, t.w, t.h, r, 3, live ? C.limit : opts && opts.primary ? C.text : C.line);
+    rec.strokeRoundRect(t.x, t.y, t.w, t.h, r, 3, live ? C.limit : t.on ? C.cold : opts && opts.primary ? C.text : C.line);
     const size = (opts && opts.size) || 32;
-    rec.text(t.label, t.x + t.w / 2, t.y + t.h / 2 + size * 0.36, size, live ? C.asphalt : C.text, { font: 'label', align: 'center' });
+    rec.text(t.label, t.x + t.w / 2, t.y + t.h / 2 + size * 0.36, size, live || t.on ? C.asphalt : C.text, { font: 'label', align: 'center' });
 }
 
 /* A value and its unit on one baseline; align 'left' or 'right' (right: the unit's end at x). */
@@ -575,6 +597,36 @@ function readyPage(rec, cfg, ui) {
         const step = t.id.indexOf('dec:') === 0 || t.id.indexOf('inc:') === 0;
         button(rec, t, ui, { size: step ? 52 : 32 });
     });
+}
+
+/* A switch: a pill with its knob, ice when on. */
+function toggleSwitch(rec, sw, on, ui) {
+    if (ui && ui.focus === sw.id) {
+        rec.strokeRoundRect(sw.x - 8, sw.y - 8, sw.w + 16, sw.h + 16, sw.h / 2 + 8, 5, C.ice);
+    }
+    rec.roundRect(sw.x, sw.y, sw.w, sw.h, sw.h / 2, on ? C.ice : C.line);
+    const knob = sw.h - 16;
+    rec.roundRect(on ? sw.x + sw.w - knob - 8 : sw.x + 8, sw.y + 8, knob, knob, knob / 2, on ? C.asphalt : C.dim);
+    rec.text(on ? 'Ein' : 'Aus', on ? sw.x + 36 : sw.x + sw.w - 36, sw.y + sw.h / 2 + 11, 30, on ? C.asphalt : C.dim,
+        { font: 'label', align: on ? 'left' : 'right' });
+}
+
+/* MHD: whether the live page has the Max Cooling button; what it does, and what it needs. */
+function mhdPage(rec, cfg, ui) {
+    rec.text('MHD-Tuning', X0, 120, 56, C.text, { font: 'label' });
+    rec.text('Nur für eine Motorsteuerung mit MHD-Software. Ohne MHD lehnt sie den Befehl ab, es passiert nichts.', X0, 166, 30, C.dim,
+        { font: 'label' });
+    const on = !!cfg.mhdCoolingOn;
+    toggleSwitch(rec, MHD_SWITCH, on, ui);
+    rec.text('Max Cooling-Knopf auf der Live-Seite', MHD_SWITCH.x + MHD_SWITCH.w + 56, MHD_SWITCH.y + 64, 44, on ? C.text : C.dim, { font: 'label' });
+    const lines = [
+        'MHD lässt Wasserpumpe und Lüfter auf voller Leistung laufen, etwa vor oder nach schnellen Runden.',
+        'Einschalten nur bei laufendem Motor und mit Rückfrage, Ausschalten jederzeit.',
+        'Die App sendet dafür genau einen Befehl an die Motorsteuerung (2F 03 01 an, 2F 03 00 aus).',
+        'Ob es aktiv ist, meldet MHD nicht zurück: die App zeigt den zuletzt bestätigten Befehl.'
+    ];
+    lines.forEach((l, i) => rec.text(l, X0, MHD_SWITCH.y + 190 + i * 52, 30, C.dim, { font: 'label' }));
+    button(rec, BACK_SET, ui);
 }
 
 function settings(rec, cfg, ui) {
@@ -965,6 +1017,10 @@ function draw(rec, page, v, cfg, ui, extra) {
     }
     if (page === 'ready') {
         readyPage(rec, cfg, ui);
+        return rec;
+    }
+    if (page === 'mhd') {
+        mhdPage(rec, cfg, ui);
         return rec;
     }
     if (page === 'logs') {

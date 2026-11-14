@@ -97,7 +97,8 @@ const RPM_INVALID = 65535;
 const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
 const ENGINE_RUNNING_RPM = 400;   // from here the engine counts as started
-const PEAK_AFTER_START_MS = 5000; // the start's flare (oil pressure, engine speed) is no peak: peaks count from here
+const PEAK_AFTER_START_MS = 5000;
+const COOLING_MIN_RPM = 500;      // MHD Max Cooling goes on only with the engine running // the start's flare (oil pressure, engine speed) is no peak: peaks count from here
 const CYCLE_MS = 90;           // at least this long per round
 const MAX_CYCLE_MS = 1000;     // the longest pause a busy gateway gets
 const SLOW_EVERY = 12;         // the slow values every this many rounds
@@ -291,6 +292,10 @@ class Motordaten extends ListApp {
         if (id.indexOf('tab:') === 0) {
             const page = id.slice(4);
             d.setExtra({ confirmDeleteAll: false, usb: null });
+            if (this._cooling && this._cooling.confirm) {
+                this._cooling = Object.assign({}, this._cooling, { confirm: false });
+                this._coolingShown();
+            }
             if (page === 'logs') {
                 this._showLogs();
             }
@@ -315,12 +320,17 @@ class Motordaten extends ListApp {
             this._toggleRecording();
         } else if (id === 'reset') {
             this.run();
-        } else if (id === 'menu:limits' || id === 'menu:ready') {
+        } else if (id === 'menu:limits' || id === 'menu:ready' || id === 'menu:mhd') {
             d.setPage(id.slice(5));
+        } else if (id === 'cooling') {
+            this._coolingPressed();
+        } else if (id === 'cooling!') {
+            this._sendCooling(true);
         } else if (id === 'settings:back') {
             d.setPage('settings');
         } else if (id.indexOf('toggle:') === 0) {
             this._setLimits(Limits.toggled(this._limits, id.slice(7)));
+            this._coolingShown();
         } else if (id === 'defaults') {
             // the page's own settings back to the defaults
             this._setLimits(Limits.reset(this._limits, d.page === 'ready' ? 'ready' : 'limits'));
@@ -614,6 +624,75 @@ class Motordaten extends ListApp {
         }
     }
 
+    /* ---- MHD Max Cooling (only while switched on in the settings) ---- */
+
+    /* The button on the live page while the setting is on; gone (and nothing sent) while it is off. */
+    _coolingShown() {
+        if (!this._drawn) {
+            return;
+        }
+        this._cooling = this._cooling || { state: null };
+        this._drawn.setExtra({ cooling: this._limits.mhdCoolingOn ? Object.assign({}, this._cooling) : null });
+    }
+
+    _coolingNote(note) {
+        clearTimeout(this._coolingTimer);
+        this._cooling = Object.assign({}, this._cooling, { note, confirm: false });
+        this._coolingShown();
+        this._coolingTimer = setTimeout(() => { this._cooling = Object.assign({}, this._cooling, { note: null }); this._coolingShown(); }, 3000);
+    }
+
+    /* A press: on, it goes off at once; off, On asks first, and only with the engine running. */
+    _coolingPressed() {
+        const c = this._cooling || {};
+        if (!this._limits.mhdCoolingOn || c.busy) {
+            return;
+        }
+        if (c.state === 'ON') {
+            this._sendCooling(false);
+            return;
+        }
+        const rpm = this._v && this._v.rpm;
+        if (!(isNum(rpm) && rpm > COOLING_MIN_RPM)) {
+            this._coolingNote('Erst Motor starten');
+            return;
+        }
+        clearTimeout(this._coolingTimer);
+        this._cooling = Object.assign({}, c, { confirm: true, note: null });
+        this._coolingShown();
+        // unanswered, the question goes away
+        this._coolingTimer = setTimeout(() => { this._cooling = Object.assign({}, this._cooling, { confirm: false }); this._coolingShown(); }, 5000);
+    }
+
+    _sendCooling(on) {
+        const c = this._cooling || {};
+        if (!this._limits.mhdCoolingOn || c.busy) {
+            return;
+        }
+        const rpm = this._v && this._v.rpm;
+        if (on && !(isNum(rpm) && rpm > COOLING_MIN_RPM)) {
+            this._coolingNote('Erst Motor starten');
+            return;
+        }
+        clearTimeout(this._coolingTimer);
+        this._cooling = Object.assign({}, c, { busy: true, confirm: false, note: null });
+        this._coolingShown();
+        Diag.note(`MHD Max Cooling ${on ? 'an' : 'aus'} gesendet`);
+        this._tasu.maxCooling(on).then((echoed) => {
+            this._cooling = { state: echoed ? (on ? 'ON' : 'OFF') : this._cooling.state, busy: false };
+            Diag.note(`MHD Max Cooling: ${echoed ? 'bestätigt' : 'keine Bestätigung'}`);
+            if (echoed) {
+                this._coolingShown();
+            } else {
+                this._coolingNote('Kein MHD-Echo');
+            }
+        }, (e) => {
+            this._cooling = Object.assign({}, this._cooling, { busy: false });
+            this._coolingNote('Nicht gesendet');
+            logger.warn(`max cooling: ${e && e.message}`);
+        });
+    }
+
     _setLimits(limits) {
         this._limits = limits;
         try {
@@ -633,6 +712,7 @@ class Motordaten extends ListApp {
         }
         this._drawn = new Drawn(this.getAppId(), logger);
         this._drawn.setLimits(this._limits);
+        setImmediate(() => this._coolingShown());
         this._drawn.setSingle(dialKnown());
         this._drawn.on('dial', (steps) => {
             // FrontCCU reports the dial: one proxy, the list under the layer a single empty row; kept once it

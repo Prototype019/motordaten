@@ -66,6 +66,23 @@ const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 
     await assert.rejects(t2.request(0x14, [0xFF, 0xFF, 0xFF]), /nur lesen/, 'request() does not clear');
     assert.strictEqual(asked.length, 1);
 
+    // MHD Max Cooling: exactly 2F 03 01 / 2F 03 00, to the DME only; accepted on the DME's echo
+    const t4 = new Tasu(log);
+    const sent4 = [];
+    let answer4 = (req) => [0x6F].concat(req.slice(1));
+    t4._setProxy({ sendTasuRequest: (p) => {
+        const req = [p.serviceID].concat(Array.from(p.udsData));
+        sent4.push({ target: p.targetAddress, req });
+        setTimeout(() => t4._onResponse(frame(p.targetAddress, answer4(req))), 3);
+        return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });
+    } });
+    assert.strictEqual(await t4.maxCooling(true), true);
+    assert.strictEqual(await t4.maxCooling(false), true);
+    assert.deepStrictEqual(sent4, [{ target: 0x12, req: [0x2F, 0x03, 0x01] }, { target: 0x12, req: [0x2F, 0x03, 0x00] }]);
+    answer4 = () => [0x7F, 0x2F, 0x31];                                    // an untuned DME refuses it
+    assert.strictEqual(await t4.maxCooling(true), false);
+    await assert.rejects(t4.request(0x2F, [0x03, 0x01]), /nur lesen/, 'request() never writes');
+
     // status words, sorting: active first
     assert.strictEqual(Faults.stateOf(0x08), 'gespeichert');
     assert.strictEqual(Faults.stateOf(0x04), 'vorläufig');
