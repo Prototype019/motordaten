@@ -148,6 +148,9 @@ class Motordaten extends ListApp {
             // way the app was opened (its tile, another app, the HMI's history)
             if (this._drawn && this._drawn.mode === 'layer' && this.entryState() === LAYER) {
                 this._drawn.hostVisible(true);
+                if (this._hostTold) {
+                    this._hostTold();
+                }
             }
         }
     }
@@ -159,8 +162,41 @@ class Motordaten extends ListApp {
             logger.warn(`${LAYER} missing: list screen only`);
             return;
         }
-        this._layerState.on('visible', (ev) => this._drawn && this._drawn.hostVisible(isTrue(ev && ev.visible)));
-        this._layerState.on('focus', (ev) => this._drawn && this._drawn.hostFocus(isTrue(ev && ev.focus)));
+        // Both states carry the layer: the host state, and the list state should the HMI show it (its history,
+        // a start before the renderer answered); the list state holds no values while the layer is there.
+        const host = { list: { v: false, f: true }, layer: { v: false, f: true } };
+        let told = { v: null, f: null };
+        const tell = () => {
+            const d = this._drawn;
+            if (!d) {
+                return;
+            }
+            const v = host.list.v || host.layer.v;
+            const f = (host.list.v && host.list.f) || (host.layer.v && host.layer.f);
+            if (v !== told.v) {
+                d.hostVisible(v);
+            }
+            if (!v || f !== told.f) {
+                d.hostFocus(f);
+            }
+            told = { v, f };
+        };
+        const watch = (state, key) => {
+            state.on('visible', (ev) => {
+                host[key].v = isTrue(ev && ev.visible);
+                if (host[key].v) {
+                    host[key].f = true;
+                }
+                tell();
+            });
+            state.on('focus', (ev) => { host[key].f = isTrue(ev && ev.focus); tell(); });
+        };
+        watch(this._layerState, 'layer');
+        const listState = rhmi.getByName(LIST);
+        if (listState) {
+            watch(listState, 'list');
+        }
+        this._hostTold = () => { told = { v: null, f: null }; };
         for (let i = 0; i < PROXIES; i++) {
             const b = rhmi.getByName(`mdLayerP${i}`);
             this._proxies.push(b);
@@ -696,6 +732,13 @@ class Motordaten extends ListApp {
         if (this._drawn) {
             this._drawn.set(v);
         }
+        if (this._layerState && (!this._drawn || this._drawn.mode !== null)) {
+            // the drawn screen (or the renderer not answered yet): the list state stays empty under it
+            this.show('', []);
+            this._mdShow('Run', false);
+            return;
+        }
+        this._mdShow('Run', true);
         this.show(status, [
             ['Drehzahl', withPeak(v.rpm, v.rpmPeak, 'U/min', 0)],
             ['Öltemperatur', fmt(v.oil, '°C', 0)],

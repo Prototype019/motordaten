@@ -42,6 +42,8 @@ const TRACE_KEEP = 10;
  * gone this long; meanwhile the host state (one empty row) stays and the layer comes back on its own. */
 const RECONNECT_MS = 300;
 const LOST_LIST_MS = 15000;
+/* No answer from a renderer this long after the start: the list screen (until one answers). */
+const START_WAIT_MS = 1500;
 
 class Drawn extends EventEmitter {
     /* gpu: the renderer client (a RenderClient for appId unless given, as in the tests). */
@@ -96,6 +98,12 @@ class Drawn extends EventEmitter {
     }
 
     connect() {
+        this.startTimer = setTimeout(() => {
+            if (this.mode === undefined) {
+                this._note('kein Grafiksystem: Liste');
+                this._setMode(null);
+            }
+        }, START_WAIT_MS);
         this.gpu.connect();
     }
 
@@ -128,6 +136,7 @@ class Drawn extends EventEmitter {
 
     close() {
         this.closing = true;
+        clearTimeout(this.startTimer);
         clearTimeout(this.lostTimer);
         clearInterval(this.keepalive);
         clearTimeout(this.hideTimer);
