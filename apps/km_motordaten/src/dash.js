@@ -35,7 +35,6 @@ const RAIL = 200;             // the tab rail on the left
 const X0 = RAIL + 60;          // where page content starts
 const RPM_MAX = 7700;
 const OIL_MAX = 150;
-const OIL_PRESS_RPM = 1500;    // the oil pressure warning counts above this engine speed
 const COL = { left: { x: X0, w: 600 }, mid: { x: 980, w: 1076 }, right: { x: 2176, w: 608 } };
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
@@ -78,9 +77,9 @@ const TABS = [
     { id: 'tab:settings', page: 'settings', label: 'Einstellungen' }
 ].map((t, i) => Object.assign(t, { x: 0, y: 16 + i * 184, w: RAIL, h: 168 }));
 
-const ROW_H = 106;
-const SET_ROWS = 5;           // limits per column
-const SET_BTN = 86;
+const ROW_H = 88;
+const SET_ROWS = 6;           // limits per column
+const SET_BTN = 76;
 const SET_TOP = 196;
 const SET_COLS = [{ x: X0, w: 1200 }, { x: X0 + 1288, w: 1236 }];
 const BTN = 96;
@@ -90,7 +89,7 @@ const BACK_SET = { id: 'settings:back', x: W - PAD - 300, y: 64, w: 300, h: 84, 
 
 /* The settings menu: one card per sub-page. */
 const MENU = [
-    { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann Drehzahl, Temperaturen, Öldruck und Abgas rot werden' },
+    { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann jeder Wert rot wird: Drehzahl, Temperaturen, Drücke, Klopfen, Ölstand, Bordnetz' },
     { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen, bis die Live-Seite „Bereit“ zeigt' }
 ].map((m, i) => Object.assign(m, { x: X0 + i * 1288, y: 220, w: 1236, h: 300 }));
 
@@ -332,7 +331,7 @@ function heatStrip(rec, x, y, w, h, value, r) {
 /* The temperatures' strips: their scales and where they turn warm. */
 const HEAT = {
     coolant: { lo: 0, hi: 130, warm: 70 },
-    intake: { lo: -10, hi: 70, warm: null, limit: 50 },
+    intake: { lo: -10, hi: 80, warm: null },
     gearbox: { lo: 0, hi: 140, warm: 60 },
     exhaust: { lo: 0, hi: 1000, warm: 300 }
 };
@@ -397,7 +396,7 @@ function readiness(rec, v, cfg) {
     readyBadge(rec, x, 520, v, cfg);
 
     const cells = [['Kühlmittel', v.coolant, Object.assign({}, HEAT.coolant, { limit: cfg.coolantMax, warm: cfg.coolantReady })],
-        ['Ansaugluft', v.intake, HEAT.intake], ['Getriebeöl', v.gearbox, Object.assign({}, HEAT.gearbox, { limit: cfg.gearboxMax, warm: cfg.gearboxReady })]];
+        ['Ansaugluft', v.intake, Object.assign({}, HEAT.intake, { limit: cfg.intakeMax })], ['Getriebeöl', v.gearbox, Object.assign({}, HEAT.gearbox, { limit: cfg.gearboxMax, warm: cfg.gearboxReady })]];
     cells.forEach((c, i) => {
         const cx = x + i * 236;
         const hot = isNum(c[1]) && c[2].limit !== null && c[1] >= c[2].limit;
@@ -454,14 +453,14 @@ function power(rec, v, cfg) {
 function health(rec, v, cfg, ui, extra) {
     const { x } = COL.right;
     rec.text('Öldruck', x, 262, 34, C.dim, { font: 'label' });
-    const low = isNum(v.oilPress) && isNum(v.rpm) && v.rpm > OIL_PRESS_RPM && v.oilPress < cfg.oilPressMin;
+    const low = isNum(v.oilPress) && isNum(v.rpm) && v.rpm > cfg.oilPressRpm && v.oilPress < cfg.oilPressMin;
     valueUnit(rec, isNum(v.oilPress) ? de(v.oilPress, 1) : '–', 'bar', x, 352, 96, low ? C.limit : C.text, 32, 'left');
     if (isNum(v.oilPressPeak)) {
         rec.text(`Spitze ${de(v.oilPressPeak, 1)} bar`, x, 394, 30, C.ice, { font: 'scale' });
     }
     const cells = [
         ['Abgas', isNum(v.exhaust) ? String(Math.round(v.exhaust)) : '–', '°C', isNum(v.exhaust) && v.exhaust >= cfg.exhaustMax],
-        ['Bordnetz', isNum(v.voltage) ? de(v.voltage, 1) : '–', 'V', false]
+        ['Bordnetz', isNum(v.voltage) ? de(v.voltage, 1) : '–', 'V', isNum(v.voltage) && v.voltage < cfg.voltageMin]
     ];
     cells.forEach((c, i) => {
         const cx = x + i * 216;
@@ -547,14 +546,14 @@ function settings(rec, cfg, ui) {
         const col = SET_COLS[i < SET_ROWS ? 0 : 1];
         const y = SET_TOP + (i % SET_ROWS) * ROW_H;
         rec.fillRect(col.x, y + ROW_H - 4, col.w, 2, C.line);
-        rec.text(it.label, col.x, y + 62, 36, C.text, { font: 'label' });
+        rec.text(it.label, col.x, y + 54, 32, C.text, { font: 'label' });
         const changed = cfg[it.key] !== it.def;
         const value = it.d ? de(cfg[it.key], it.d) : String(cfg[it.key]);
-        valueUnit(rec, value, it.unit, col.x + col.w - 2 * SET_BTN - 56, y + 68, 50, changed ? C.ice : C.text, 28, 'right');
+        valueUnit(rec, value, it.unit, col.x + col.w - 2 * SET_BTN - 56, y + 58, 44, changed ? C.ice : C.text, 28, 'right');
     });
     SETTINGS_TARGETS.forEach((t) => {
         const step = t.id.indexOf('dec:') === 0 || t.id.indexOf('inc:') === 0;
-        button(rec, t, ui, { size: step ? 52 : 32, primary: t.id === 'done' });
+        button(rec, t, ui, { size: step ? 44 : 32, primary: t.id === 'done' });
     });
 }
 
