@@ -472,11 +472,10 @@ function health(rec, v, cfg, ui, extra) {
 
     // the knock control (its retard, red from the limit, with the cylinder it takes back most) and the oil level
     const knocking = isNum(v.knock) && v.knock >= cfg.knockMax;
-    rec.text('Klopfen', x, 574, 28, knocking ? C.limit : C.dim, { font: 'label' });
-    const kw = valueUnit(rec, isNum(v.knock) ? de(Math.max(0, v.knock), 1) : '–', '°KW', x, 626, 44, knocking ? C.limit : C.text, 24, 'left');
-    if (v.knockCyl && isNum(v.knock) && v.knock > 0) {
-        rec.text(`Zyl. ${v.knockCyl}`, x + kw + 14, 626, 26, knocking ? C.limit : C.ice, { font: 'scale' });
-    }
+    // the label names the cylinder taken back most while it takes back
+    const cyl = v.knockCyl && isNum(v.knock) && v.knock > 0 ? `  Zyl. ${v.knockCyl}` : '';
+    rec.text(`Klopfen${cyl}`, x, 574, 28, knocking ? C.limit : C.dim, { font: 'label' });
+    valueUnit(rec, isNum(v.knock) ? de(Math.max(0, v.knock), 1) : '–', '°', x, 626, 44, knocking ? C.limit : C.text, 26, 'left');
     const oilLow = isNum(v.oilLevel) && v.oilLevel < cfg.oilLevelMin;
     rec.text('Ölstand', x + 216, 574, 28, oilLow ? C.limit : C.dim, { font: 'label' });
     valueUnit(rec, isNum(v.oilLevel) ? de(v.oilLevel, 1) : '–', 'l über Min.', x + 216, 626, 44, oilLow ? C.limit : C.text, 24, 'left');
@@ -735,14 +734,14 @@ const GROUPS = {
     oil: { axes: { left: { unit: 'bar', d: 1, floor: 2, color: C.text }, right: { unit: 'U/min', d: 0, floor: 8000, color: C.dim } },
         curves: [['oilPress', C.text, 'left', 'Öldruck'], ['rpm', C.dim, 'right', 'Drehzahl']] },
     // what the engine does: the mixture (under 1 rich) and the knock control taking ignition back
-    mix: { axes: { left: { unit: 'Lambda', bare: true, d: 2, floor: 1.3, from: 0.7, to: 1.3, color: C.text }, right: { unit: '°KW', d: 0, floor: 4, color: C.limit } },
-        curves: [['lambda', C.text, 'left', 'Lambda', 'min'], ['lambdaTarget', C.dim, 'left', 'Soll', 'min'], ['knock', C.limit, 'right', 'Klopfen spät']] },
+    mix: { axes: { left: { unit: 'Lambda', bare: true, d: 2, floor: 1.3, from: 0.7, to: 1.3, color: C.text }, right: { unit: 'Grad', d: 0, floor: 4, color: C.limit } },
+        curves: [['lambda', C.text, 'left', 'Lambda', 'min'], ['lambdaTarget', C.dim, 'left', 'Soll', 'min'], ['knock', C.limit, 'right', 'Zündung zurück']] },
     fuel: { axes: { left: { unit: 'bar', d: 0, floor: 200, color: C.text }, right: { unit: 'bar', d: 1, floor: 8, color: C.cold } },
         curves: [['rail', C.text, 'left', 'Raildruck'], ['railTarget', C.dim, 'left', 'Soll'], ['fuelLow', C.cold, 'right', 'Niederdruck (Pumpe)', 'min']] },
-    load: { axes: { left: { unit: '%', d: 0, floor: 100, color: C.text }, right: { unit: '°KW', d: 0, floor: 20, color: C.ice } },
+    load: { axes: { left: { unit: '%', d: 0, floor: 100, color: C.text }, right: { unit: 'Grad', d: 0, floor: 20, color: C.ice } },
         curves: [['pedal', C.dim, 'left', 'Pedal'], ['load', C.text, 'left', 'Last'], ['ignition', C.ice, 'right', 'Zündwinkel']] },
     // per cylinder: how far its ignition sits below the earliest one (what the knock control takes back there)
-    knock: { axes: { left: { unit: '°KW', d: 1, floor: 4, color: C.text } },
+    knock: { axes: { left: { unit: 'Grad', d: 1, floor: 4, color: C.text } },
         curves: [['knockCyl1', C.text, 'left', 'Zyl. 1'], ['knockCyl2', C.ice, 'left', '2'], ['knockCyl3', C.cold, 'left', '3'],
             ['knockCyl4', C.ok, 'left', '4'], ['knockCyl5', '#E8B04B', 'left', '5'], ['knockCyl6', C.limit, 'left', '6'],
             ['knock', C.dim, 'left', 'Mittel']] }
