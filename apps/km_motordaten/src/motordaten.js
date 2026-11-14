@@ -5,18 +5,18 @@
  *
  * Read-only through the head unit's diagnostic gateway as tester 0xF4
  * (src/tasu.js; identifiers of src/decode.js; docs/g87-s58.md):
- * - every round, one request to the DME for up to 8 identifiers (FAST):
+ * - one request per round (PLAN, at most 5 a second; none on the fault pages); every other round
+ *   one to the DME for up to 8 identifiers (FAST):
  *   engine speed, torque at the clutch, boost and its target, oil pressure,
  *   air mass and relative filling (for the power);
- * - every SLOW_EVERY rounds (and each round until known): the DME's intake
+ * - in turn, in the slow slots of PLAN (first until known): the DME's intake
  *   air, ambient pressure, exhaust temperature after the catalyst, oil, coolant
  *   and charge air (recorded only), the gearbox's (EGS) transmission oil, the
  *   supply voltage (OBD 42).
  * Power in PS from the measured air mass (airPowerPs), or the DME's torque x the
  * engine speed where that gives more; the torque shown is that power's. On the
  * overrun (negative torque) both show 0.
- * Rounds follow each other as fast as the gateway takes them, at least
- * CYCLE_MS apart; a busy gateway doubles the pause (up to MAX_CYCLE_MS),
+ * Rounds are at least CYCLE_MS apart; a busy gateway doubles the pause (up to MAX_CYCLE_MS),
  * answers bring it back. Only while the screen is in front.
  * From the car's own signals (CDS): engine speed between rounds, and oil
  * and coolant temperature while the DME does not answer.
@@ -96,9 +96,12 @@ const LAYER = 'ST_OnlineApps_MotordatenLayer';
 const RPM_INVALID = 65535;
 const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
-const CYCLE_MS = 90;           // at least this long per round
+/* One request per round, at least CYCLE_MS apart: at most 5 a second through the head unit's gateway, which also
+ * routes the cars' own messages (a busier gateway made the DSC miss its relative time, D359DF). The engine
+ * speed between them comes from the car's signal (CDS). The plan of a 2 s cycle: */
+const PLAN = ['fast', 'knock', 'fast', 'engine', 'fast', 'slow', 'fast', 'engine2', 'fast', 'slow'];
+const CYCLE_MS = 200;          // at least this long per round
 const MAX_CYCLE_MS = 1000;     // the longest pause a busy gateway gets
-const SLOW_EVERY = 12;         // the slow values every this many rounds
 const REOPEN_MS = 10000;       // a failed gateway is tried again after this long (while shown)
 const LIVE_TIMEOUT_MS = 700;   // a live read waits this long for its answer (it comes in ~30 ms): a lost one costs little
 const GAP_NOTE_MS = 1500;      // no values from the DME this long: noted (diag.log)
@@ -108,8 +111,8 @@ const RPM_FRESH_MS = 400;      // the DME's engine speed counts this long; the c
 /* One DME request each round: [key, DID], at most 8. */
 const FAST = [['rpm', 0x4807], ['torque', 0x5891], ['boostAbs', 0x4205], ['boostTargetAbs', 0x4AB0],
     ['oilPressAbs', 0x4436], ['airMass', 0x4ABC], ['load', 0x5813]];
-/* What the engine does, read only while recording (for the logs, not shown live): every other round the
- * first, every ENGINE2_EVERY rounds the second (DIDs read over ENET on the G87, docs/g87-s58.md). */
+/* What the engine does, read only while recording (for the logs, not shown live): in its slot of PLAN the
+ * first, in its slots of PLAN the second (DIDs read over ENET on the G87, docs/g87-s58.md). */
 const ENGINE = [['lambda', 0x5889], ['lambdaTarget', 0x5816], ['rail', 0x5658], ['railTarget', 0x56C1],
     ['fuelLowAbs', 0x58F3], ['ignition', 0x59FA], ['pedal', 0x480B]];
 /* The knock control, live every other round: its mean retard and each cylinder's ignition angle (the cylinder
@@ -117,12 +120,11 @@ const ENGINE = [['lambda', 0x5889], ['lambdaTarget', 0x5816], ['rail', 0x5658], 
 const CYLINDER_DIDS = [0x4A49, 0x4A4A, 0x4A4C, 0x4A4D, 0x4A4E, 0x4A4F];
 const KNOCK = [['knock', 0x554C]].concat(CYLINDER_DIDS.map((id, i) => [`ign${i + 1}`, id]));
 const ENGINE2 = [['throttle', 0x4600], ['fuelFlow', 0x4521], ['fuelTemp', 0x4AD5]];
-const ENGINE2_EVERY = 6;
 
 /* The battery, with the slow ones: its charge (a valid one is 0-100 %). */
 const BATTERY = [['battSoc', 0x5425]];
 
-/* One DME request every SLOW_EVERY rounds: slow to change. */
+/* The DME's slow ones, in the 'slow' slots of PLAN in turn with the battery, gearbox and supply voltage. */
 const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F], ['oil', 0x4402], ['coolant', 0x4300],
     ['charge', 0x59D4]];
 const PS_PER_KW = 1.35962;
@@ -731,7 +733,7 @@ class Motordaten extends ListApp {
         next();
     }
 
-    /* One round: the gateway opened if needed, then FAST in one request, and every SLOW_EVERY rounds the slow ones. */
+    /* One round: the gateway opened if needed, else the one request PLAN has for it (none on the fault pages). */
     _ask() {
         // the fault scan has the gateway to itself
         if (this._drawn && this._drawn.extra.faults && this._drawn.extra.faults.reading) {
@@ -746,30 +748,59 @@ class Motordaten extends ListApp {
                 .then(() => { this._gateway = 'open'; this._gatewayError = ''; },
                     (e) => { this._gateway = 'failed'; this._gatewayError = e.message; });
         }
-        const slow = this._round % SLOW_EVERY === 0 || !isNum(this._dme.ambient) || !isNum(this._dme.gearbox);
+        // the live values while the fault pages are open: none (the gateway is the fault scan's, or idle)
+        const page = this._drawn && this._drawn.page;
+        if (page === 'faults' || page === 'faultunit') {
+            return new Promise((resolve) => setTimeout(resolve, 300));
+        }
+        const slot = PLAN[this._round % PLAN.length];
         this._round++;
         const busyBefore = this._tasu.busy;
-        const rec = !!this._recording;
-        const round = this._round;
-        let fast = 0;
-        // a round whose FAST got nothing ends there: the next one asks FAST again at once instead of
-        // waiting out more requests behind it
-        const more = (fn) => () => (fast ? fn() : undefined);
-        return this._read(FAST)
-            .then((n) => { fast = n; this._gap(n); })
-            .then(more(() => (round % 2 === 0 ? this._read(KNOCK) : undefined)))
-            .then(more(() => (rec && round % 2 === 1 ? this._read(ENGINE) : undefined)))
-            .then(more(() => (rec && round % ENGINE2_EVERY === 3 ? this._read(ENGINE2) : undefined)))
-            .then(more(() => (slow ? this._read(BATTERY) : undefined)))
-            .then(more(() => (slow ? this._read(SLOW)
-                .then(() => this._tasu.request(0x22, [0x60, 0x00], LIVE_TIMEOUT_MS, EGS))
-                .then((u) => this._keep('gearbox', D.didNumber(D.didById(0x6000), u)), () => this._keep('gearbox', null))
-                .then(() => this._tasu.request(0x01, [0x42], LIVE_TIMEOUT_MS))
-                .then((u) => this._keep('voltage', D.obdNumber(D.pidById(0x42), u)), () => this._keep('voltage', null)) : undefined)))
-            .then(() => {
-                this._pace(this._tasu.busy > busyBefore);
+        const ask = this._slot(slot);
+        if (!ask) {
+            return Promise.resolve();
+        }
+        return ask.then(() => {
+            this._pace(this._tasu.busy > busyBefore);
+            if (slot === 'fast') {
                 this._checkTester();
-            });
+            }
+        });
+    }
+
+    /* The one request of a round (PLAN), or null: nothing to ask this round. */
+    _slot(slot) {
+        const rec = !!this._recording;
+        // the slow ones first while ambient pressure (boost and oil pressure above it) is still unknown
+        if (!isNum(this._dme.ambient) && slot !== 'fast') {
+            return this._read(SLOW);
+        }
+        if (slot === 'fast') {
+            return this._read(FAST).then((n) => this._gap(n));
+        }
+        if (slot === 'knock') {
+            return this._read(KNOCK);
+        }
+        if (slot === 'engine') {
+            return rec ? this._read(ENGINE) : null;
+        }
+        if (slot === 'engine2') {
+            return rec ? this._read(ENGINE2) : this._read(KNOCK);
+        }
+        // 'slow': in turn the DME's slow ones, the battery, the gearbox, the supply voltage
+        const turn = this._slowTurn = ((this._slowTurn || 0) + 1) % 4;
+        if (turn === 0) {
+            return this._read(SLOW);
+        }
+        if (turn === 1) {
+            return this._read(BATTERY);
+        }
+        if (turn === 2) {
+            return this._tasu.request(0x22, [0x60, 0x00], LIVE_TIMEOUT_MS, EGS)
+                .then((u) => this._keep('gearbox', D.didNumber(D.didById(0x6000), u)), () => this._keep('gearbox', null));
+        }
+        return this._tasu.request(0x01, [0x42], LIVE_TIMEOUT_MS)
+            .then((u) => this._keep('voltage', D.obdNumber(D.pidById(0x42), u)), () => this._keep('voltage', null));
     }
 
     /* Several DME identifiers in one request: [key, DID]. */

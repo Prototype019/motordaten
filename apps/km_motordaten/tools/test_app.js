@@ -89,7 +89,10 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     assert.strictEqual(unit.opened, unit.uuid, 'entry state opened');
     assert.ok(cds.rpm, 'CDS subscribed');
     cds.rpm({ actualValueRPMEngineCrankshaft: 864 * 4 });
-    await unit.wait(700);
+    // one request per round, at most 5 a second: every value is there within a full plan or two
+    for (let t0 = Date.now(); get('Bordspannung') !== '13.8 V' && Date.now() - t0 < 8000;) {
+        await unit.wait(100);
+    }
     assert.strictEqual(get('Drehzahl'), '864 U/min · max 864');
     assert.strictEqual(get('Öltemperatur'), '29 °C');
     assert.strictEqual(get('Kühlmittel'), '42 °C');
@@ -103,19 +106,19 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
 
     // boost under load: 2.10 bar above ambient, then back; the peak stays
     ANSWERS['22 42 05'] = `62 42 05 ${D.hex(Math.round(3075 / 0.078125) >> 8)} ${D.hex(Math.round(3075 / 0.078125) & 0xFF)}`;
-    await unit.wait(500);
+    await unit.wait(1000);
     assert.ok(/^2\.10 bar · max 2\.10$/.test(get('Ladedruck')), get('Ladedruck'));
     ANSWERS['22 42 05'] = '62 42 05 30 B7';
     cds.rpm({ actualValueRPMEngineCrankshaft: 6500 * 4 });
-    await unit.wait(500);
+    await unit.wait(1000);
     cds.rpm({ actualValueRPMEngineCrankshaft: 900 * 4 });
-    await unit.wait(500);
+    await unit.wait(1000);
     assert.ok(/^-0\.00 bar · max 2\.10$/.test(get('Ladedruck')), get('Ladedruck'));
     assert.strictEqual(get('Drehzahl'), '900 U/min · max 6500');
 
     // overrun: negative torque at the clutch shows as 0, and so does the power
     ANSWERS['22 58 91'] = '62 58 91 FF 38';          // -100 Nm
-    await unit.wait(500);
+    await unit.wait(1000);
     assert.ok(/^0 Nm/.test(get('Drehmoment')), get('Drehmoment'));
     assert.ok(/^0 PS/.test(get('Leistung')), get('Leistung'));
     ANSWERS['22 58 91'] = '62 58 91 00 07';
@@ -136,7 +139,7 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     ANSWERS['22 4A BC'] = '62 4A BC 4E 20';          // 2000 kg/h of air
     ANSWERS['22 58 13'] = '62 58 13 C8';             // 150 % relative filling
     cds.rpm({ actualValueRPMEngineCrankshaft: 6500 * 4 });
-    await unit.wait(500);
+    await unit.wait(1000);
     const ps = Number(/^(\d+) PS/.exec(get('Leistung'))[1]);
     const nm = Number(/^(\d+) Nm/.exec(get('Drehmoment'))[1]);
     assert.ok(ps >= 690 && ps <= 702, `power from the air: ${get('Leistung')}`);
@@ -146,7 +149,7 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     ANSWERS['22 4A BC'] = '62 4A BC 07 D0';          // 200 kg/h
     ANSWERS['22 58 13'] = '62 58 13 32';             // 37.5 %
     cds.rpm({ actualValueRPMEngineCrankshaft: 2500 * 4 });
-    await unit.wait(500);
+    await unit.wait(1000);
     assert.ok(/^200 Nm/.test(get('Drehmoment')), get('Drehmoment'));
     ANSWERS['22 58 91'] = '62 58 91 00 07';
     ANSWERS['22 4A BC'] = '62 4A BC 00 00';
@@ -169,6 +172,11 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     unit.rhmi.emit('applicationStackChanged', { ROOT_APP: 1 });
     await unit.wait(400);
     assert.ok(asked > before, 'questions again when shown');
+
+    // gentle on the gateway: at most 5 requests a second (it also routes the car's own messages)
+    const n0 = asked;
+    await unit.wait(4000);
+    assert.ok(asked - n0 <= 21, `${asked - n0} requests in 4 s`);
 
     // what the engine does is read only while recording
     assert.ok(!keys.some((k) => / 58 89| 56 58| 4A D5/.test(k)), 'no engine values asked without a recording');
