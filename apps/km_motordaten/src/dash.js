@@ -387,7 +387,8 @@ const TILE = {
     ok: { color: C.text, text: 'OK' },
     faults: { color: C.limit, text: null },
     refused: { color: C.dim, text: 'abgelehnt' },
-    none: { color: '#3A4652', text: 'keine Antwort' }
+    none: { color: '#3A4652', text: 'keine Antwort' },
+    error: { color: C.dim, text: 'Fehler beim Lesen' }
 };
 
 function faultsPage(rec, ui, extra) {

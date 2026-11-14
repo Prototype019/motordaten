@@ -33,6 +33,7 @@ const Faults = require('./faults.js');
 const clock = require('./clock.js');
 const IF_KOMBI = 'de.bmw.infotainment.KombiIF';
 const FAULT_MASK = 0x0D;     // failing now, pending, confirmed
+const FAULT_WAIT_MS = 2000;  // a unit's answer to its fault memory read
 const PROXIES = 48;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
@@ -142,6 +143,7 @@ class Motordaten extends ListApp {
 
     /* The proxy buttons follow the drawn page's targets: one shown per target, with its words. */
     _proxiesFor(targets) {
+        const BLANK = ' ';
         this._proxies.forEach((b, i) => {
             if (!b) {
                 return;
@@ -149,7 +151,8 @@ class Motordaten extends ListApp {
             const t = targets[i];
             Promise.resolve()
                 .then(() => b.setProperty('Visible', t ? 1 : 0, 'UInt'))
-                .then(() => (t ? b.setValue(0, 'PrimaryText', t.label === '−' ? 'Weniger' : t.label === '+' ? 'Mehr' : t.label, 'Text') : undefined))
+                // no text: the list under the layer, should the HMI show it for a moment, stays empty
+                .then(() => (t ? b.setValue(0, 'PrimaryText', BLANK, 'Text') : undefined))
                 .catch((err) => logger.warn(`proxy ${i}: ${err && err.message}`));
         });
     }
@@ -231,17 +234,7 @@ class Motordaten extends ListApp {
                 return scan.reduce((chain, unit, k) => chain.then(() => {
                     unit.state = 'read';
                     show({ progress: k + 1 });
-                    return this._tasu.faultsOf(unit.addr, FAULT_MASK).then((u) => {
-                        if (u && u[0] === 0x59) {
-                            unit.entries = Faults.parse(new Map([[unit.addr, u]])).entries;
-                            unit.state = unit.entries.length ? 'faults' : 'ok';
-                        } else if (u && u[0] === 0x7F) {
-                            unit.state = 'refused';
-                            unit.nrc = u[2];
-                        } else {
-                            unit.state = 'none';
-                        }
-                    }, () => { unit.state = 'none'; });
+                    return this._faultsOfUnit(unit);
                 }), Promise.resolve());
             })
             .then(() => {
@@ -259,6 +252,25 @@ class Motordaten extends ListApp {
                 this._tasu.useTester(tester);
                 d.setExtra({ faults: { scan, error: (e && e.message) || String(e) } });
             });
+    }
+
+    /* One unit's fault memory into its tile: a unit silent, refusing or failing is asked once more
+     * (a slow unit, a busy gateway); a transport error shows as one, not as silence. */
+    _faultsOfUnit(unit, again) {
+        return this._tasu.faultsOf(unit.addr, FAULT_MASK, FAULT_WAIT_MS).then((u) => {
+            if (u && u[0] === 0x59) {
+                unit.entries = Faults.parse(new Map([[unit.addr, u]])).entries;
+                unit.state = unit.entries.length ? 'faults' : 'ok';
+                return undefined;
+            }
+            unit.state = u && u[0] === 0x7F ? 'refused' : 'none';
+            unit.nrc = u && u[0] === 0x7F ? u[2] : undefined;
+            return again ? undefined : this._faultsOfUnit(unit, true);
+        }, (e) => {
+            unit.state = 'error';
+            unit.error = (e && e.message) || String(e);
+            return again ? undefined : new Promise((r) => setTimeout(r, 300)).then(() => this._faultsOfUnit(unit, true));
+        });
     }
 
     /* The tester address the gateway lets read the fault memory: each tried on the DME until one gets a
@@ -477,6 +489,10 @@ class Motordaten extends ListApp {
 
     /* One round: the gateway opened if needed, then FAST in one request, and every SLOW_EVERY rounds the slow ones. */
     _ask() {
+        // the fault scan has the gateway to itself
+        if (this._drawn && this._drawn.extra.faults && this._drawn.extra.faults.reading) {
+            return new Promise((resolve) => setTimeout(resolve, 300));
+        }
         if (this._gateway !== 'open') {
             if (this._gateway === 'failed' && Date.now() - this._lastOpen < REOPEN_MS) {
                 return new Promise((resolve) => setTimeout(resolve, 500));
