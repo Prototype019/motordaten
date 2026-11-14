@@ -28,7 +28,7 @@ const DIDS = [
     { id: 0x4A2D, name: 'Saugrohrdruck', t: 'u16', k: 0.078125 / 1000, o: 0, u: 'bar', d: 2 },
     { id: 0x4436, name: 'Öldruck abs.', t: 'u16', k: 0.001, o: 0, u: 'bar', d: 2 },
     { id: 0x586F, name: 'Öldruck', t: 's16', k: 0.001, o: 0, u: 'bar', d: 2 },
-    { id: 0x5811, name: 'Ölstand über Min.', t: 'u8', k: 0.01, o: 0, u: 'l', d: 2 }
+    { id: 0x5811, name: 'Ölstand über Min.', t: 'u8', k: 0.01, o: 0, u: 'l', d: 2, bad: 0xFF }
 ];
 
 const OBD = [
@@ -79,6 +79,9 @@ function didValue(did, uds) {
         return null;
     }
     const raw = num(uds.slice(3), did.t);
+    if (raw !== null && raw === did.bad) {
+        return 'ungültig';
+    }
     return raw === null ? `kurz: ${hexBytes(uds)}` : show(raw * did.k + did.o, did.u, did.d);
 }
 
