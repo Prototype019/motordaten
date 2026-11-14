@@ -1,0 +1,201 @@
+'use strict';
+/**
+ * The app as it runs in the car, on the Mac: src/motordaten.js unchanged on a fake head unit (tools/fake_unit.js),
+ * a fake mgu-render (layer mode, ticks, touch) and a DME, gearbox and OBD that answer every identifier asked with
+ * a drive: cold idle, warming up, a full-load pull (a tune reporting the stock torque), then the knock control
+ * taking back cylinder 5. The frames the app sends are played into a canvas and saved as PNGs at set moments;
+ * touches on the screen open the settings.
+ *
+ *   node tools/emulator.js [out dir]      (default docs/design/emulator)
+ */
+const net = require('net');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const EventEmitter = require('events');
+
+const APP = path.join(__dirname, '..');
+const OUT = path.resolve(process.argv[2] || path.join(APP, '..', '..', 'docs', 'design', 'emulator'));
+const work = fs.mkdtempSync(path.join(os.tmpdir(), 'km-emu-'));
+const SOCK = path.join(work, 'render.sock');
+process.env.MGU_RENDERD_SOCKET = SOCK;
+process.env.KM_DATA_DIR = path.join(work, 'data');
+fs.mkdirSync(process.env.KM_DATA_DIR);
+fs.mkdirSync(OUT, { recursive: true });
+
+const D = require(path.join(APP, 'src/decode.js'));
+const { play } = require(path.join(APP, 'src/kit_record.js'));
+const { Canvas } = require(path.join(APP, 'src/kit_canvas.js'));
+const Limits = require(path.join(APP, 'src/limits.js'));
+// the gearbox counts for "ready" too, as one would set it
+Limits.save(Object.assign(Limits.defaults(), { gearboxReadyOn: 1, gearboxReady: 60 }));
+
+/* ---- the drive: the car's values (physical units) at t seconds ---- */
+const AMBIENT = 1.013;     // bar
+const lerp = (a, b, f) => a + (b - a) * Math.max(0, Math.min(1, f));
+function car(t) {
+    const s = { ambient: AMBIENT, angles: [12, 12, 12, 12, 12, 12], knock: 0, torque: 6 };
+    if (t < 9) {             // cold idle
+        Object.assign(s, { rpm: 880 + 20 * Math.sin(t * 3), oil: 24, coolant: 37, gearbox: 22, intake: 9, charge: 14, exhaust: 330,
+            boost: 0, target: 0, oilPress: 5.6, air: 42, load: 18, voltage: 14.4 });
+    } else if (t < 18) {     // warming up, part load
+        const f = (t - 9) / 9;
+        Object.assign(s, { rpm: 2300 + 200 * Math.sin(t), oil: lerp(60, 86, f), coolant: lerp(55, 66, f), gearbox: lerp(32, 44, f), intake: 14,
+            charge: 24, exhaust: 520, boost: 0.15, target: 0.2, oilPress: 3.9, air: 210, load: 36, voltage: 14.2, torque: 180 });
+    } else if (t < 28) {     // a pull through third gear: the tune reports about stock torque
+        const f = (t - 18) / 8;
+        Object.assign(s, { rpm: lerp(3000, 6950, f), oil: 104, coolant: 92, gearbox: 86, intake: 18, charge: 41, exhaust: lerp(700, 905, f),
+            boost: lerp(1.2, 1.94, f * 2), target: 1.98, oilPress: 4.9, air: lerp(1100, 2000, f), load: lerp(120, 165, f), voltage: 14.2,
+            torque: 545 });
+        s.knock = f > 0.6 ? 0.75 : 0;
+        if (f > 0.6) s.angles[2] -= 2.2;
+    } else {                 // the knock control taking back cylinder 5
+        Object.assign(s, { rpm: 5200, oil: 108, coolant: 95, gearbox: 92, intake: 21, charge: 46, exhaust: 860, boost: 1.85, target: 1.9,
+            oilPress: 4.6, air: 1700, load: 150, voltage: 14.1, torque: 540, knock: 4.5 });
+        s.angles[4] -= 4.5;
+    }
+    return s;
+}
+/* identifier -> physical value at t */
+function valueOf(id, t) {
+    const s = car(t);
+    const abs = (rel) => s.ambient + rel;
+    switch (id) {
+    case 0x4807: return s.rpm;
+    case 0x5891: return s.torque;
+    case 0x4205: case 0x57C1: return abs(s.boost);
+    case 0x4AB0: return abs(s.target);
+    case 0x4436: return abs(s.oilPress);
+    case 0x4ABC: return s.air;
+    case 0x5813: return s.load;
+    case 0x4201: return s.ambient * 1000;
+    case 0x580F: return s.intake;
+    case 0x582F: return s.exhaust;
+    case 0x4402: return s.oil;
+    case 0x4300: return s.coolant;
+    case 0x59D4: return s.charge;
+    case 0x554C: return s.knock;
+    case 0x4A49: case 0x4A4A: case 0x4A4C: case 0x4A4D: case 0x4A4E: case 0x4A4F:
+        return s.angles[[0x4A49, 0x4A4A, 0x4A4C, 0x4A4D, 0x4A4E, 0x4A4F].indexOf(id)];
+    case 0x6000: return s.gearbox;
+    default: return null;
+    }
+}
+function encode(did, v) {
+    // held in the identifier's range, as the DME does (it never wraps)
+    const lim = { u8: [0, 255], s8: [-128, 127], u16: [0, 65535], s16: [-32768, 32767] }[did.t];
+    const raw = Math.max(lim[0], Math.min(lim[1], Math.round((v - did.o) / did.k)));
+    if (did.t === 'u8' || did.t === 's8') return [raw & 0xFF];
+    return [(raw >> 8) & 0xFF, raw & 0xFF];
+}
+
+/* ---- the fake mgu-render: layer mode, ticks; frames kept, touch sent ---- */
+let lastFrame = null;
+let client = null;
+const msg = (type, payload) => { const h = Buffer.alloc(8); h.writeUInt32LE(type, 0); h.writeUInt32LE(payload.length, 4); return Buffer.concat([h, payload]); };
+net.createServer((c) => {
+    client = c;
+    let buf = Buffer.alloc(0);
+    let tick = null;
+    let n = 0;
+    c.on('data', (d) => {
+        buf = Buffer.concat([buf, d]);
+        while (buf.length >= 8) {
+            const type = buf.readUInt32LE(0);
+            const len = buf.readUInt32LE(4);
+            if (buf.length < 8 + len) break;
+            const p = Buffer.from(buf.slice(8, 8 + len));
+            buf = buf.slice(8 + len);
+            if (type === 7) lastFrame = new Uint32Array(p.buffer, p.byteOffset, p.length / 4).slice();
+            if (type === 1 && !tick) {
+                const x = Buffer.alloc(52);
+                x.writeUInt32LE(1, 0); x.writeUInt32LE(1, 4); x.writeUInt32LE(1 | 4 | 8, 8);
+                [0, 76, 2880, 764].forEach((v, i) => x.writeInt32LE(v, 28 + i * 4));
+                x.writeUInt32LE(2048, 44); x.writeUInt32LE(60000, 48);
+                const r = Buffer.alloc(12); r.writeUInt32LE(1, 0); r.writeUInt32LE(2880, 4); r.writeUInt32LE(960, 8);
+                c.write(msg(0x4d520101, x)); c.write(msg(101, r));
+                tick = setInterval(() => { const q = Buffer.alloc(8); q.writeUInt32LE(n++, 0); c.write(msg(102, q)); }, 33);
+            }
+        }
+    });
+    c.on('close', () => clearInterval(tick));
+    c.on('error', () => {});
+}).listen(SOCK, run);
+
+function touch(x, y) {
+    const t = (phase) => { const p = Buffer.alloc(12); p.writeUInt32LE(phase, 0); p.writeFloatLE(x, 4); p.writeFloatLE(y, 8); return msg(105, p); };
+    client.write(t(1));
+    setTimeout(() => client.write(t(3)), 60);
+}
+
+function shot(name) {
+    if (!lastFrame) { console.log(`${name}: no frame yet`); return; }
+    const cv = new Canvas(2880, 764);
+    play(lastFrame, cv);
+    fs.writeFileSync(path.join(OUT, `${name}.png`), cv.png());
+    console.log(`${name}.png`);
+}
+
+function run() {
+    const t0 = Date.now();
+    const now = () => (Date.now() - t0) / 1000;
+    const ev = new EventEmitter();
+    const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 0, 0].concat(uds)), errorCode: 'NO_ERROR' });
+    const tasu = () => ({
+        init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
+        sendTasuResponse: { subscribe: (cb) => { ev.on('r', cb); return Promise.resolve(); } },
+        sendTasuRequest: (p) => {
+            const req = Array.from(p.udsData);
+            let body = null;
+            if (p.serviceID === 0x22) {
+                body = [0x62];
+                for (let i = 0; i + 1 < req.length; i += 2) {
+                    const id = (req[i] << 8) | req[i + 1];
+                    const did = D.didById(id);
+                    const v = valueOf(id, now());
+                    if (did && v !== null) body = body.concat([req[i], req[i + 1]], encode(did, v));
+                }
+                if (body.length === 1) body = [0x7F, 0x22, 0x31];
+            } else if (p.serviceID === 0x01 && req[0] === 0x42) {
+                const mv = Math.round(car(now()).voltage * 1000);
+                body = [0x41, 0x42, mv >> 8, mv & 0xFF];
+            } else if (p.serviceID === 0x19) {
+                body = [0x59, 0x02, 0xFF];
+            }
+            if (body) setTimeout(() => ev.emit('r', frame(p.targetAddress, body)), 25);
+            return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });
+        }
+    });
+    const cds = {};
+    const cdsProxy = () => {
+        const f = (n) => ({ subscribe: (cb) => { cds[n] = cb; return Promise.resolve(); } });
+        return { init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(), statusEngineSpeed2: f('rpm'), statusEngineTemperature: f('t') };
+    };
+    const unit = require(path.join(APP, '../../tools/fake_unit.js')).install(require(path.join(APP, 'spec.js')),
+        require(path.join(APP, 'package/rhmiData/application.json')), {
+            'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasu,
+            'de.bmw.infotainment.vehicle.CDS': cdsProxy
+        });
+    const exit = process.exit;
+    process.exit = () => {};
+    require(path.join(APP, 'src/motordaten.js'));
+    setInterval(() => cds.rpm && cds.rpm({ actualValueRPMEngineCrankshaft: Math.round(car(now()).rpm * 4) }), 40);
+    setTimeout(() => {
+        unit.rhmi.emit('applicationStackChanged', { ROOT_APP: 1 });
+        const host = unit.comps.ST_OnlineApps_MotordatenLayer;
+        if (host) { host.emit('visible', { visible: true }); host.emit('focus', { focus: true }); }
+    }, 2000);
+    const at = (s, fn) => setTimeout(fn, s * 1000);
+    at(7.5, () => shot('1-kalt'));
+    at(16.5, () => shot('2-warmfahren'));
+    at(26.5, () => shot('3-vollgas'));
+    at(32, () => shot('4-klopfen'));
+    at(32.5, () => touch(100, 16 + 3 * 184 + 84));        // the tab Einstellungen
+    at(33.5, () => shot('5-einstellungen'));
+    at(34, () => touch(260 + 1288 + 600, 370));           // the card Bereit für Volllast
+    at(35, () => shot('6-bereit'));
+    at(35.5, () => touch(2880 - 96 - 150, 106));          // Zurück
+    at(36, () => touch(260 + 600, 370));                  // the card Grenzwerte
+    at(37, () => shot('7-grenzwerte'));
+    at(37.5, () => { console.log(`saved in ${OUT}`); exit(0); });
+}
