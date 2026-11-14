@@ -378,6 +378,12 @@ function segments(rec, page, ui) {
     SEGMENTS.forEach((t) => button(rec, t, ui, { size: 28, primary: t.page === page }));
 }
 
+const hexByte = (n) => `0x${n.toString(16).toUpperCase().padStart(2, '0')}`;
+/* A refusal's code with its meaning (ISO 14229). */
+const NRC_WORDS = { 0x11: 'Dienst nicht unterstützt', 0x12: 'nicht unterstützt', 0x13: 'falsche Länge', 0x22: 'Bedingungen nicht erfüllt',
+    0x31: 'außerhalb des Bereichs', 0x33: 'gesperrt', 0x7E: 'nicht in dieser Sitzung', 0x7F: 'nicht in dieser Sitzung' };
+const nrcText = (n) => `${hexByte(n)} ${NRC_WORDS[n] || ''}`.trim();
+
 const STATE_COLOR = { aktiv: C.limit, gespeichert: C.ice, 'vorläufig': C.dim, Historie: C.dim };
 /* A unit's tile: colour of its marker and words, by the state of its reading. */
 const TILE = {
@@ -385,7 +391,7 @@ const TILE = {
     read: { color: C.ice, text: 'liest …' },
     ok: { color: C.text, text: 'OK' },
     faults: { color: C.limit, text: null },
-    refused: { color: C.dim, text: 'nicht lesbar' },
+    refused: { color: C.dim, text: 'abgelehnt' },
     none: { color: '#3A4652', text: 'keine Antwort' }
 };
 
@@ -403,13 +409,15 @@ function faultsPage(rec, ui, extra) {
         note = `Lese Steuergerät ${f.progress || 0} von ${scan.length} … nur lesend.`;
     } else if (f.error) {
         note = `Lesen fehlgeschlagen: ${f.error}. Zündung an?`;
+    } else if (f.units === 0 && f.refused) {
+        note = `${f.refused} Steuergeräte erreicht, aber Fehler lesen abgelehnt (${(f.nrcs || []).map(nrcText).join(', ')}).`;
     } else if (f.units === 0) {
         note = 'Keine Antwort der Steuergeräte. Zündung an? Dann Neu lesen.';
     } else if (f.units === undefined) {
         note = 'Liest die Fehlerspeicher aller Steuergeräte, nur lesend.';
     } else {
         const withFaults = scan.filter((u) => u.state === 'faults').length;
-        note = `${f.units} von ${scan.length} Steuergeräten geantwortet, ` +
+        note = `${f.units} von ${scan.length} Steuergeräten gelesen${f.refused ? `, ${f.refused} abgelehnt` : ''}, ` +
             `${withFaults === 0 ? 'alle ohne Fehler' : withFaults === 1 ? '1 mit Fehlern' : `${withFaults} mit Fehlern`}` +
             (f.at ? ` · gelesen ${two(f.at.getUTCHours())}:${two(f.at.getUTCMinutes())}` : '');
     }
@@ -428,7 +436,10 @@ function faultsPage(rec, ui, extra) {
             rec.strokeRoundRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8, 12, 4, C.ice);
         }
         rec.roundRect(b.x, b.y, 8, b.h, 4, look.color);
-        const words = look.text === null ? `${u.entries.length} ${u.entries.length === 1 ? 'Fehler' : 'Fehler'}` : look.text;
+        let words = look.text === null ? `${u.entries.length} Fehler` : look.text;
+        if (u.state === 'refused' && typeof u.nrc === 'number') {
+            words = `abgelehnt ${hexByte(u.nrc)}`;
+        }
         const ww = words ? rec.textWidth(words, 26, { font: 'label' }) : 0;
         rec.clip(b.x, b.y, b.w - ww - 28, b.h);
         rec.text(u.name, b.x + 22, b.y + 36, 28, u.state === 'none' || u.state === 'wait' ? C.dim : C.text, { font: 'label' });

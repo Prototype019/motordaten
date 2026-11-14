@@ -225,30 +225,62 @@ class Motordaten extends ListApp {
         const scan = Faults.addresses().map((addr) => ({ addr, name: Faults.unitName(addr), state: 'wait', entries: [] }));
         const show = (more) => d.setExtra({ faults: Object.assign({ reading: true, scan: scan.slice() }, more) });
         show({ progress: 0 });
+        const tester = this._tasu.tester;
         const open = this._gateway === 'open' ? Promise.resolve() : this._tasu.open().then(() => { this._gateway = 'open'; });
+        let probe = '';
         open
-            .then(() => scan.reduce((p, unit, k) => p.then(() => {
-                unit.state = 'read';
-                show({ progress: k + 1 });
-                return this._tasu.faultsOf(unit.addr, FAULT_MASK).then((u) => {
-                    if (u && u[0] === 0x59) {
-                        unit.entries = Faults.parse(new Map([[unit.addr, u]])).entries;
-                        unit.state = unit.entries.length ? 'faults' : 'ok';
-                    } else {
-                        unit.state = u && u[0] === 0x7F ? 'refused' : 'none';
-                    }
-                }, () => { unit.state = 'none'; });
-            }), Promise.resolve()))
+            .then(() => this._faultTester())
+            .then((p) => {
+                probe = p.note;
+                this._tasu.useTester(p.tester);
+                return scan.reduce((chain, unit, k) => chain.then(() => {
+                    unit.state = 'read';
+                    show({ progress: k + 1 });
+                    return this._tasu.faultsOf(unit.addr, FAULT_MASK).then((u) => {
+                        if (u && u[0] === 0x59) {
+                            unit.entries = Faults.parse(new Map([[unit.addr, u]])).entries;
+                            unit.state = unit.entries.length ? 'faults' : 'ok';
+                        } else if (u && u[0] === 0x7F) {
+                            unit.state = 'refused';
+                            unit.nrc = u[2];
+                        } else {
+                            unit.state = 'none';
+                        }
+                    }, () => { unit.state = 'none'; });
+                }), Promise.resolve());
+            })
             .then(() => {
+                this._tasu.useTester(tester);
                 const entries = [].concat(...scan.map((u) => u.entries));
-                const answered = scan.filter((u) => u.state === 'ok' || u.state === 'faults' || u.state === 'refused').length;
-                logger.info(`faults: ${answered}/${scan.length} units, ${entries.map((e) => `${e.ecu.toString(16)}:${e.code}/${e.status}`).join(' ')}`);
+                const read = scan.filter((u) => u.state === 'ok' || u.state === 'faults').length;
+                const refused = scan.filter((u) => u.state === 'refused');
+                const nrcs = Array.from(new Set(refused.map((u) => u.nrc)));
+                logger.info(`faults: read ${read}, refused ${refused.length} (${nrcs.map((n) => n.toString(16)).join(',')}), ${probe}; ` +
+                    entries.map((e) => `${e.ecu.toString(16)}:${e.code}/${e.status}`).join(' '));
                 const note = this._afterClear ? `${this._afterClear}${entries.length ? `Noch ${entries.length} Einträge.` : 'Keine Einträge mehr.'}` : null;
                 this._afterClear = null;
-                d.setExtra({ faults: { scan, units: answered, entries, at: clock.wall(), note } });
+                d.setExtra({ faults: { scan, units: read, refused: refused.length, nrcs, probe, entries, at: clock.wall(), note } });
             }, (e) => {
+                this._tasu.useTester(tester);
                 d.setExtra({ faults: { scan, error: (e && e.message) || String(e) } });
             });
+    }
+
+    /* The tester address the gateway lets read the fault memory: each tried on the DME until one gets a
+     * fault reply; else the first. { tester, note } (what each answered, for the log). */
+    _faultTester() {
+        const tried = [];
+        const next = (k) => {
+            if (k >= TESTERS.length) {
+                return { tester: TESTERS[0], note: tried.join(' ') };
+            }
+            this._tasu.useTester(TESTERS[k]);
+            return this._tasu.faultsOf(0x12, FAULT_MASK).then((u) => {
+                tried.push(`${TESTERS[k].toString(16)}:${u ? u.slice(0, 3).map((b) => b.toString(16)).join('') : '-'}`);
+                return u && u[0] === 0x59 ? { tester: TESTERS[k], note: tried.join(' ') } : next(k + 1);
+            }, () => next(k + 1));
+        };
+        return next(0);
     }
 
     /* Why the fault memory may not be cleared now, or null: only with the engine off (its speed measured
