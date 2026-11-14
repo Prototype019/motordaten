@@ -16,6 +16,10 @@
  */
 
 const DIDS = [
+    { id: 0x4807, name: 'Drehzahl', t: 's16', k: 0.5, o: 0, u: 'U/min', d: 0 },
+    { id: 0x5891, name: 'Drehmoment Kupplung', t: 's16', k: 0.5, o: 0, u: 'Nm', d: 0 },
+    { id: 0x582F, name: 'Abgas nach Kat', t: 's16', k: 0.1, o: -273.14, u: '°C', d: 0 },
+    { id: 0x5896, name: 'Abgas hinter Hauptkat', t: 's16', k: 0.1, o: -273.14, u: '°C', d: 0 },
     { id: 0x4402, name: 'Öl nach Filter', t: 'u16', k: 0.75, o: -48, u: '°C', d: 0 },
     { id: 0x5822, name: 'Öltemperatur', t: 'u8', k: 1, o: -60, u: '°C', d: 0 },
     { id: 0x4425, name: 'Öl im Sumpf', t: 's16', k: 0.1, o: 0, u: '°C', d: 0 },
@@ -32,6 +36,12 @@ const DIDS = [
     { id: 0x5811, name: 'Ölstand über Min.', t: 'u8', k: 0.01, o: 0, u: 'l', d: 2, bad: 0xFF }
 ];
 
+/* The gearbox unit's (EGS, 0x18; ZF 8HP, SGBD GSZFBCE on the G87): transmission oil, as
+ * cauliflowermossgrape/idrive7-apps (MIT) apps/zf8hp/catalog.js reads it. */
+const EGS_DIDS = [
+    { id: 0x6000, name: 'Getriebeöl', t: 'u8', k: 1, o: -40, u: '°C', d: 0 }
+];
+
 const OBD = [
     { pid: 0x05, name: 'Kühlmittel', n: 1, f: (b) => b[0] - 40, u: '°C', d: 0 },
     { pid: 0x0F, name: 'Ansaugluft', n: 1, f: (b) => b[0] - 40, u: '°C', d: 0 },
@@ -43,7 +53,9 @@ const OBD = [
     { pid: 0x0C, name: 'Drehzahl', n: 2, f: (b) => ((b[0] << 8) | b[1]) / 4, u: 'U/min', d: 0 },
     { pid: 0x04, name: 'Last', n: 1, f: (b) => b[0] * 100 / 255, u: '%', d: 0 },
     { pid: 0x11, name: 'Drosselklappe', n: 1, f: (b) => b[0] * 100 / 255, u: '%', d: 0 },
-    { pid: 0x2F, name: 'Tankfüllung', n: 1, f: (b) => b[0] * 100 / 255, u: '%', d: 0 }
+    { pid: 0x2F, name: 'Tankfüllung', n: 1, f: (b) => b[0] * 100 / 255, u: '%', d: 0 },
+    { pid: 0x3C, name: 'Kat-Temperatur 1', n: 2, f: (b) => ((b[0] << 8) | b[1]) / 10 - 40, u: '°C', d: 0 },
+    { pid: 0x3D, name: 'Kat-Temperatur 2', n: 2, f: (b) => ((b[0] << 8) | b[1]) / 10 - 40, u: '°C', d: 0 }
 ];
 
 const DME_INDEX = {"0F1090":"MSD85L6","0F10A0":"D73N57A0","0F1370":"MSD87","0F1380":"MSD87_R0","0F13E0":"MSV90","0F13F0":"MEVD172","0F1740":"D72N47A0","0F1780":"MSD85YL6","0F17B0":"D73N57E0","0F17B4":"D73N57E0","0F17B8":"D73N57E0","0F17BC":"D73N57E0","0F17F0":"MEVD1725","0F1810":"MEVD1724","0F18A0":"D72N47A0","0F1910":"MEVD172Y","0F1920":"D72N47A0","0F19E0":"EDMEI1","0F1A10":"S63TU_R0","0F1A20":"N63TU_R0","0F1D20":"DME_BX8","0F1D22":"DME_BX8","0F1D24":"DME_BX8","0F1D26":"DME_BX8","0F1EA0":"S55","0F1EF0":"D73N57E0","0F1F70":"D75BX7A0","0F1F80":"D75BX7A0","0F1F90":"D70BX7A0","0F1FA0":"D70BX7A0","0F1FE8":"D83BX7C0","0F1FF0":"D83BX7C0","0F1FF4":"D83BX7C0","0F1FF8":"D83BX7C0","0F2220":"N55_ALP","0F2422":"DME8FF_R","0F2424":"DME8FF_R","0F2426":"DME8FF_R","0F2427":"DME8FF_R","0F2428":"DME8FF_R","0F2429":"DME8FF_R","0F242A":"DME8FF_R","0F242C":"DME8FF_R","0F242E":"DME8FF_R","0F2460":"DME8FF_R","0F25A0":"DME8FF_R","0F25A2":"DME8FF_R","0F2670":"D83BX7C0","0F2674":"D83BX7C0","0F2678":"D83BX7C0","0F267C":"D83BX7C0","0F26B4":"DME8FF_R","0F26B8":"DME8FF_R","0F26BC":"DME8FF_R","0F26E0":"DME8FF_R","0F26E4":"DME8FF_R","0F26E8":"DME8FF_R","0F28E0":"DME9FF_R","0F2930":"DME8FF_R","0F2C80":"D94BX7A0","0F2E00":"DME98_R"};
@@ -88,28 +100,31 @@ function obdNumber(pid, uds) {
     return pid.f(uds.slice(2));
 }
 
-const didById = (id) => DIDS.find((d) => d.id === id);
+const didById = (id) => DIDS.concat(EGS_DIDS).find((d) => d.id === id);
+const pidById = (id) => OBD.find((p) => p.pid === id);
 const SIZE = { u8: 1, u16: 2, s16: 2 };
 
 /* A reply to one 22 request for several identifiers (62 id1 data1 id2 data2 ...): { id: value or null },
- * or null when it is not a positive reply to them. Each identifier's data is as long as its type. */
+ * or null when it is not a positive reply. The reply names each identifier before its data, which is as
+ * long as its type; one the DME left out is simply missing; an identifier not asked for ends the walk. */
 function didNumbers(dids, uds) {
     if (!uds || uds[0] !== 0x62) {
         return null;
     }
     const out = {};
     let i = 1;
-    for (const did of dids) {
-        if (uds[i] !== (did.id >> 8) || uds[i + 1] !== (did.id & 0xFF)) {
-            return Object.keys(out).length ? out : null;
+    while (i + 2 <= uds.length) {
+        const id = (uds[i] << 8) | uds[i + 1];
+        const did = dids.find((d) => d.id === id);
+        if (!did) {
+            break;
         }
         const n = SIZE[did.t];
-        out[did.id] = didNumber(did, [0x62].concat(uds.slice(i, i + 2 + n)));
+        out[id] = didNumber(did, [0x62].concat(uds.slice(i, i + 2 + n)));
         i += 2 + n;
     }
-    return out;
+    return Object.keys(out).length ? out : null;
 }
-const pidById = (id) => OBD.find((p) => p.pid === id);
 
 /* A 22 reply for did: "<value>", "nein: <nrc>", or null when it is not ours. */
 function didValue(did, uds) {
@@ -161,5 +176,5 @@ function dmeType(uds) {
     return { index, type: DME_INDEX[index] || null };
 }
 
-module.exports = { DIDS, OBD, DME_INDEX, NRC, hex, hexBytes, didValue, obdValue, didNumber, didNumbers, obdNumber, didById, pidById,
+module.exports = { DIDS, EGS_DIDS, OBD, DME_INDEX, NRC, hex, hexBytes, didValue, obdValue, didNumber, didNumbers, obdNumber, didById, pidById,
     supported, dmeType };

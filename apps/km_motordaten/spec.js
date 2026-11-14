@@ -1,6 +1,10 @@
 'use strict';
 /* Motordaten: package and screen description (tools/gen.js). */
+/* Proxy buttons of the drawn screens' host state. */
+const PROXIES = 16;
+
 module.exports = {
+    PROXIES,
     description: 'Motordaten: Temperaturen, Ladedruck, Öldruck und Drehzahl der DME live',
     loggingId: 'KMMD',
     icon: 'motordaten_icon.png',
@@ -24,12 +28,11 @@ module.exports = {
             { id: 25, kind: 'button', name: 'mdRun', text: 'SID_MD_RESET' }
         ]
     }, {
-        /* The host state of the drawn screen (src/drawn.js): the renderer draws over it while it is open;
-         * its one button stands for the reset button under the controller. */
+        /* The host state of the drawn screens (src/drawn.js): the renderer draws over it while it is open;
+         * its buttons stand for the drawn page's targets under the controller, one each, in order
+         * (src/dash.js targets: the settings page has the most, 16). */
         id: 2, name: 'ST_OnlineApps_MotordatenLayer', titleId: 11, title: 'SID_MD_TITLE',
-        components: [
-            { id: 30, kind: 'button', name: 'mdLayerP0', text: 'SID_MD_RESET' }
-        ]
+        components: Array.from({ length: PROXIES }, (x, i) => ({ id: 30 + i, kind: 'button', name: `mdLayerP${i}`, text: '' }))
     }],
     proxies: {
         'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineSpeed2: 's', statusEngineTemperature: 's' } },

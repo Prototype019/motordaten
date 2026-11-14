@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, '..', '..', 'shared')
-TEXT = ''.join(chr(c) for c in range(32, 127)) + 'ÄÖÜäöüß°–…·×'
+TEXT = ''.join(chr(c) for c in range(32, 127)) + 'ÄÖÜäöüß°–…·×−„“'
 DIGITS = '0123456789,.-– '
 # face: (file, sizes, charset)
 FACES = {

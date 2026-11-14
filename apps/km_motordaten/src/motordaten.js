@@ -1,53 +1,66 @@
 'use strict';
 /**
- * Motordaten: the engine's live values on one iDrive 8 screen.
+ * Motordaten: the engine's live values on one iDrive 8 screen (drawn by
+ * mgu-render through src/drawn.js, else a list).
  *
- * - From the DME (address 0x12) through the head unit's diagnostic gateway,
- *   read-only (src/tasu.js, identifiers of src/decode.js; the G87's S58 DME
- *   is a DME8FF_R, docs/g87-s58.md): oil and coolant temperature, intake and
- *   charge air temperature, boost and boost target, oil pressure; ambient
- *   pressure and the supply voltage less often. Boost and oil pressure show
- *   above ambient. Asked one after another, only while the screen is in
- *   front.
- * - From the car's own signals (CDS): engine speed, and oil and coolant
- *   temperature while the DME does not answer.
+ * Read-only through the head unit's diagnostic gateway as tester 0xF4
+ * (src/tasu.js; identifiers of src/decode.js; docs/g87-s58.md):
+ * - every round, one request to the DME for up to 8 identifiers (FAST):
+ *   engine speed, torque at the clutch, boost and its target, oil pressure,
+ *   oil and coolant temperature, charge air;
+ * - every SLOW_EVERY rounds (and each round until known): the DME's intake
+ *   air, ambient pressure and exhaust temperature after the catalyst, the
+ *   gearbox's (EGS) transmission oil, the supply voltage (OBD 42).
+ * Power is torque x engine speed of the same round, in PS.
+ * Rounds follow each other as fast as the gateway takes them, at least
+ * CYCLE_MS apart; a busy gateway doubles the pause (up to MAX_CYCLE_MS),
+ * answers bring it back. Only while the screen is in front.
+ * From the car's own signals (CDS): engine speed between rounds, and oil
+ * and coolant temperature while the DME does not answer.
  *
  * Engine speed, boost and oil pressure keep their peaks; the button resets
- * them. The status line says what is missing.
+ * them. Boost and oil pressure show above ambient. The status line says
+ * what is missing.
  */
 const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 const { ListApp, logger } = require('./screen.js');
-const { Tasu, TESTERS } = require('./tasu.js');
+const { Tasu, TESTERS, EGS } = require('./tasu.js');
 const D = require('./decode.js');
 const { Drawn } = require('./drawn.js');
+const Limits = require('./limits.js');
+const PROXIES = 16;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
+const LIST = 'ST_OnlineApps_Motordaten';
 const LAYER = 'ST_OnlineApps_MotordatenLayer';
-const isTrue = (raw) => raw === true || raw === 'true' || raw === 1 || raw === '1';
 const RPM_INVALID = 65535;
 const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
-const CYCLE_MS = 250;          // at least this long per round (one request for all identifiers)
-const SLOW_EVERY = 20;         // ambient pressure and voltage every this many rounds
+const CYCLE_MS = 90;           // at least this long per round
+const MAX_CYCLE_MS = 1000;     // the longest pause a busy gateway gets
+const SLOW_EVERY = 12;         // the slow values every this many rounds
 const REOPEN_MS = 10000;       // a failed gateway is tried again after this long (while shown)
 const HOLD_MS = 4000;          // a value missing an answer keeps its last one this long (the gateway drops some)
+const RPM_FRESH_MS = 400;      // the DME's engine speed counts this long; the car's signal after it
 
-/* Asked every round: [key, DID]. */
-const FAST = [['oil', 0x4402], ['coolant', 0x4300], ['intake', 0x580F], ['charge', 0x59D4],
-    ['boostAbs', 0x4205], ['boostTargetAbs', 0x4AB0], ['oilPressAbs', 0x4436]];
-/* Asked every SLOW_EVERY rounds. */
-const SLOW = [['ambient', 0x4201]];
+/* One DME request each round: [key, DID], at most 8. */
+const FAST = [['rpm', 0x4807], ['torque', 0x5891], ['boostAbs', 0x4205], ['boostTargetAbs', 0x4AB0],
+    ['oilPressAbs', 0x4436], ['oil', 0x4402], ['coolant', 0x4300], ['charge', 0x59D4]];
+/* One DME request every SLOW_EVERY rounds: slow to change. */
+const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F]];
+const PS_PER_KW = 1.35962;
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
+const isTrue = (raw) => raw === true || raw === 'true' || raw === 1 || raw === '1';
 const fmt = (v, unit, d) => (isNum(v) ? `${v.toFixed(d)} ${unit}` : '–');
 const withPeak = (v, peak, unit, d) => (isNum(v) ? `${v.toFixed(d)} ${unit}${isNum(peak) ? ` · max ${peak.toFixed(d)}` : ''}` : '–');
 
 class Motordaten extends ListApp {
     constructor() {
-        super({ root: 'ST_OnlineApps_Motordaten', prefix: 'md' });
+        super({ root: LIST, prefix: 'md' });
         this._tasu = new Tasu(logger);
-        this._dme = {};             // key -> value from the DME (null: no answer)
-        this._dmeAt = {};           // key -> when it last answered
+        this._dme = {};             // key -> value (null: no answer)
+        this._at = {};              // key -> when it last answered
         this._cds = {};             // rpm, oil, coolant from the car's signals
         this._peak = {};
         this._gateway = 'wait';     // wait | open | failed
@@ -55,18 +68,21 @@ class Motordaten extends ListApp {
         this._lastOpen = 0;
         this._polling = false;
         this._round = 0;
+        this._cycle = CYCLE_MS;
         this._emptyRounds = 0;
         this._testerIdx = 0;
         this._stopped = false;
-        this._subscribed = false;
+        this._started = false;
         this._drawn = null;
-        this._timer = setInterval(() => this._render(), 500);
+        this._limits = Limits.load();
+        this._proxies = [];
+        this._timer = setInterval(() => this._render(), 1000);
     }
 
     /* The button: peaks start again. Also run once after start. */
     run() {
-        if (!this._subscribed) {
-            this._subscribed = true;
+        if (!this._started) {
+            this._started = true;
             this._subscribe();
             this._startDrawn();
         }
@@ -82,19 +98,70 @@ class Motordaten extends ListApp {
         }
     }
 
+    visibilityChanged(visible) {
+        if (visible) {
+            this._poll();
+        }
+    }
+
     /* The drawn screen's host state and its proxy button. */
     bind(rhmi) {
         this._layerState = rhmi.getByName(LAYER);
-        this._layerButton = rhmi.getByName('mdLayerP0');
         if (!this._layerState) {
             logger.warn(`${LAYER} missing: list screen only`);
             return;
         }
         this._layerState.on('visible', (ev) => this._drawn && this._drawn.hostVisible(isTrue(ev && ev.visible)));
         this._layerState.on('focus', (ev) => this._drawn && this._drawn.hostFocus(isTrue(ev && ev.focus)));
-        if (this._layerButton) {
-            this._layerButton.on('action', () => this._drawn && this._drawn.proxyPress());
-            this._layerButton.on('focus', (ev) => this._drawn && this._drawn.proxyFocus(isTrue(ev && ev.value)));
+        for (let i = 0; i < PROXIES; i++) {
+            const b = rhmi.getByName(`mdLayerP${i}`);
+            this._proxies.push(b);
+            if (b) {
+                b.on('action', () => this._drawn && this._drawn.proxyPress(i));
+                b.on('focus', (ev) => this._drawn && this._drawn.proxyFocus(i, isTrue(ev && ev.value)));
+            }
+        }
+    }
+
+    /* The proxy buttons follow the drawn page's targets: one shown per target, with its words. */
+    _proxiesFor(targets) {
+        this._proxies.forEach((b, i) => {
+            if (!b) {
+                return;
+            }
+            const t = targets[i];
+            Promise.resolve()
+                .then(() => b.setProperty('Visible', t ? 1 : 0, 'UInt'))
+                .then(() => (t ? b.setValue(0, 'PrimaryText', t.label === '−' ? 'Weniger' : t.label === '+' ? 'Mehr' : t.label, 'Text') : undefined))
+                .catch((err) => logger.warn(`proxy ${i}: ${err && err.message}`));
+        });
+    }
+
+    /* A press on the drawn screens: the buttons of the main page, the limits on the settings page. */
+    _action(id) {
+        if (id === 'reset') {
+            this.run();
+        } else if (id === 'settings') {
+            this._drawn.setPage('settings');
+        } else if (id === 'done') {
+            this._drawn.setPage('main');
+        } else if (id === 'defaults') {
+            this._setLimits(Limits.defaults());
+        } else if (/^(dec|inc):/.test(id)) {
+            const key = id.slice(4);
+            this._setLimits(Limits.stepped(this._limits, key, id.indexOf('inc:') === 0 ? 1 : -1));
+        }
+    }
+
+    _setLimits(limits) {
+        this._limits = limits;
+        try {
+            Limits.save(limits);
+        } catch (e) {
+            logger.warn(`limits not saved: ${e && e.message}`);
+        }
+        if (this._drawn) {
+            this._drawn.setLimits(limits);
         }
     }
 
@@ -104,15 +171,12 @@ class Motordaten extends ListApp {
             return;
         }
         this._drawn = new Drawn(this.getAppId(), logger);
-        this._drawn.on('mode', (mode) => this.useEntryState(mode === 'layer' ? LAYER : 'ST_OnlineApps_Motordaten'));
-        this._drawn.on('reset', () => this.run());
+        this._drawn.setLimits(this._limits);
+        this._drawn.on('mode', (mode) => this.useEntryState(mode === 'layer' ? LAYER : LIST));
+        this._drawn.on('action', (id) => this._action(id));
+        this._drawn.on('targets', (targets) => this._proxiesFor(targets));
+        this._proxiesFor(require('./dash.js').targets('main'));
         this._drawn.connect();
-    }
-
-    visibilityChanged(visible) {
-        if (visible) {
-            this._poll();
-        }
     }
 
     /* ---- the car's signals ---- */
@@ -128,6 +192,7 @@ class Motordaten extends ListApp {
                     const raw = v && v.actualValueRPMEngineCrankshaft;
                     const rpm = isNum(raw) && raw !== RPM_INVALID ? raw * 0.25 : null;
                     this._cds.rpm = rpm !== null && rpm < ENGINE_STOPPED_RPM ? 0 : rpm;
+                    this._render();
                 }),
                 proxy.statusEngineTemperature.subscribe((v) => {
                     const t = (raw) => (isNum(raw) && raw !== TEMP_INVALID ? raw - 48 : null);
@@ -139,7 +204,7 @@ class Motordaten extends ListApp {
             .catch((err) => logger.warn(`CDS unavailable: ${err && err.message}`));
     }
 
-    /* ---- the DME ---- */
+    /* ---- the DME and the gearbox ---- */
 
     _poll() {
         if (this._polling || this._stopped) {
@@ -156,13 +221,13 @@ class Motordaten extends ListApp {
                 .catch((e) => logger.warn(`round: ${e && e.message}`))
                 .then(() => {
                     this._render();
-                    setTimeout(next, Math.max(0, CYCLE_MS - (Date.now() - started)));
+                    setTimeout(next, Math.max(0, this._cycle - (Date.now() - started)));
                 });
         };
         next();
     }
 
-    /* One round: opens the gateway if needed, then asks FAST (and SLOW every SLOW_EVERY rounds) in one request. */
+    /* One round: the gateway opened if needed, then FAST in one request, and every SLOW_EVERY rounds the slow ones. */
     _ask() {
         if (this._gateway !== 'open') {
             if (this._gateway === 'failed' && Date.now() - this._lastOpen < REOPEN_MS) {
@@ -173,33 +238,47 @@ class Motordaten extends ListApp {
                 .then(() => { this._gateway = 'open'; this._gatewayError = ''; },
                     (e) => { this._gateway = 'failed'; this._gatewayError = e.message; });
         }
-        // ambient pressure every round until known: boost and oil pressure are shown above it
-        const slow = this._round % SLOW_EVERY === 0 || !isNum(this._dme.ambient);
+        const slow = this._round % SLOW_EVERY === 0 || !isNum(this._dme.ambient) || !isNum(this._dme.gearbox);
         this._round++;
-        // all identifiers in one request (up to 8): one answer, one load on the gateway
-        const ask = FAST.concat(slow ? SLOW : []);
-        const dids = ask.map((kv) => D.didById(kv[1]));
-        const data = [].concat(...ask.map((kv) => [kv[1] >> 8, kv[1] & 0xFF]));
+        const busyBefore = this._tasu.busy;
+        return this._read(FAST)
+            .then(() => (slow ? this._read(SLOW)
+                .then(() => this._tasu.request(0x22, [0x60, 0x00], undefined, EGS))
+                .then((u) => this._keep('gearbox', D.didNumber(D.didById(0x6000), u)), () => this._keep('gearbox', null))
+                .then(() => this._tasu.request(0x01, [0x42]))
+                .then((u) => this._keep('voltage', D.obdNumber(D.pidById(0x42), u)), () => this._keep('voltage', null)) : undefined))
+            .then(() => {
+                this._pace(this._tasu.busy > busyBefore);
+                this._checkTester();
+            });
+    }
+
+    /* Several DME identifiers in one request: [key, DID]. */
+    _read(list) {
+        const dids = list.map((kv) => D.didById(kv[1]));
+        const data = [].concat(...list.map((kv) => [kv[1] >> 8, kv[1] & 0xFF]));
         return this._tasu.request(0x22, data)
             .then((u) => {
                 const got = D.didNumbers(dids, u) || {};
-                ask.forEach((kv) => this._keep(kv[0], got[kv[1]]));
+                list.forEach((kv) => this._keep(kv[0], got[kv[1]]));
                 if (u && u[0] === 0x7F) {
                     this._gatewayError = `DME: ${D.NRC[u[2]] || D.hex(u[2])}`;
                 }
-            }, (e) => { ask.forEach((kv) => this._keep(kv[0], null)); this._gatewayError = e.message; })
-            .then(() => (slow ? this._tasu.request(0x01, [0x42])
-                .then((u) => { this._dme.voltage = D.obdNumber(D.pidById(0x42), u); }, () => undefined) : undefined))
-            .then(() => this._checkTester());
+            }, (e) => { list.forEach((kv) => this._keep(kv[0], null)); this._gatewayError = e.message; });
     }
 
-    /* A new value, or none: then the last one stays for HOLD_MS (the gateway drops some answers). */
+    /* A busy gateway gets twice the pause, a round without one brings it back down. */
+    _pace(busy) {
+        this._cycle = busy ? Math.min(MAX_CYCLE_MS, this._cycle * 2) : Math.max(CYCLE_MS, Math.round(this._cycle * 0.8));
+    }
+
+    /* A new value, or none: then the last one stays for HOLD_MS. */
     _keep(key, v) {
         const now = Date.now();
         if (isNum(v)) {
             this._dme[key] = v;
-            this._dmeAt[key] = now;
-        } else if (!(now - (this._dmeAt[key] || 0) < HOLD_MS)) {
+            this._at[key] = now;
+        } else if (!(now - (this._at[key] || 0) < HOLD_MS)) {
             this._dme[key] = null;
         }
     }
@@ -225,39 +304,62 @@ class Motordaten extends ListApp {
         return this._peak[key];
     }
 
+    /* The engine speed: the DME's while fresh, else the car's signal. */
+    _rpm() {
+        const dme = this._dme.rpm;
+        if (isNum(dme) && Date.now() - (this._at.rpm || 0) < RPM_FRESH_MS) {
+            return dme < ENGINE_STOPPED_RPM ? 0 : dme;
+        }
+        return isNum(this._cds.rpm) ? this._cds.rpm : (isNum(dme) ? dme : null);
+    }
+
     _render() {
         const m = this._dme;
         const ambient = isNum(m.ambient) ? m.ambient / 1000 : null;      // hPa -> bar
         const above = (abs) => (isNum(abs) && ambient !== null ? abs - ambient : null);
         const pick = (a, b) => (isNum(a) ? a : (isNum(b) ? b : null));
-        const rpm = pick(this._cds.rpm, null);
-        const boost = above(m.boostAbs);
-        const oilPress = above(m.oilPressAbs);
-        const rows = [
-            ['Drehzahl', withPeak(rpm, this._peakOf('rpm', rpm), 'U/min', 0)],
-            ['Öltemperatur', fmt(pick(m.oil, this._cds.oil), '°C', 0)],
-            ['Kühlmittel', fmt(pick(m.coolant, this._cds.coolant), '°C', 0)],
-            ['Ansaugluft', fmt(m.intake, '°C', 0)],
-            ['Ladeluft', fmt(m.charge, '°C', 0)],
-            ['Ladedruck', withPeak(boost, this._peakOf('boost', boost), 'bar', 2)],
-            ['Ladedruck Soll', fmt(above(m.boostTargetAbs), 'bar', 2)],
-            ['Öldruck', withPeak(oilPress, this._peakOf('oilPress', oilPress), 'bar', 2)],
-            ['Bordspannung', fmt(m.voltage, 'V', 1)]
-        ];
+        const v = {
+            rpm: this._rpm(), oil: pick(m.oil, this._cds.oil), coolant: pick(m.coolant, this._cds.coolant),
+            intake: m.intake, charge: m.charge, boost: above(m.boostAbs), boostTarget: above(m.boostTargetAbs),
+            oilPress: above(m.oilPressAbs), gearbox: m.gearbox, exhaust: m.exhaust, voltage: m.voltage
+        };
+        v.torque = m.torque;
+        v.power = isNum(m.torque) && isNum(m.rpm) ? Math.max(0, m.torque) * m.rpm / 9549 * PS_PER_KW : null;
+        v.rpmPeak = this._peakOf('rpm', v.rpm);
+        v.torquePeak = this._peakOf('torque', v.torque);
+        v.powerPeak = this._peakOf('power', v.power);
+        v.boostPeak = this._peakOf('boost', v.boost);
+        v.oilPressPeak = this._peakOf('oilPress', v.oilPress);
         let status = '';
         if (this._gateway === 'failed') {
             status = `DME nicht erreichbar: ${this._gatewayError}`;
         } else if (this._gateway === 'open' && this._round > 2 && FAST.every((kv) => !isNum(m[kv[0]]))) {
             status = `Keine Antwort der DME – Zündung an?${this._gatewayError ? ` (${this._gatewayError})` : ''}`;
         }
-        this.show(status, rows);
-        if (this._drawn) {
-            this._drawn.set({ rpm, rpmPeak: this._peak.rpm, oil: pick(m.oil, this._cds.oil),
-                coolant: pick(m.coolant, this._cds.coolant), intake: m.intake, charge: m.charge,
-                boost, boostTarget: above(m.boostTargetAbs), boostPeak: this._peak.boost,
-                oilPress, oilPressPeak: this._peak.oilPress, voltage: m.voltage,
-                status, statusErr: this._gateway === 'failed' });
+        v.status = status;
+        v.statusErr = this._gateway === 'failed';
+        if (this._drawn && this._drawn.isShown()) {
+            this._drawn.set(v);
+            return;
         }
+        if (this._drawn) {
+            this._drawn.set(v);
+        }
+        this.show(status, [
+            ['Drehzahl', withPeak(v.rpm, v.rpmPeak, 'U/min', 0)],
+            ['Öltemperatur', fmt(v.oil, '°C', 0)],
+            ['Kühlmittel', fmt(v.coolant, '°C', 0)],
+            ['Ansaugluft', fmt(v.intake, '°C', 0)],
+            ['Ladeluft', fmt(v.charge, '°C', 0)],
+            ['Ladedruck', withPeak(v.boost, v.boostPeak, 'bar', 2)],
+            ['Ladedruck Soll', fmt(v.boostTarget, 'bar', 2)],
+            ['Öldruck', withPeak(v.oilPress, v.oilPressPeak, 'bar', 2)],
+            ['Leistung', withPeak(v.power, v.powerPeak, 'PS', 0)],
+            ['Drehmoment', withPeak(v.torque, v.torquePeak, 'Nm', 0)],
+            ['Getriebeöl', fmt(v.gearbox, '°C', 0)],
+            ['Abgas', fmt(v.exhaust, '°C', 0)],
+            ['Bordspannung', fmt(v.voltage, 'V', 1)]
+        ]);
     }
 }
 

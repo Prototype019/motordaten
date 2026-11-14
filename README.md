@@ -5,7 +5,7 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 
 | App | Was sie tut |
 |---|---|
-| **Motordaten** (`km_motordaten`) | Live aus der DME (über das Diagnose-Gateway der Headunit, nur lesend): Öl-, Kühlmittel-, Ansaug- und Ladelufttemperatur, Ladedruck mit Soll, Öldruck, Bordspannung; Drehzahl aus den Fahrzeugsignalen. Spitzenwerte für Drehzahl, Ladedruck und Öldruck, mit Knopf zum Zurücksetzen. Fragt nur, solange die App im Vordergrund ist. |
+| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche (über `mgu-render`, sonst Liste). Live aus DME und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10 Runden pro Sekunde: Drehzahl, Leistung, Drehmoment, Ladedruck mit Soll, Öldruck, Öl-, Kühlmittel-, Ansaug-, Ladeluft-, Getriebeöl- und Abgastemperatur, Bordnetz. Spitzenwerte mit Reset; Seite „Einstellungen“ für die Grenzwerte (rot ab …, Öl bereit ab …). |
 | **Daten-Test** (`km_datentest`) | Liest den Dienst-Katalog der Headunit und zeigt, welche Fahrzeugsignale und Diagnose-Dienste es gibt. Ruft nichts im Auto auf. |
 | **Diagnose-Test** (`km_diagtest`) | Fragt die DME über das Diagnose-Gateway der Headunit: DME-Typ, unterstützte OBD-II-Werte, BMW-Werte (Öl, Ansaugluft, Ladedruck, Öldruck …). Nur lesend. |
 

@@ -1,6 +1,6 @@
 'use strict';
 /**
- * A read-only diagnostic link to the engine unit (DME, address 0x12) through
+ * A read-only diagnostic link to the engine unit (DME, 0x12) and the gearbox (EGS, 0x18) through
  * the head unit's diagnostic gateway: the SOME/IP service InternalTasu, used
  * the way cauliflowermossgrape/idrive7-apps (MIT, kit/runtime/diag.js)
  * describes it:
@@ -16,7 +16,7 @@
  *            transport errors of other requests are not ours.
  *
  * Only ReadDataByIdentifier (22, up to 8 identifiers of 2 bytes) and OBD-II 01 / 09
- * (one PID) to the DME pass request(); everything else is refused here,
+ * (one PID) to the DME or the EGS pass request(); everything else is refused here,
  * before anything reaches the car. One request at a time, at least GAP_MS
  * apart. Proxy building, init and every call run from a fresh setImmediate
  * tick, as the SDK does (the native binding can deadlock inline), each
@@ -32,6 +32,9 @@ const TESTER = 0xF4;
  * answers 0xF4 (an ENET tester's), while the gateway refuses 0xF2 (7F 31 25; docs/g87-s58.md). */
 const TESTERS = Object.freeze([0xF4, 0xF2, 0xF1]);
 const DME = 0x12;
+const EGS = 0x18;
+/* The units a request may go to. */
+const UNITS = Object.freeze([DME, EGS]);
 const GAP_MS = 25;
 const OPEN_MS = 15000;
 const CALL_MS = 8000;
@@ -179,25 +182,30 @@ class Tasu extends EventEmitter {
     }
 
     /**
-     * One read from the DME: resolves with its UDS reply (an array) or null
-     * when none came; throws when refused (here or by the transport).
+     * One read from a unit (UNITS; the DME unless given): resolves with its
+     * UDS reply (an array) or null when none came; throws when refused (here
+     * or by the transport).
      */
-    request(sid, data, timeoutMs) {
+    request(sid, data, timeoutMs, unit) {
+        const target = unit === undefined ? DME : unit;
+        if (UNITS.indexOf(target) < 0) {
+            return Promise.reject(new Error(`nur lesen: Steuergerät ${target} nicht erlaubt`));
+        }
         let bytes;
         try {
             bytes = checkRead(sid, data);
         } catch (e) {
             return Promise.reject(e);
         }
-        const run = () => this._request(sid, bytes, timeoutMs || 2500);
+        const run = () => this._request(sid, bytes, timeoutMs || 2500, target);
         const p = this._chain.then(run, run);
         this._chain = p.catch(() => undefined);
         return p;
     }
 
-    _send(sid, data) {
+    _send(sid, data, target) {
         const proxy = this._proxy();
-        const params = { sourceAddress: this.tester, targetAddress: DME, serviceID: sid, subroutineID: 0,
+        const params = { sourceAddress: this.tester, targetAddress: target, serviceID: sid, subroutineID: 0,
             udsDataLength: data.length, udsData: Buffer.from(data), deadlockTime: 0 };
         const attempt = (n) => timeout(tick(() => proxy.sendTasuRequest(params)), CALL_MS, 'sendTasuRequest')
             .then((r) => {
@@ -214,7 +222,7 @@ class Tasu extends EventEmitter {
         return attempt(0);
     }
 
-    _request(sid, data, timeoutMs) {
+    _request(sid, data, timeoutMs, target) {
         if (!this._proxy()) {
             return Promise.reject(new Error('Diagnose-Dienst nicht offen'));
         }
@@ -225,7 +233,7 @@ class Tasu extends EventEmitter {
             let done = false;
             const hard = setTimeout(() => finish(null), HARD_MS);
             const onFrame = (f) => {
-                if (f.ecu !== DME) {
+                if (f.ecu !== target) {
                     return;
                 }
                 const u = f.uds;
@@ -234,9 +242,18 @@ class Tasu extends EventEmitter {
                     timer = setTimeout(() => finish(null), PENDING_MS);
                     return;
                 }
-                // the reply echoes the first identifier (22) or the PID (01 / 09); the rest follow their data
-                const echo = data.slice(0, sid === 0x22 ? 2 : 1);
-                const ours = (u[0] === sid + 0x40 && echo.every((b, i) => u[i + 1] === b)) || (u[0] === 0x7F && u[1] === sid);
+                // 22: the reply starts with one of the identifiers asked (one the unit lacks is left out);
+                // 01 / 09: it echoes the PID
+                let echoed;
+                if (sid === 0x22) {
+                    echoed = false;
+                    for (let k = 0; k + 1 < data.length; k += 2) {
+                        echoed = echoed || (u[1] === data[k] && u[2] === data[k + 1]);
+                    }
+                } else {
+                    echoed = u[1] === data[0];
+                }
+                const ours = (u[0] === sid + 0x40 && echoed) || (u[0] === 0x7F && u[1] === sid);
                 if (ours) {
                     finish(u);
                 }
@@ -257,7 +274,7 @@ class Tasu extends EventEmitter {
                 }
             }
             this.on('frame', onFrame);
-            this._send(sid, data)
+            this._send(sid, data, target)
                 .then((verdict) => {
                     if (['NO_ERROR', 'REQUEST_PENDING', '0', '1'].indexOf(verdict) < 0) {
                         finish(null, new Error(`Gateway: ${verdict}`));
@@ -280,4 +297,4 @@ Tasu.prototype.useTester = function (addr) {
     this.tester = addr;
 };
 
-module.exports = { Tasu, ALLOWED, DME, IFACE, INSTANCE, TESTERS, checkRead };
+module.exports = { Tasu, ALLOWED, DME, EGS, UNITS, IFACE, INSTANCE, TESTERS, checkRead };
