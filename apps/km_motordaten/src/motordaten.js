@@ -96,6 +96,8 @@ const LAYER = 'ST_OnlineApps_MotordatenLayer';
 const RPM_INVALID = 65535;
 const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
+const ENGINE_RUNNING_RPM = 400;   // from here the engine counts as started
+const PEAK_AFTER_START_MS = 5000; // the start's flare (oil pressure, engine speed) is no peak: peaks count from here
 const CYCLE_MS = 90;           // at least this long per round
 const MAX_CYCLE_MS = 1000;     // the longest pause a busy gateway gets
 const SLOW_EVERY = 12;         // the slow values every this many rounds
@@ -846,7 +848,8 @@ class Motordaten extends ListApp {
     /* ---- screen ---- */
 
     _peakOf(key, v) {
-        if (isNum(v)) {
+        // the first seconds after the engine starts keep no peaks: the start flares oil pressure and speed
+        if (isNum(v) && !(Date.now() - (this._startedAt || 0) < PEAK_AFTER_START_MS)) {
             this._peak[key] = isNum(this._peak[key]) ? Math.max(this._peak[key], v) : v;
         }
         return this._peak[key];
@@ -898,6 +901,14 @@ class Motordaten extends ListApp {
         } else {
             v.torque = dmeTorque;
             v.power = dmePower;
+        }
+        // the engine starting: from then on PEAK_AFTER_START_MS without peaks
+        const running = isNum(v.rpm) && v.rpm >= ENGINE_RUNNING_RPM;
+        if (running && this._running === false) {
+            this._startedAt = Date.now();
+        }
+        if (isNum(v.rpm)) {
+            this._running = running;
         }
         v.rpmPeak = this._peakOf('rpm', v.rpm);
         v.torquePeak = this._peakOf('torque', v.torque);
