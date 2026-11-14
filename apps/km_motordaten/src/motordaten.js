@@ -898,7 +898,14 @@ class Motordaten extends ListApp {
     }
 }
 
-Diag.note(`Start ${(() => { try { return require('../package.json').version; } catch (e) { return '?'; } })()}`);
+// the version from the package beside the app (read, not required: the unit builds only from app modules)
+Diag.note(`Start ${(() => {
+    try {
+        return JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'package.json'), 'utf8')).version;
+    } catch (e) {
+        return '?';
+    }
+})()}`);
 const app = new Motordaten();
 app.start().catch((err) => {
     /* Stays resident so the manager can stop or restart it. */
