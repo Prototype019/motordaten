@@ -651,6 +651,11 @@ function draw(rec, page, v, cfg, ui, extra) {
     rail(rec, page, ui);
     if (page === 'settings') {
         settings(rec, cfg, ui);
+        // what the screen heard last (HMI and renderer): to tell why the list showed
+        const tr = (extra && extra.trace) || [];
+        if (tr.length) {
+            rec.text(`Anzeige: ${tr.slice(-6).join('  ·  ')}`, X0, 740, 22, C.dim, { font: 'label' });
+        }
         return rec;
     }
     if (page === 'logs') {

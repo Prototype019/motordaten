@@ -113,6 +113,49 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     g.emit('touch', 'up', ...center(logsTab));
     assert.strictEqual(actions.pop(), 'tab:logs');
 
+    // the dial from FrontCCU: heard in list mode (the app then switches), moving the focus in single mode
+    const dials = [];
+    d.on('dial', (n) => dials.push(n));
+    d.ccu({ frontRotaryEncoderOperation: 100 });
+    d.ccu({ frontRotaryEncoderOperation: 101 });
+    assert.deepStrictEqual(dials, [1], 'a turn is heard');
+    const before = d.ui.focus;
+    d.ccu({ frontRotaryEncoderOperation: 102 });
+    assert.strictEqual(d.ui.focus, before, 'list mode: the HMI moves the focus, not the dial');
+    let proxyTold = null;
+    d.once('targets', (t) => { proxyTold = t; });
+    d.setSingle(true);
+    assert.ok(proxyTold, 'the app hears to set its proxies again');
+    d.ui.focus = null;
+    d.ccu({ frontRotaryEncoderOperation: 103 });
+    assert.strictEqual(d.ui.focus, 'tab:main', 'first turn: the first target');
+    d.ccu({ frontRotaryEncoderOperation: 106 });
+    assert.strictEqual(d.ui.focus, 'tab:settings', 'three detents on');
+    d.ccu({ frontRotaryEncoderOperation: 0xffff });
+    d.ccu({ frontRotaryEncoderOperation: 104 });
+    assert.strictEqual(d.ui.focus, 'tab:logs', 'an invalid sample in between is skipped');
+    d.ccu({ frontRotaryEncoderOperation: 104 + 500 });
+    assert.strictEqual(d.ui.focus, 'tab:logs', 'a jump is a stale sample');
+    d.ccu({ frontRotaryEncoderOperation: 104 + 500 + 9 });
+    assert.strictEqual(d.ui.focus, 'reset', 'stops at the last target');
+    d.proxyFocus(2, true);
+    assert.strictEqual(d.ui.focus, 'reset', 'single: the proxy focus does not move it');
+    d.proxyPress(0);
+    assert.strictEqual(actions.pop(), 'reset', 'the push presses what the dial chose');
+    d.ui.focus = null;
+    d.proxyPress(0);
+    assert.strictEqual(d.ui.focus, 'tab:main', 'a push with nothing focused shows the focus');
+    // a press on the list left showing brings the layer back
+    d.hostFocus(false);
+    d.hostVisible(false);
+    await wait(SETTLE);
+    assert.strictEqual(g.visible, false);
+    d.proxyPress(0);
+    assert.strictEqual(g.visible, true, 'a press on a proxy shows the layer');
+    assert.ok(d.trace.length > 0 && d.trace.some((t) => /HMI versteckt/.test(t)), 'the trace keeps what happened');
+    d.setSingle(false);
+    d.ui.focus = null;
+
     // recording: the button's words follow it, and the app hears the new label
     let heard = null;
     d.on('targets', (t) => { heard = t; });

@@ -33,9 +33,33 @@ const Faults = require('./faults.js');
 const clock = require('./clock.js');
 const { DtcTexts } = require('./dtctext.js');
 
+/* Whether FrontCCU has reported a turn of the dial on this unit (data/controller.json): then the drawn
+ * screens take the dial from it from the start. dialKnown(true) keeps that. */
+function dialKnown(set) {
+    const dir = process.env.KM_DATA_DIR || require('path').join(__dirname, '..', '..', 'data');
+    const file = require('path').join(dir, 'controller.json');
+    if (set) {
+        try {
+            require('fs').mkdirSync(dir);
+        } catch (e) { /* there */ }
+        try {
+            require('fs').writeFileSync(file, JSON.stringify({ dial: true }));
+        } catch (e) {
+            logger.warn(`controller.json: ${e.message}`);
+        }
+        return true;
+    }
+    try {
+        return JSON.parse(require('fs').readFileSync(file, 'utf8')).dial === true;
+    } catch (e) {
+        return false;
+    }
+}
+
 const TEXTS_FIRST_MS = 20000;      // the fault texts: looked for this long after the start ...
 const TEXTS_EVERY_MS = 300000;     // ... and again this often while some are missing (only with internet)
 const IF_KOMBI = 'de.bmw.infotainment.KombiIF';
+const IF_FRONTCCU = 'de.bmw.infotainment.controlelements.FrontCCU';
 const FAULT_MASK = 0x0D;     // failing now, pending, confirmed
 const FAULT_WAIT_MS = 2000;  // a unit's answer to its fault memory read
 const PROXIES = 48;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
@@ -150,11 +174,14 @@ class Motordaten extends ListApp {
     /* The proxy buttons follow the drawn page's targets: one shown per target, with its words. */
     _proxiesFor(targets) {
         const BLANK = ' ';
+        // the dial read from FrontCCU: one proxy holds the HMI's focus and takes the push, the list under the
+        // layer is a single empty row; else one proxy per target
+        const single = this._drawn && this._drawn.single;
         this._proxies.forEach((b, i) => {
             if (!b) {
                 return;
             }
-            const t = targets[i];
+            const t = single ? (i === 0 ? targets[0] : undefined) : targets[i];
             Promise.resolve()
                 .then(() => b.setProperty('Visible', t ? 1 : 0, 'UInt'))
                 // no text: the list under the layer, should the HMI show it for a moment, stays empty
@@ -449,6 +476,14 @@ class Motordaten extends ListApp {
         }
         this._drawn = new Drawn(this.getAppId(), logger);
         this._drawn.setLimits(this._limits);
+        this._drawn.setSingle(dialKnown());
+        this._drawn.on('dial', () => {
+            if (!this._drawn.single) {
+                logger.info('FrontCCU reports the dial: one proxy from now on');
+                dialKnown(true);
+                this._drawn.setSingle(true);
+            }
+        });
         this._textsTimer = setTimeout(() => this._syncTexts(), TEXTS_FIRST_MS);
         this._drawn.on('mode', (mode) => this.useEntryState(mode === 'layer' ? LAYER : LIST));
         this._drawn.on('action', (id) => this._action(id));
@@ -480,6 +515,15 @@ class Motordaten extends ListApp {
             ]))
             .then(() => logger.info('CDS subscribed'))
             .catch((err) => logger.warn(`CDS unavailable: ${err && err.message}`));
+        // the controller's dial, for the drawn screens (src/drawn.js ccu)
+        let ccu;
+        new Promise((resolve) => setImmediate(resolve))
+            .then(() => someipBuilders.buildTypedProxy(IF_FRONTCCU, '1'))
+            .then((p) => { ccu = p; return ccu.init(); })
+            .then(() => ccu.waitUntilAvailable())
+            .then(() => ccu.statusRotaryEncoderState.subscribe((st) => this._drawn && this._drawn.ccu(st)))
+            .then(() => logger.info('FrontCCU subscribed'))
+            .catch((err) => logger.warn(`FrontCCU unavailable: ${err && err.message}`));
         // the car's clock (its time zone and summer time) from the instrument cluster's display time
         let kombi;
         new Promise((resolve) => setImmediate(resolve))

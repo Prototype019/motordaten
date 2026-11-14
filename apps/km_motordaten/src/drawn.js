@@ -34,6 +34,11 @@ const WHOLE = Object.freeze({ x: 0, y: 0, w: dash.W, h: dash.H });
  * while it re-lays out the state (a page change, the controller moving), and the layer gone for that
  * moment shows the proxy list under it. Showing is at once. */
 const HIDE_SETTLE_MS = 800;
+/* The controller's dial counter (FrontCCU frontRotaryEncoderOperation): 0xffff is invalid, a jump past
+ * DIAL_MAX_STEP detents a stale sample. */
+const DIAL_INVALID = 0xffff;
+const DIAL_MAX_STEP = 24;
+const TRACE_KEEP = 10;
 
 class Drawn extends EventEmitter {
     /* gpu: the renderer client (a RenderClient for appId unless given, as in the tests). */
@@ -54,6 +59,9 @@ class Drawn extends EventEmitter {
         this.hostShown = false;
         this.hostFocused = true;
         this.closedHide = false;
+        this.single = false;        // one proxy only: the dial comes from FrontCCU (ccu), the push from that proxy
+        this.knob = DIAL_INVALID;
+        this.trace = [];            // the last visibility events, for the Grenzwerte page and the log
         this.on_ = false;
         this.dirty = true;
         this.sentAt = 0;
@@ -67,7 +75,9 @@ class Drawn extends EventEmitter {
             }
         });
         this.gpu.on('touch', (phase, x, y) => this._touch(phase, x, y));
+        this.gpu.on('state', (st) => this._note(`render ${st.onScreen ? 'sichtbar' : 'weg'}${st.front ? '' : ' (andere App vorn)'}`));
         this.gpu.on('closed', () => {
+            this._note('render geschlossen (Touch außerhalb)');
             this.closedHide = true;
             this._update();
             setTimeout(() => { this.closedHide = false; this._update(); }, CLOSED_RESHOW_MS);
@@ -115,6 +125,7 @@ class Drawn extends EventEmitter {
     /* The host state shown or hidden. Shown counts as focused too: coming back from another app the HMI
      * reports the state visible again but not always its focus. */
     hostVisible(on) {
+        this._note(on ? 'HMI sichtbar' : 'HMI versteckt');
         this.hostShown = on;
         if (on) {
             this.hostFocused = true;
@@ -123,16 +134,18 @@ class Drawn extends EventEmitter {
     }
 
     hostFocus(on) {
+        this._note(on ? 'HMI Fokus' : 'HMI Fokus weg');
         this.hostFocused = on;
         this._update();
     }
 
     /* The controller's focus on proxy button i. */
     proxyFocus(i, on) {
-        if (on && !this.hostFocused) {
-            // a proxy of the host state has the focus: so has the state
-            this.hostFocused = true;
-            this._update();
+        if (on) {
+            this._hostIsHere();
+        }
+        if (this.single) {
+            return;                 // the focus is the dial's (ccu)
         }
         const t = dash.targets(this.page, this.extra)[i];
         if (on && t) {
@@ -144,10 +157,90 @@ class Drawn extends EventEmitter {
     }
 
     proxyPress(i) {
-        const t = dash.targets(this.page, this.extra)[i];
+        this._note(`Taste ${i}`);
+        this._hostIsHere();
+        const ts = dash.targets(this.page, this.extra);
+        if (this.single) {
+            const t = ts.find((x) => x.id === this.ui.focus);
+            if (t) {
+                this._press(t.id);
+            } else if (ts.length) {
+                this.ui.focus = ts[0].id;   // nothing focused yet: the push shows where the focus is
+                this.invalidate();
+            }
+            return;
+        }
+        const t = ts[i];
         if (t) {
             this.ui.focus = t.id;
             this._press(t.id);
+        }
+    }
+
+    /* A proxy of the host state has the focus or a press: the state is on screen and focused, whatever
+     * the HMI reported before (so a list left showing goes back under the layer at the next touch of it). */
+    _hostIsHere() {
+        if (!this.hostShown || !this.hostFocused) {
+            this.hostShown = true;
+            this.hostFocused = true;
+            this._update();
+        }
+    }
+
+    /* One proxy only (the dial read from FrontCCU), or one per target. */
+    setSingle(on) {
+        if (on === this.single) {
+            return;
+        }
+        this.single = on;
+        this._note(on ? 'Controller direkt' : 'Controller über Liste');
+        this._targetsChanged(true);
+    }
+
+    /**
+     * A FrontCCU.statusRotaryEncoderState sample. A turn of the dial while shown moves the focus over the
+     * page's targets in their order (single mode). 'dial' is emitted on every real turn, so the app learns
+     * that FrontCCU reports the dial.
+     */
+    ccu(s) {
+        const op = s && s.frontRotaryEncoderOperation;
+        const knob = typeof op === 'number' && op !== DIAL_INVALID ? op : DIAL_INVALID;
+        const last = this.knob;
+        if (knob === DIAL_INVALID) {
+            return;
+        }
+        this.knob = knob;
+        if (last === DIAL_INVALID) {
+            return;
+        }
+        const steps = ((knob - last + 0x18000) % 0x10000) - 0x8000;
+        if (steps === 0 || Math.abs(steps) > DIAL_MAX_STEP) {
+            return;
+        }
+        this.emit('dial', steps);
+        if (!this.single || !this.on_) {
+            return;
+        }
+        const ts = dash.targets(this.page, this.extra);
+        if (!ts.length) {
+            return;
+        }
+        const at = ts.findIndex((t) => t.id === this.ui.focus);
+        const to = at < 0 ? 0 : Math.max(0, Math.min(ts.length - 1, at + steps));
+        this.ui.focus = ts[to].id;
+        this.invalidate();
+    }
+
+    _note(what) {
+        const d = new Date();
+        const t = `${String(d.getSeconds()).padStart(2, '0')}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+        this.trace.push(`${t} ${what}`);
+        if (this.trace.length > TRACE_KEEP) {
+            this.trace.shift();
+        }
+        this.log.info(`screen: ${what}`);
+        if (this.page === 'settings') {
+            this.invalidate();
         }
     }
 
@@ -228,6 +321,7 @@ class Drawn extends EventEmitter {
             return;
         }
         this.on_ = on;
+        this._note(on ? 'Grafik an' : 'Grafik aus');
         this.gpu.claim(on ? [WHOLE] : []);
         if (on) {
             this.render();
@@ -249,7 +343,7 @@ class Drawn extends EventEmitter {
         this.dirty = this._glide();
         this.rec.reset();
         const v = Object.assign({}, this.values, { rpmBar: this.bars.rpm, boostBar: this.bars.boost });
-        dash.draw(this.rec, this.page, v, this.limits, this.ui, this.extra);
+        dash.draw(this.rec, this.page, v, this.limits, this.ui, this.page === 'settings' ? Object.assign({ trace: this.trace }, this.extra) : this.extra);
         try {
             this.gpu.frame(this.rec);
             this.sentAt = Date.now();
