@@ -305,8 +305,15 @@ class Motordaten extends ListApp {
             this._toggleRecording();
         } else if (id === 'reset') {
             this.run();
+        } else if (id === 'menu:limits' || id === 'menu:ready') {
+            d.setPage(id.slice(5));
+        } else if (id === 'settings:back') {
+            d.setPage('settings');
+        } else if (id.indexOf('toggle:') === 0) {
+            this._setLimits(Limits.toggled(this._limits, id.slice(7)));
         } else if (id === 'defaults') {
-            this._setLimits(Limits.defaults());
+            // the page's own settings back to the defaults
+            this._setLimits(Limits.reset(this._limits, d.page === 'ready' ? 'ready' : 'limits'));
         } else if (/^(dec|inc):/.test(id)) {
             this._setLimits(Limits.stepped(this._limits, id.slice(4), id.indexOf('inc:') === 0 ? 1 : -1));
         } else if (id.indexOf('open:') === 0) {

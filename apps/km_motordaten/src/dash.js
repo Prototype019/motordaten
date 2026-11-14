@@ -75,7 +75,7 @@ const TABS = [
     { id: 'tab:main', page: 'main', label: 'Live' },
     { id: 'tab:logs', page: 'logs', label: 'Logs' },
     { id: 'tab:faults', page: 'faults', label: 'Fehler' },
-    { id: 'tab:settings', page: 'settings', label: 'Grenzwerte' }
+    { id: 'tab:settings', page: 'settings', label: 'Einstellungen' }
 ].map((t, i) => Object.assign(t, { x: 0, y: 16 + i * 184, w: RAIL, h: 168 }));
 
 const ROW_H = 120;
@@ -83,19 +83,46 @@ const SET_TOP = 196;
 const SET_COLS = [{ x: X0, w: 1200 }, { x: X0 + 1288, w: 1236 }];
 const BTN = 96;
 
+const LIMIT_ITEMS = L.ITEMS.filter((it) => it.group === 'limits');
+const BACK_SET = { id: 'settings:back', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Zurück' };
+
+/* The settings menu: one card per sub-page. */
+const MENU = [
+    { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann Drehzahl, Temperaturen, Öldruck und Abgas rot werden' },
+    { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen, bis die Live-Seite „Bereit“ zeigt' }
+].map((m, i) => Object.assign(m, { x: X0 + i * 1288, y: 220, w: 1236, h: 300 }));
+
 function settingsTargets() {
     const out = [];
-    L.ITEMS.forEach((it, i) => {
+    LIMIT_ITEMS.forEach((it, i) => {
         const col = SET_COLS[i < 4 ? 0 : 1];
         const y = SET_TOP + (i % 4) * ROW_H;
         const right = col.x + col.w;
         out.push({ id: `dec:${it.key}`, x: right - 2 * BTN - 24, y: y + 6, w: BTN, h: BTN, label: '−' });
         out.push({ id: `inc:${it.key}`, x: right - BTN, y: y + 6, w: BTN, h: BTN, label: '+' });
     });
-    out.push({ id: 'defaults', x: SET_COLS[1].x + SET_COLS[1].w - 300, y: 64, w: 300, h: 84, label: 'Standard' });
+    out.push({ id: 'defaults', x: BACK_SET.x - 24 - 300, y: 64, w: 300, h: 84, label: 'Standard' });
+    out.push(BACK_SET);
     return out;
 }
 const SETTINGS_TARGETS = settingsTargets();
+
+/* The ready page: per temperature a row with its switch, then its threshold's − and +. */
+const READY_ROW_H = 150;
+function readyTargets() {
+    const out = [];
+    L.READY.forEach((r, i) => {
+        const y = SET_TOP + 20 + i * READY_ROW_H;
+        const right = SET_COLS[0].x + 1700;
+        out.push({ id: `toggle:${r.on}`, x: X0, y: y + 10, w: 220, h: BTN, label: '' });
+        out.push({ id: `dec:${r.at}`, x: right - 2 * BTN - 24, y: y + 10, w: BTN, h: BTN, label: '−' });
+        out.push({ id: `inc:${r.at}`, x: right - BTN, y: y + 10, w: BTN, h: BTN, label: '+' });
+    });
+    out.push({ id: 'defaults', x: BACK_SET.x - 24 - 300, y: 64, w: 300, h: 84, label: 'Standard' });
+    out.push(BACK_SET);
+    return out;
+}
+const READY_TARGETS = readyTargets();
 
 /* ---- the logs pages ---- */
 
@@ -177,7 +204,11 @@ function logTargets(extra) {
 function targets(page, extra) {
     let own = mainTargets(extra);
     if (page === 'settings') {
+        own = MENU;
+    } else if (page === 'limits') {
         own = SETTINGS_TARGETS;
+    } else if (page === 'ready') {
+        own = READY_TARGETS;
     } else if (page === 'logs') {
         own = logsTargets(extra);
     } else if (page === 'log') {
@@ -194,7 +225,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page;
+    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' ? 'settings' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) {
@@ -206,7 +237,12 @@ function rail(rec, page, ui) {
         if (ui && ui.focus === t.id) {
             rec.strokeRoundRect(t.x + 10, t.y + 6, t.w - 20, t.h - 12, 14, 4, C.ice);
         }
-        rec.text(t.label, RAIL / 2, t.y + t.h / 2 + 12, 32, on ? C.text : C.dim, { font: 'label', align: 'center' });
+        // the label at 32 px, smaller where it would not fit the rail
+        let size = 32;
+        while (size > 22 && rec.textWidth(t.label, size, { font: 'label' }) > RAIL - 28) {
+            size -= 2;
+        }
+        rec.text(t.label, RAIL / 2, t.y + t.h / 2 + 12, size, on ? C.text : C.dim, { font: 'label', align: 'center' });
     });
 }
 
@@ -297,6 +333,31 @@ const HEAT = {
     exhaust: { lo: 0, hi: 1000, warm: 300 }
 };
 
+/*
+ * Ready for full load (Einstellungen › Bereit): with every temperature switched on at its value a solid white
+ * pill "Bereit"; before, an outlined blue pill "Warmfahren" and what is still missing. Nothing when none
+ * is switched on.
+ */
+function readyBadge(rec, x, y, v, cfg) {
+    const r = L.readiness(cfg, v);
+    if (!r.on) {
+        return;
+    }
+    const h = 56;
+    if (r.ready) {
+        const w = rec.textWidth('Bereit', 32, { font: 'label' }) + 64;
+        rec.roundRect(x, y, w, h, h / 2, C.text);
+        rec.text('Bereit', x + w / 2, y + h / 2 + 12, 32, C.asphalt, { font: 'label', align: 'center' });
+        return;
+    }
+    const w = rec.textWidth('Warmfahren', 30, { font: 'label' }) + 56;
+    rec.strokeRoundRect(x, y, w, h, h / 2, 3, C.cold);
+    rec.text('Warmfahren', x + w / 2, y + h / 2 + 11, 30, C.cold, { font: 'label', align: 'center' });
+    // which ones are still cold (their strips show how far): the names only
+    const rest = r.missing.map((m) => m.short).join('  ·  ');
+    rec.text(fit(rec, rest, 28, COL.left.w - w - 24), x + w + 24, y + h / 2 + 10, 28, C.dim, { font: 'label' });
+}
+
 function readiness(rec, v, cfg) {
     const { x, w } = COL.left;
     const readyAt = cfg.oilReady;
@@ -321,11 +382,10 @@ function readiness(rec, v, cfg) {
     }
     // the warning limit marked, as on the other temperatures (no mark where it is ready)
     rec.fillRect(zx - 2, by - 12, 4, bh + 24, hot ? C.limit : C.text);
-    const note = !isNum(oil) ? '' : hot ? 'Öl zu heiß' : ready ? 'Bereit für Volllast' : `Noch ${Math.ceil(readyAt - oil)} °C bis bereit`;
-    rec.text(note, x, 552, 34, hot ? C.limit : ready ? C.text : C.cold, { font: 'label' });
+    readyBadge(rec, x, 520, v, cfg);
 
-    const cells = [['Kühlmittel', v.coolant, Object.assign({ limit: cfg.coolantMax }, HEAT.coolant)],
-        ['Ansaugluft', v.intake, HEAT.intake], ['Getriebeöl', v.gearbox, Object.assign({ limit: cfg.gearboxMax }, HEAT.gearbox)]];
+    const cells = [['Kühlmittel', v.coolant, Object.assign({}, HEAT.coolant, { limit: cfg.coolantMax, warm: cfg.coolantReady })],
+        ['Ansaugluft', v.intake, HEAT.intake], ['Getriebeöl', v.gearbox, Object.assign({}, HEAT.gearbox, { limit: cfg.gearboxMax, warm: cfg.gearboxReady })]];
     cells.forEach((c, i) => {
         const cx = x + i * 236;
         const hot = isNum(c[1]) && c[2].limit !== null && c[1] >= c[2].limit;
@@ -402,11 +462,66 @@ function health(rec, v, cfg, ui, extra) {
 
 /* ---- the settings page ---- */
 
+/* The settings menu: a card per sub-page, with what it holds now. */
+function settingsMenu(rec, cfg, ui) {
+    rec.text('Einstellungen', X0, 120, 56, C.text, { font: 'label' });
+    MENU.forEach((m) => {
+        const focus = ui && ui.focus === m.id;
+        rec.roundRect(m.x, m.y, m.w, m.h, 24, ui && ui.pressed === m.id ? C.line : '#151D26');
+        rec.strokeRoundRect(m.x, m.y, m.w, m.h, 24, focus ? 5 : 2, focus ? C.ice : C.line);
+        rec.text(m.label, m.x + 56, m.y + 104, 52, C.text, { font: 'label' });
+        rec.text(m.text, m.x + 56, m.y + 160, 30, C.dim, { font: 'label' });
+        let summary;
+        if (m.page === 'limits') {
+            const changed = LIMIT_ITEMS.filter((it) => cfg[it.key] !== it.def).length;
+            summary = changed ? `${changed} geändert` : 'Standard';
+        } else {
+            const on = L.READY.filter((r) => cfg[r.on]);
+            summary = on.length ? on.map((r) => `${r.short} ${cfg[r.at]}°`).join('   ') : 'Aus';
+        }
+        rec.text(summary, m.x + 56, m.y + m.h - 52, 34, C.ice, { font: 'label' });
+        const cx = m.x + m.w - 72;
+        const cy = m.y + m.h / 2;
+        rec.polyline([[cx - 18, cy - 30], [cx + 12, cy], [cx - 18, cy + 30]], 6, C.dim);
+    });
+}
+
+/* Ready for full load: per temperature its switch (on: it counts) and the temperature it has to reach. */
+function readyPage(rec, cfg, ui) {
+    rec.text('Bereit für Volllast', X0, 120, 56, C.text, { font: 'label' });
+    rec.text('Die Live-Seite zeigt „Bereit“, sobald alle eingeschalteten Temperaturen ihren Wert erreicht haben.', X0, 166, 30, C.dim,
+        { font: 'label' });
+    L.READY.forEach((r, i) => {
+        const y = SET_TOP + 20 + i * READY_ROW_H;
+        const on = !!cfg[r.on];
+        const sw = READY_TARGETS.find((t) => t.id === `toggle:${r.on}`);
+        // the switch: a pill with its knob, ice when on
+        const focus = ui && ui.focus === sw.id;
+        if (focus) {
+            rec.strokeRoundRect(sw.x - 8, sw.y - 8, sw.w + 16, sw.h + 16, sw.h / 2 + 8, 5, C.ice);
+        }
+        rec.roundRect(sw.x, sw.y, sw.w, sw.h, sw.h / 2, on ? C.ice : C.line);
+        const knob = sw.h - 16;
+        rec.roundRect(on ? sw.x + sw.w - knob - 8 : sw.x + 8, sw.y + 8, knob, knob, knob / 2, on ? C.asphalt : C.dim);
+        rec.text(on ? 'Ein' : 'Aus', on ? sw.x + 36 : sw.x + sw.w - 36, sw.y + sw.h / 2 + 11, 30, on ? C.asphalt : C.dim,
+            { font: 'label', align: on ? 'left' : 'right' });
+        rec.text(r.label, sw.x + sw.w + 56, y + 76, 44, on ? C.text : C.dim, { font: 'label' });
+        const it = L.ITEMS.find((x) => x.key === r.at);
+        const right = SET_COLS[0].x + 1700;
+        rec.text('bereit ab', right - 2 * BTN - 330, y + 76, 30, C.dim, { font: 'label' });
+        valueUnit(rec, String(cfg[r.at]), it.unit, right - 2 * BTN - 56, y + 82, 54, !on ? C.dim : cfg[r.at] !== it.def ? C.ice : C.text, 28, 'right');
+        rec.fillRect(X0, y + READY_ROW_H - 14, right - X0, 2, C.line);
+    });
+    READY_TARGETS.filter((t) => t.id.indexOf('toggle:') !== 0).forEach((t) => {
+        const step = t.id.indexOf('dec:') === 0 || t.id.indexOf('inc:') === 0;
+        button(rec, t, ui, { size: step ? 52 : 32 });
+    });
+}
+
 function settings(rec, cfg, ui) {
     rec.text('Grenzwerte', X0, 120, 56, C.text, { font: 'label' });
-    rec.text('Ab diesen Werten färbt sich die Anzeige rot. Das Ölband wird weiß, sobald das Öl bereit ist.', X0, 166, 30, C.dim,
-        { font: 'label' });
-    L.ITEMS.forEach((it, i) => {
+    rec.text('Ab diesen Werten färbt sich die Anzeige rot.', X0, 166, 30, C.dim, { font: 'label' });
+    LIMIT_ITEMS.forEach((it, i) => {
         const col = SET_COLS[i < 4 ? 0 : 1];
         const y = SET_TOP + (i % 4) * ROW_H;
         rec.fillRect(col.x, y + ROW_H - 6, col.w, 2, C.line);
@@ -720,7 +835,15 @@ function draw(rec, page, v, cfg, ui, extra) {
     rec.clear(C.asphalt);
     rail(rec, page, ui);
     if (page === 'settings') {
+        settingsMenu(rec, cfg, ui);
+        return rec;
+    }
+    if (page === 'limits') {
         settings(rec, cfg, ui);
+        return rec;
+    }
+    if (page === 'ready') {
+        readyPage(rec, cfg, ui);
         return rec;
     }
     if (page === 'logs') {

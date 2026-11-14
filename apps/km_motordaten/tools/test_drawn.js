@@ -33,7 +33,7 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
 (async () => {
     // every target of every page has a proxy button
     const many = { logs: new Array(30).fill({ start: new Date(), peak: {} }), confirmDelete: true, recording: { ms: 1 } };
-    ['main', 'settings', 'logs', 'log'].forEach((p) => assert.ok(dash.targets(p, many).length <= spec.PROXIES, p));
+    ['main', 'settings', 'limits', 'ready', 'logs', 'log'].forEach((p) => assert.ok(dash.targets(p, many).length <= spec.PROXIES, p));
     assert.strictEqual(spec.PROXIES, Number(/const PROXIES = (\d+)/.exec(require('fs').readFileSync(require.resolve('../src/motordaten.js'), 'utf8'))[1]),
         'motordaten.js knows the proxy count');
 
@@ -192,17 +192,34 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.setExtra({ recording: null });
     assert.strictEqual(heard.find((t) => t.id === 'record').label, 'Aufnehmen');
 
-    // the settings page: its targets for touch and proxies
+    // the settings: a menu, the limits and the ready page, each with its targets for touch and proxies
     const told = [];
     d.on('targets', (t) => told.push(t.length));
     d.setPage('settings');
     assert.deepStrictEqual(told, [dash.targets('settings', d.extra).length]);
-    const inc = dash.targets('settings').find((t) => t.id === 'inc:oilReady');
+    assert.deepStrictEqual(dash.targets('settings').slice(4).map((t) => t.id), ['menu:limits', 'menu:ready']);
+    const menuReady = dash.targets('settings').find((t) => t.id === 'menu:ready');
+    g.emit('touch', 'down', ...center(menuReady));
+    g.emit('touch', 'up', ...center(menuReady));
+    assert.strictEqual(actions.pop(), 'menu:ready');
+    d.setPage('limits');
+    const inc = dash.targets('limits').find((t) => t.id === 'inc:oilMax');
     g.emit('touch', 'down', ...center(inc));
     g.emit('touch', 'up', ...center(inc));
-    assert.strictEqual(actions.pop(), 'inc:oilReady');
-    d.proxyPress(dash.targets('settings', d.extra).findIndex((t) => t.id === 'defaults'));
+    assert.strictEqual(actions.pop(), 'inc:oilMax');
+    assert.ok(!dash.targets('limits').some((t) => t.id === 'inc:oilReady'), 'ready thresholds are on their own page');
+    d.proxyPress(dash.targets('limits', d.extra).findIndex((t) => t.id === 'defaults'));
     assert.strictEqual(actions.pop(), 'defaults');
+    d.setPage('ready');
+    assert.deepStrictEqual(dash.targets('ready').filter((t) => /^(toggle|inc):/.test(t.id)).map((t) => t.id),
+        ['toggle:oilReadyOn', 'inc:oilReady', 'toggle:coolantReadyOn', 'inc:coolantReady', 'toggle:gearboxReadyOn', 'inc:gearboxReady']);
+    const sw = dash.targets('ready').find((t) => t.id === 'toggle:gearboxReadyOn');
+    g.emit('touch', 'down', ...center(sw));
+    g.emit('touch', 'up', ...center(sw));
+    assert.strictEqual(actions.pop(), 'toggle:gearboxReadyOn');
+    assert.ok(dash.targets('ready').some((t) => t.id === 'settings:back'));
+    ['settings', 'limits', 'ready'].forEach((p) => dash.draw(new (require('../src/kit_record.js').Recorder)(dash.W, dash.H), p, {}, Limits.defaults(), null, {}));
+    d.setPage('main');
 
     // a page change makes the HMI report hidden and unfocused for a moment: the layer stays
     d.hostVisible(false);
@@ -217,6 +234,17 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     assert.strictEqual(g.visible, false);
     assert.deepStrictEqual(g.calls.filter((c) => c[0] === 'claim').pop()[1], []);
 
+    // ready for full load: the temperatures switched on, each at its value
+    const def = Limits.defaults();
+    assert.deepStrictEqual(Limits.readiness(def, { oil: 85, coolant: 72, gearbox: 20 }), { on: true, ready: true, missing: [] }, 'gearbox off by default');
+    const r1 = Limits.readiness(Limits.toggled(def, 'gearboxReadyOn'), { oil: 62, coolant: 72, gearbox: 20 });
+    assert.deepStrictEqual(r1.missing.map((m) => [m.short, m.left]), [['Öl', 18], ['Getriebe', 30]]);
+    assert.strictEqual(r1.ready, false);
+    const none = Limits.toggled(Limits.toggled(def, 'oilReadyOn'), 'coolantReadyOn');
+    assert.strictEqual(Limits.readiness(none, {}).on, false, 'nothing switched on: no badge');
+    assert.deepStrictEqual(Limits.reset(Object.assign({}, def, { rpmRed: 7000, oilReady: 95 }), 'ready'), Object.assign({}, def, { rpmRed: 7000 }),
+        'Standard on the ready page leaves the limits');
+
     // limits: stepped on their range, saved and read back
     const os = require('os');
     const fs = require('fs');
@@ -227,13 +255,13 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     lim = Limits.stepped(lim, 'oilReady', 1);
     lim = Limits.stepped(lim, 'oilPressMin', -1);
     for (let i = 0; i < 50; i++) lim = Limits.stepped(lim, 'rpmRed', 1);
-    assert.strictEqual(lim.oilReady, 75);
+    assert.strictEqual(lim.oilReady, 85);
     assert.strictEqual(lim.oilPressMin, 0.9);
     assert.strictEqual(lim.rpmRed, 7600, 'held at its maximum');
     Limits.save(lim);
     assert.deepStrictEqual(Limits.load(), lim);
     fs.writeFileSync(path.join(process.env.KM_DATA_DIR, 'limits.json'), '{"oilReady": 1000, "rpmRed": "x"}');
-    assert.strictEqual(Limits.load().oilReady, 100, 'a saved value out of range is clamped');
+    assert.strictEqual(Limits.load().oilReady, 110, 'a saved value out of range is clamped');
     assert.strictEqual(Limits.load().rpmRed, 6400, 'one that is no number is the default');
 
     // the logbook: a recording sampled at most every 100 ms, read back for the list and the curves
