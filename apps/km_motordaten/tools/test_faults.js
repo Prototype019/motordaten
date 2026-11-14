@@ -50,6 +50,22 @@ const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 
     await assert.rejects(t.request(0x22, [0xF1, 0x90], 100, 0x40), /nicht erlaubt/, 'single reads: DME and gearbox only');
     assert.strictEqual(sent.length, 1, 'nothing refused reached the gateway');
 
+    // clearing: one unit at a time, never the head unit, never all at once; request() never clears
+    const t2 = new Tasu(log);
+    const asked = [];
+    t2._setProxy({ sendTasuRequest: (p) => {
+        asked.push({ target: p.targetAddress, req: [p.serviceID].concat(Array.from(p.udsData)) });
+        setTimeout(() => t2._onResponse(frame(p.targetAddress, [0x54])), 5);
+        return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });
+    } });
+    assert.deepStrictEqual(await t2.clearFaults(0x5D), [0x54]);
+    assert.deepStrictEqual(asked, [{ target: 0x5D, req: [0x14, 0xFF, 0xFF, 0xFF] }]);
+    await assert.rejects(t2.clearFaults(0x63), /nicht erlaubt/, 'not the head unit');
+    await assert.rejects(t2.clearFaults(ALL), /nicht erlaubt/, 'not all at once');
+    await assert.rejects(t2.clearFaults(0x100), /nicht erlaubt/);
+    await assert.rejects(t2.request(0x14, [0xFF, 0xFF, 0xFF]), /nur lesen/, 'request() does not clear');
+    assert.strictEqual(asked.length, 1);
+
     // status words, sorting: active first
     assert.strictEqual(Faults.stateOf(0x08), 'gespeichert');
     assert.strictEqual(Faults.stateOf(0x04), 'vorläufig');

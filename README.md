@@ -6,14 +6,9 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 | App | Was sie tut |
 |---|---|
 | **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche (über `mgu-render`, sonst Liste). Live aus DME und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10 Runden pro Sekunde: Drehzahl, Leistung, Drehmoment, Ladedruck mit Soll, Öldruck, Öl-, Kühlmittel-, Ansaug-, Ladeluft-, Getriebeöl- und Abgastemperatur, Bordnetz. Spitzenwerte mit Reset. Reiter Live, Logs (Aufzeichnungen mit Diagrammen; Fehlerspeicher aller Steuergeräte, nur lesend) und Grenzwerte. |
-| **Daten-Test** (`km_datentest`) | Liest den Dienst-Katalog der Headunit und zeigt, welche Fahrzeugsignale und Diagnose-Dienste es gibt. Ruft nichts im Auto auf. |
-| **Diagnose-Test** (`km_diagtest`) | Fragt die DME über das Diagnose-Gateway der Headunit: DME-Typ, unterstützte OBD-II-Werte, BMW-Werte (Öl, Ansaugluft, Ladedruck, Öldruck …). Nur lesend. |
 
 Jede App zeigt oben eine Statuszeile, worauf sie wartet oder was fehlschlug.
 
-Auf iDrive 8 lehnt die Headunit eine App ab, deren Manifest einen Dienst
-nennt, den sie nicht hat. Deshalb sind die Tests getrennt: Fehlt das
-Diagnose-Gateway, scheitert nur der Diagnose-Test; der Daten-Test zeigt warum.
 
 ## Installieren
 
@@ -22,11 +17,13 @@ Im Store: **Settings → Add source** → `Prototype019/motordaten`, Kanal
 (auf iDrive 8 wird eine Installation erst nach dem Neustart aktiv).
 Mit Zündung an öffnen.
 
-## Nur lesend
+## Lesen und Löschen
 
-Motordaten und Diagnose-Test schicken ausschließlich an die DME (0x12):
+Motordaten liest über das Diagnose-Gateway der Headunit, als Tester 0xF4:
 `22 <ID>` (ReadDataByIdentifier, bis zu 8 Kennungen), OBD-II `01` / `09` mit einer PID und den
 Fehlerspeicher `19 02` (auch an alle Steuergeräte gleichzeitig); Einzelanfragen nur an DME und Getriebe.
+Die einzige Änderung im Auto ist Fehler löschen (`14 FF FF FF`): nur auf Wunsch mit Rückfrage, nur bei Motor aus
+und Zündung an, je Steuergerät einzeln, nie die Headunit.
 Alles andere lehnt `shared/tasu.js` ab, bevor es das Gateway erreicht: keine
 Sitzungswechsel, kein Löschen, kein Schreiben, keine Routinen. Eine Anfrage
 nach der anderen, mindestens 25 ms Abstand.

@@ -24,7 +24,7 @@
  */
 const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 const { ListApp, logger } = require('./screen.js');
-const { Tasu, TESTERS, EGS } = require('./tasu.js');
+const { Tasu, TESTERS, EGS, NO_CLEAR } = require('./tasu.js');
 const D = require('./decode.js');
 const { Drawn } = require('./drawn.js');
 const Limits = require('./limits.js');
@@ -171,6 +171,12 @@ class Motordaten extends ListApp {
             }
         } else if (id === 'faults:read') {
             this._readFaults();
+        } else if (id === 'faults:clear') {
+            const why = this._clearBlocked();
+            d.setExtra({ faults: Object.assign({}, d.extra.faults, why ? { note: why, warn: true, confirmClear: false } :
+                { note: null, warn: false, confirmClear: true }) });
+        } else if (id === 'faults:clear!') {
+            this._clearFaults();
         } else if (id === 'record') {
             this._toggleRecording();
         } else if (id === 'reset') {
@@ -215,9 +221,53 @@ class Motordaten extends ListApp {
             .then((replies) => {
                 const f = Faults.parse(replies);
                 logger.info(`faults: ${f.units} units, ${f.entries.map((e) => `${e.ecu.toString(16)}:${e.code}/${e.status}`).join(' ')}`);
-                d.setExtra({ faults: { units: f.units, entries: f.entries, at: new Date() } });
+                const note = this._afterClear ? `${this._afterClear}${f.entries.length ? `Noch ${f.entries.length} Einträge.` : 'Keine Einträge mehr.'}` : null;
+                this._afterClear = null;
+                d.setExtra({ faults: { units: f.units, entries: f.entries, at: new Date(), note } });
             }, (e) => {
                 d.setExtra({ faults: { error: (e && e.message) || String(e) } });
+            });
+    }
+
+    /* Why the fault memory may not be cleared now, or null: only with the engine off (its speed measured
+     * as 0 just now) and the ignition on (the units answer). */
+    _clearBlocked() {
+        const fresh = Date.now() - (this._at.rpm || 0) < 3000;
+        const rpm = fresh ? this._dme.rpm : this._cds.rpm;
+        if (!isNum(rpm)) {
+            return 'Löschen nur bei Zündung an: keine Drehzahl vom Motor.';
+        }
+        if (rpm >= ENGINE_STOPPED_RPM) {
+            return 'Löschen nur bei Motor aus. Motor abstellen, Zündung an lassen.';
+        }
+        return null;
+    }
+
+    /* Clears the units that have entries, one after the other (never the head unit), then reads again. */
+    _clearFaults() {
+        const d = this._drawn;
+        const f = d.extra.faults || {};
+        const why = this._clearBlocked();
+        if (why) {
+            d.setExtra({ faults: Object.assign({}, f, { note: why, warn: true, confirmClear: false }) });
+            return;
+        }
+        const units = Array.from(new Set((f.entries || []).map((e) => e.ecu)));
+        const skipped = units.filter((u) => NO_CLEAR.indexOf(u) >= 0);
+        const todo = units.filter((u) => NO_CLEAR.indexOf(u) < 0);
+        d.setExtra({ faults: Object.assign({}, f, { clearing: true, confirmClear: false, note: null, warn: false }) });
+        let cleared = 0;
+        let failed = 0;
+        todo.reduce((p, u) => p.then(() => this._tasu.clearFaults(u)
+            .then((r) => { if (r && r[0] === 0x54) cleared++; else failed++; }, () => { failed++; })), Promise.resolve())
+            .then(() => {
+                logger.info(`faults cleared in ${cleared} units, ${failed} failed, skipped ${skipped.join(',')}`);
+                const parts = [`Gelöscht in ${cleared} ${cleared === 1 ? 'Steuergerät' : 'Steuergeräten'}`];
+                if (failed) parts.push(`${failed} ohne Bestätigung`);
+                if (skipped.length) parts.push('Headunit ausgelassen');
+                this._afterClear = `${parts.join(', ')}. `;
+                d.setExtra({ faults: { reading: false } });
+                this._readFaults();
             });
     }
 

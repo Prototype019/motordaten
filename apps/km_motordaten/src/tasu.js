@@ -16,9 +16,11 @@
  *            transport errors of other requests are not ours.
  *
  * Only ReadDataByIdentifier (22, up to 8 identifiers of 2 bytes), OBD-II 01 / 09
- * and the fault memory by status mask (19 02, also to all units at once: faults())
- * (one PID) to the DME or the EGS pass request(); everything else is refused here,
- * before anything reaches the car. One request at a time, at least GAP_MS
+ * (one PID) and the fault memory by status mask (19 02) to the DME or the EGS
+ * pass request(), and 19 02 to all units at once through faults(); the one
+ * change allowed is clearing one unit's fault memory through clearFaults()
+ * (14 FF FF FF, never the head unit, never all at once). Everything else is
+ * refused here, before anything reaches the car. One request at a time, at least GAP_MS
  * apart. Proxy building, init and every call run from a fresh setImmediate
  * tick, as the SDK does (the native binding can deadlock inline), each
  * under a time limit.
@@ -53,6 +55,9 @@ const ALLOWED = Object.freeze({ 0x22: Object.freeze([2, 4, 6, 8, 10, 12, 14, 16]
  * the fault memory by status mask (19 02 <mask>). */
 const ALL = 0xDF;
 const FAULTS = 0x02;
+/* Units whose fault memory clearFaults() leaves alone: the head unit this app runs on (clearing it may
+ * restart it). */
+const NO_CLEAR = Object.freeze([0x63]);
 
 function toBytes(b) {
     if (!b) {
@@ -228,6 +233,23 @@ class Tasu extends EventEmitter {
         return p;
     }
 
+    /**
+     * Clears one unit's fault memory: 14 FF FF FF (all groups) to that unit
+     * alone, never to all units at once and never to the head unit
+     * (NO_CLEAR). The only request here that changes anything in the car;
+     * request() refuses 14. Resolves with the unit's reply (54: cleared) or
+     * null when none came.
+     */
+    clearFaults(unit) {
+        if (!Number.isInteger(unit) || unit < 0x01 || unit > 0xFE || unit === ALL || NO_CLEAR.indexOf(unit) >= 0) {
+            return Promise.reject(new Error(`Löschen bei Steuergerät ${unit} nicht erlaubt`));
+        }
+        const run = () => this._request(0x14, [0xFF, 0xFF, 0xFF], 8000, unit);
+        const p = this._chain.then(run, run);
+        this._chain = p.catch(() => undefined);
+        return p;
+    }
+
     _collect(sid, data, idleMs, maxMs) {
         if (!this._proxy()) {
             return Promise.reject(new Error('Diagnose-Dienst nicht offen'));
@@ -323,7 +345,9 @@ class Tasu extends EventEmitter {
                 // 22: the reply starts with one of the identifiers asked (one the unit lacks is left out);
                 // 01 / 09: it echoes the PID
                 let echoed;
-                if (sid === 0x22) {
+                if (sid === 0x14) {
+                    echoed = true;          // 54: the clear's positive reply has no echo
+                } else if (sid === 0x22) {
                     echoed = false;
                     for (let k = 0; k + 1 < data.length; k += 2) {
                         echoed = echoed || (u[1] === data[k] && u[2] === data[k + 1]);
@@ -375,4 +399,4 @@ Tasu.prototype.useTester = function (addr) {
     this.tester = addr;
 };
 
-module.exports = { Tasu, ALLOWED, DME, EGS, UNITS, ALL, IFACE, INSTANCE, TESTERS, checkRead };
+module.exports = { Tasu, ALLOWED, DME, EGS, UNITS, ALL, NO_CLEAR, IFACE, INSTANCE, TESTERS, checkRead };

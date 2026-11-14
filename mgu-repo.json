@@ -1,8 +1,6 @@
 {
   "schema": 1,
   "components": [
-    { "id": "km_motordaten", "kind": "app", "path": "apps/km_motordaten", "build": "unit", "mguHmi": ["ID8"] },
-    { "id": "km_datentest", "kind": "app", "path": "apps/km_datentest", "build": "unit", "mguHmi": ["ID8"] },
-    { "id": "km_diagtest", "kind": "app", "path": "apps/km_diagtest", "build": "unit", "mguHmi": ["ID8"] }
+    { "id": "km_motordaten", "kind": "app", "path": "apps/km_motordaten", "build": "unit", "mguHmi": ["ID8"] }
   ]
 }

@@ -117,8 +117,15 @@ const SEGMENTS = [{ id: 'seg:logs', page: 'logs', label: 'Aufzeichnungen' }, { i
     .map((t, i) => Object.assign(t, { x: W - PAD - (2 - i) * 340 + 16, y: 64, w: 324, h: 76 }));
 const FAULT_ROWS = 8;
 
-function faultsTargets() {
-    return SEGMENTS.concat([{ id: 'faults:read', x: W - PAD - 300, y: 660, w: 300, h: BH, label: 'Neu lesen' }]);
+function faultsTargets(extra) {
+    const f = (extra && extra.faults) || {};
+    const out = SEGMENTS.concat([{ id: 'faults:read', x: W - PAD - 300, y: 660, w: 300, h: BH, label: 'Neu lesen' }]);
+    if (f.entries && f.entries.length && !f.reading) {
+        const confirm = !!f.confirmClear;
+        out.push({ id: confirm ? 'faults:clear!' : 'faults:clear', x: W - PAD - 300 - 24 - 360, y: 660, w: 360, h: BH,
+            label: confirm ? 'Wirklich löschen' : 'Fehler löschen', danger: confirm });
+    }
+    return out;
 }
 
 function logsTargets(extra) {
@@ -357,7 +364,11 @@ function faultsPage(rec, ui, extra) {
     rec.text('Fehlerspeicher', X0, 120, 56, C.text, { font: 'label' });
     segments(rec, 'faults', ui);
     let note;
-    if (f.reading) {
+    if (f.clearing) {
+        note = 'Lösche … bitte Zündung an lassen.';
+    } else if (f.note) {
+        note = f.note;
+    } else if (f.reading) {
         note = 'Lese alle Steuergeräte … das dauert einige Sekunden.';
     } else if (f.error) {
         note = `Lesen fehlgeschlagen: ${f.error}. Zündung an?`;
@@ -368,7 +379,7 @@ function faultsPage(rec, ui, extra) {
         note = `${f.units} Steuergeräte geantwortet, ${n === 0 ? 'keine Einträge' : n === 1 ? '1 Eintrag' : `${n} Einträge`}` +
             (f.at ? ` · gelesen ${two(f.at.getHours())}:${two(f.at.getMinutes())}` : '');
     }
-    rec.text(note, X0, 166, 30, f.error ? C.limit : C.dim, { font: 'label' });
+    rec.text(note, X0, 166, 30, f.error || f.warn ? C.limit : C.dim, { font: 'label' });
     const entries = f.entries || [];
     if (!f.reading && f.units !== undefined && !entries.length) {
         rec.text('Alle Steuergeräte sind ohne Eintrag.', X0, 300, 44, C.text, { font: 'label' });
@@ -388,7 +399,11 @@ function faultsPage(rec, ui, extra) {
     if (entries.length > FAULT_ROWS) {
         rec.text(`+${entries.length - FAULT_ROWS} weitere`, X0, 700, 30, C.dim, { font: 'label' });
     }
-    faultsTargets(extra).filter((t) => t.id === 'faults:read').forEach((t) => button(rec, t, ui));
+    faultsTargets(extra).filter((t) => t.id.indexOf('faults:') === 0).forEach((t) => button(rec, t, ui));
+    if (f.confirmClear) {
+        rec.text('Löscht die Einträge der Steuergeräte oben (nicht die Headunit). Nur bei Motor aus und Zündung an.',
+            X0, 700, 28, C.dim, { font: 'label' });
+    }
 }
 
 function logsPage(rec, ui, extra) {

@@ -61,6 +61,8 @@ EXTRA.faults = { faults: { units: 28, at: new Date(2026, 10, 14, 11, 2), entries
     { ecu: 0x12, unit: 'Motor (DME)', code: '1F2A01', status: 0x28, state: 'gespeichert' }] } };
 EXTRA.faultsread = { faults: { reading: true } };
 EXTRA.faultsnone = { faults: { units: 28, entries: [], at: new Date(2026, 10, 14, 11, 2) } };
+EXTRA.faultsclear = { faults: Object.assign({}, EXTRA.faults.faults, { confirmClear: true }) };
+SCENES.faultsclear = {};
 SCENES.faults = {};
 SCENES.faultsread = {};
 SCENES.faultsnone = {};
