@@ -124,7 +124,7 @@ const ENGINE2_EVERY = 6;
 
 /* The cooling, with the slow ones (recorded, for the chart Kühlung): target, fan, thermostat, pumps. */
 const COOLING = [['coolTarget', 0x4310], ['fanDuty', 0x587F], ['fanRpm', 0x594F], ['thermostat', 0x4A74],
-    ['pumpTarget', 0x5910], ['pumpRpm', 0x58EA], ['pumpCharge', 0x5912]];
+    ['pumpTarget', 0x5910], ['pumpRpm', 0x58EA], ['pumpCharge', 0x5912], ['fanSet', 0x5594]];
 
 /* The battery, with the slow ones: its charge (a valid one is 0-100 %). */
 const BATTERY = [['battSoc', 0x5425]];
@@ -968,6 +968,10 @@ class Motordaten extends ListApp {
             pumpTarget: m.pumpTarget, pumpRpm: m.pumpRpm, pumpCharge: m.pumpCharge,
             // the pump's target as a share of its byte's range (the DME's own steps; 255 = full)
             pumpPct: isNum(m.pumpTarget) ? m.pumpTarget / 255 * 100 : null,
+            // the charge air cooling's electric pump (the S58's main coolant pump is driven by the belt)
+            pumpChargePct: isNum(m.pumpCharge) ? m.pumpCharge / 255 * 100 : null,
+            // the fan: its duty where the DME gives it, else its LIN target
+            fan: isNum(m.fanDuty) ? m.fanDuty : m.fanSet,
             battCurrent: m.battCurrent, battTemp: m.battTemp, battVoltage: isNum(m.battVoltage) && m.battVoltage > 5 ? m.battVoltage : null
         };
         // each cylinder's ignition below the earliest one: what the knock control takes back there

@@ -895,8 +895,8 @@ const GROUPS = {
     // the cooling: the coolant against what the DME aims for, and how hard it drives fan, thermostat, pump
     cooling: { axes: { left: { unit: '°C', d: 0, floor: 160, color: C.text }, right: { unit: '%', d: 0, floor: 100, color: C.cold } },
         curves: [['coolant', C.text, 'left', 'Kühlmittel'], ['coolTarget', C.dim, 'left', 'Soll', 'min'],
-            ['fanDuty', C.cold, 'right', 'Lüfter'], ['thermostat', C.ice, 'right', 'Thermostat'],
-            ['pumpPct', C.ok, 'right', 'Pumpe']] }
+            ['fan', C.cold, 'right', 'Lüfter'], ['thermostat', C.ice, 'right', 'Thermostat'],
+            ['pumpChargePct', C.ok, 'right', 'Pumpe Ladeluft']] }
 };
 
 /* The smallest round number (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 x 10^n) at least v: its quarters stay round too. */

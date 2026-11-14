@@ -60,6 +60,7 @@ const DIDS = [
     { id: 0x5910, name: 'Wasserpumpe Soll', t: 'u8', k: 1, o: 0, u: '', d: 0 },
     { id: 0x58EA, name: 'Wasserpumpe Ist', t: 'u8', k: 1, o: 0, u: '', d: 0 },
     { id: 0x5912, name: 'Pumpe Ladeluftkühlung Soll', t: 'u8', k: 1, o: 0, u: '', d: 0 },
+    { id: 0x5594, name: 'Lüfter Sollwert', t: 's16', k: 0.01, o: 0, u: '%', d: 0 },
     // the ignition angle of each cylinder (the knock control takes it back per cylinder; the DME reports only the
     // mean of that, 0x554C): cylinders 1-6, 0x4A4B is not one of them
     { id: 0x4A49, name: 'Zündwinkel Zyl. 1', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 },

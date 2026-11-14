@@ -35,7 +35,7 @@ function sampleLog() {
             knock: pull && (s - 300) % 10 > 7 ? 1.5 : 0, ignition: pull ? 8 - boost * 3 : 12, pedal: pull ? 100 : 4,
             load: pull ? 60 + boost * 40 : 18, battSoc: 78 + s / 90, battCurrent: s < 60 ? 30 - s / 2 : 4, battVoltage: 14.3,
             // Max Cooling from the pull on: the target drops, fan and thermostat go up
-            coolTarget: s > 300 ? 80 : 105, fanDuty: s > 300 ? 100 : 20, thermostat: s > 300 ? 100 : 35, pumpTarget: s > 300 ? 255 : 120, pumpPct: s > 300 ? 100 : 47,
+            coolTarget: s > 300 ? 80 : 105, fanDuty: s > 300 ? 100 : 20, thermostat: s > 300 ? 100 : 35, pumpTarget: s > 300 ? 255 : 120, pumpPct: s > 300 ? 100 : 47, fan: s > 300 ? 100 : 20, pumpChargePct: s > 300 ? 100 : 40,
             // cylinder 3 taken back a little at the top of each pull
             knockCyl1: 0, knockCyl2: pull ? 0.3 : 0, knockCyl3: pull && (s - 300) % 10 > 6 ? 2.5 : 0, knockCyl4: 0, knockCyl5: pull ? 0.4 : 0,
             knockCyl6: 0 }, t0 + t);
