@@ -99,7 +99,8 @@ const SETTINGS_TARGETS = settingsTargets();
 /* ---- the logs pages ---- */
 
 const two = (n) => String(n).padStart(2, '0');
-const dateText = (d) => (d ? `${two(d.getDate())}.${two(d.getMonth() + 1)}.${d.getFullYear()} ${two(d.getHours())}:${two(d.getMinutes())}` : '');
+/* Dates here are wall-clock Dates (clock.js): read with getUTC... */
+const dateText = (d) => (d ? `${two(d.getUTCDate())}.${two(d.getUTCMonth() + 1)}.${d.getUTCFullYear()} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}` : '');
 const duration = (ms) => { const t = Math.round((ms || 0) / 1000); return `${Math.floor(t / 60)}:${two(t % 60)}`; };
 
 const LOG_ROWS = 8;            // recordings on the list page (2 columns of 4)
@@ -410,7 +411,7 @@ function faultsPage(rec, ui, extra) {
         const withFaults = scan.filter((u) => u.state === 'faults').length;
         note = `${f.units} von ${scan.length} Steuergeräten geantwortet, ` +
             `${withFaults === 0 ? 'alle ohne Fehler' : withFaults === 1 ? '1 mit Fehlern' : `${withFaults} mit Fehlern`}` +
-            (f.at ? ` · gelesen ${two(f.at.getHours())}:${two(f.at.getMinutes())}` : '');
+            (f.at ? ` · gelesen ${two(f.at.getUTCHours())}:${two(f.at.getUTCMinutes())}` : '');
     }
     rec.text(note, X0, 166, 30, f.error || f.warn || f.units === 0 ? C.limit : C.dim, { font: 'label' });
 

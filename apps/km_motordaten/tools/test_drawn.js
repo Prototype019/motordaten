@@ -153,7 +153,7 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
 
     // the logbook: a recording sampled at most every 100 ms, read back for the list and the curves
     const Logbook = require('../src/logbook.js');
-    const t0 = new Date(2026, 10, 14, 10, 42, 0).getTime();
+    const t0 = Date.UTC(2026, 10, 14, 10, 42, 0);
     const r = new Logbook.Recording(t0);
     for (let t = 0; t < 2000; t += 50) {
         r.sample({ rpm: 800 + t, boost: t / 2000, oil: 30 }, t0 + t);
@@ -184,6 +184,21 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     assert.strictEqual(Logbook.list().length, 20);
     Logbook.remove('../limits.json');
     assert.ok(fs.existsSync(path.join(process.env.KM_DATA_DIR, 'limits.json')), 'only recordings are removed');
+
+    // the car's clock: the cluster shows 11:07 while UTC is 10:07 -> recordings named and shown at 11:07
+    const clock = require('../src/clock.js');
+    const utc = Date.UTC(2026, 10, 14, 10, 7, 30);
+    assert.strictEqual(clock.setCluster({ statusDisplayClockTimeDate: 1, displayHour: 11, displayMinute: 7, displaySecond: 30 }, utc), true);
+    assert.strictEqual(clock.offset(), 60);
+    assert.strictEqual(clock.wall(utc).getUTCHours(), 11);
+    assert.strictEqual(clock.setCluster({ statusDisplayClockTimeDate: 15 }, utc), false, 'unfilled: kept');
+    assert.strictEqual(clock.setCluster({ statusDisplayClockTimeDate: 1, displayHour: 4, displayMinute: 7, displaySecond: 30 }, utc), true);
+    assert.strictEqual(clock.offset(), -360, 'west of UTC');
+    clock.setCluster({ statusDisplayClockTimeDate: 1, displayHour: 11, displayMinute: 7, displaySecond: 30 }, utc);
+    const rc = new Logbook.Recording(utc);
+    rc.sample({ rpm: 1 }, utc);
+    assert.strictEqual(rc.name, '20261114-110730.csv');
+    rc.stop();
 
     // no layer mode: the list stays
     const other = new Drawn('km_motordaten', log, fakeGpu());

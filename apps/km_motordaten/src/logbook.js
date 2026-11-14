@@ -1,7 +1,7 @@
 'use strict';
 /**
  * The logbook: recordings of the values, one CSV file each in the app's
- * data folder (data/logs/<yyyymmdd-hhmmss>.csv; the folder KM_DATA_DIR
+ * data folder (data/logs/<yyyymmdd-hhmmss>.csv, the car's wall-clock start; the folder KM_DATA_DIR
  * names in the tests).
  *
  *   header  t,rpm,torque,power,boost,boostTarget,oilPress,oil,coolant,intake,charge,gearbox,exhaust,voltage
@@ -14,6 +14,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const clock = require('./clock.js');
 
 const FIELDS = Object.freeze(['rpm', 'torque', 'power', 'boost', 'boostTarget', 'oilPress', 'oil', 'coolant', 'intake',
     'charge', 'gearbox', 'exhaust', 'voltage']);
@@ -37,13 +38,14 @@ function ensureDir() {
 }
 
 const pad = (n) => String(n).padStart(2, '0');
+/* A wall-clock Date (clock.wall: its UTC fields are the car's time) as a file name stamp. */
 function stamp(d) {
-    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
 }
-/* The start time a file name says, as a Date. */
+/* The start time a file name says, as a wall-clock Date (read with getUTC...). */
 function startOf(name) {
     const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.csv$/.exec(name);
-    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
+    return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6])) : null;
 }
 
 const cell = (v) => (typeof v === 'number' && isFinite(v) ? String(Math.round(v * 100) / 100) : '');
@@ -51,7 +53,7 @@ const cell = (v) => (typeof v === 'number' && isFinite(v) ? String(Math.round(v 
 class Recording {
     constructor(now) {
         this.started = now || Date.now();
-        this.name = `${stamp(new Date(this.started))}.csv`;
+        this.name = `${stamp(clock.wall(this.started))}.csv`;
         this.file = path.join(ensureDir(), this.name);
         this.lines = [];
         this.last = -Infinity;

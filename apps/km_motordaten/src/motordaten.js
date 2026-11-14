@@ -30,6 +30,8 @@ const { Drawn } = require('./drawn.js');
 const Limits = require('./limits.js');
 const Logbook = require('./logbook.js');
 const Faults = require('./faults.js');
+const clock = require('./clock.js');
+const IF_KOMBI = 'de.bmw.infotainment.KombiIF';
 const FAULT_MASK = 0x0D;     // failing now, pending, confirmed
 const PROXIES = 48;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
 
@@ -243,7 +245,7 @@ class Motordaten extends ListApp {
                 logger.info(`faults: ${answered}/${scan.length} units, ${entries.map((e) => `${e.ecu.toString(16)}:${e.code}/${e.status}`).join(' ')}`);
                 const note = this._afterClear ? `${this._afterClear}${entries.length ? `Noch ${entries.length} Einträge.` : 'Keine Einträge mehr.'}` : null;
                 this._afterClear = null;
-                d.setExtra({ faults: { scan, units: answered, entries, at: new Date(), note } });
+                d.setExtra({ faults: { scan, units: answered, entries, at: clock.wall(), note } });
             }, (e) => {
                 d.setExtra({ faults: { scan, error: (e && e.message) || String(e) } });
             });
@@ -403,6 +405,23 @@ class Motordaten extends ListApp {
             ]))
             .then(() => logger.info('CDS subscribed'))
             .catch((err) => logger.warn(`CDS unavailable: ${err && err.message}`));
+        // the car's clock (its time zone and summer time) from the instrument cluster's display time
+        let kombi;
+        new Promise((resolve) => setImmediate(resolve))
+            .then(() => someipBuilders.buildTypedProxy(IF_KOMBI, '1'))
+            .then((p) => { kombi = p; return kombi.init(); })
+            .then(() => kombi.waitUntilAvailable())
+            .then(() => {
+                const show = (v) => {
+                    if (clock.setCluster(v)) {
+                        logger.info(`clock: UTC${clock.offset() >= 0 ? '+' : ''}${clock.offset() / 60} h`);
+                    }
+                };
+                return Promise.resolve(kombi.statusShowTimeDate.subscribe(show))
+                    .then(() => kombi.statusShowTimeDate.getValue())
+                    .then(show);
+            })
+            .catch((err) => logger.warn(`cluster clock unavailable: ${err && err.message}`));
     }
 
     /* ---- the DME and the gearbox ---- */

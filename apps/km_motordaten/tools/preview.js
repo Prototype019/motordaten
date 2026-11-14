@@ -18,7 +18,7 @@ const Logbook = require('../src/logbook.js');
 
 /* A recording to show: a cold start, warming up, then a pull through the gears. */
 function sampleLog() {
-    const t0 = new Date(2026, 10, 14, 10, 42, 0).getTime();
+    const t0 = Date.UTC(2026, 10, 14, 10, 42, 0);
     const r = new Logbook.Recording(t0);
     for (let t = 0; t < 6 * 60000; t += 100) {
         const s = t / 1000;
@@ -52,7 +52,7 @@ const logName = sampleLog();
 const summary = Logbook.summary(logName);
 const EXTRA = {
     pull: { recording: { ms: 83000 } },
-    logs: { logs: [summary, Object.assign({}, summary, { start: new Date(2026, 10, 13, 18, 5) })] },
+    logs: { logs: [summary, Object.assign({}, summary, { start: new Date(Date.UTC(2026, 10, 13, 18, 5)) })] },
     log: { log: Logbook.load(logName), channel: 'rpm' },
     logboost: { log: Logbook.load(logName), channel: 'boost', confirmDelete: true }
 };
@@ -73,7 +73,7 @@ function scanUpTo(k) {
     });
 }
 const done = scanUpTo(99);
-EXTRA.faults = { faults: { scan: done, units: 28, entries: done[done.findIndex((u) => u.addr === 0x5D)].entries, at: new Date(2026, 10, 14, 11, 2) } };
+EXTRA.faults = { faults: { scan: done, units: 28, entries: done[done.findIndex((u) => u.addr === 0x5D)].entries, at: new Date(Date.UTC(2026, 10, 14, 11, 2)) } };
 EXTRA.faultsread = { faults: { reading: true, scan: scanUpTo(14), progress: 15 } };
 EXTRA.faultsclear = { faults: Object.assign({}, EXTRA.faults.faults, { confirmClear: true }) };
 EXTRA.faultunit = Object.assign({ unit: 0x5D }, EXTRA.faults);
