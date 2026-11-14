@@ -33,7 +33,7 @@ const ITEMS = Object.freeze([
 /* The temperatures that can count for "ready": the value's key, its threshold item, its on/off item. */
 const READY = Object.freeze([
     { value: 'oil', at: 'oilReady', on: 'oilReadyOn', label: 'Öltemperatur', short: 'Öl' },
-    { value: 'coolant', at: 'coolantReady', on: 'coolantReadyOn', label: 'Kühlmittel', short: 'Wasser' },
+    { value: 'coolant', at: 'coolantReady', on: 'coolantReadyOn', label: 'Kühlmittel', short: 'Kühlmittel' },
     { value: 'gearbox', at: 'gearboxReady', on: 'gearboxReadyOn', label: 'Getriebeöl', short: 'Getriebe' }
 ]);
 

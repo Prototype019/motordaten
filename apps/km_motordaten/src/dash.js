@@ -353,20 +353,16 @@ function readyBadge(rec, x, y, v, cfg) {
     const w = rec.textWidth('Warmfahren', 28, { font: 'label' }) + 48;
     rec.strokeRoundRect(x, y, w, h, h / 2, 3, C.cold);
     rec.text('Warmfahren', x + w / 2, y + h / 2 + 10, 28, C.cold, { font: 'label', align: 'center' });
-    // each temperature switched on with its value: green once reached, red until then
-    let ix = x + w + 22;
+    // each temperature switched on by its name (the values are on the page): green once reached, red until then
+    let ix = x + w + 26;
     const end = COL.mid.x - 40;
     r.items.forEach((it) => {
-        const name = `${it.short} `;
-        const val = it.value === null ? '–' : `${Math.round(it.value)}°`;
-        const nw = rec.textWidth(name, 26, { font: 'label' });
-        const vw = rec.textWidth(val, 26, { font: 'label' });
-        if (ix + nw + vw > end) {
+        const nw = rec.textWidth(it.short, 28, { font: 'label' });
+        if (ix + nw > end) {
             return;
         }
-        rec.text(name, ix, y + h / 2 + 9, 26, C.dim, { font: 'label' });
-        rec.text(val, ix + nw, y + h / 2 + 9, 26, it.reached ? C.ok : C.limit, { font: 'label' });
-        ix += nw + vw + 22;
+        rec.text(it.short, ix, y + h / 2 + 10, 28, it.reached ? C.ok : C.limit, { font: 'label' });
+        ix += nw + 30;
     });
 }
 

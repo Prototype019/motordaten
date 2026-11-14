@@ -238,7 +238,7 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     const def = Limits.defaults();
     const r0 = Limits.readiness(def, { oil: 85, coolant: 72, gearbox: 20 });
     assert.deepStrictEqual([r0.on, r0.ready, r0.missing], [true, true, []], 'gearbox off by default');
-    assert.deepStrictEqual(r0.items.map((i) => [i.short, i.value, i.reached]), [['Öl', 85, true], ['Wasser', 72, true]]);
+    assert.deepStrictEqual(r0.items.map((i) => [i.short, i.value, i.reached]), [['Öl', 85, true], ['Kühlmittel', 72, true]]);
     const r1 = Limits.readiness(Limits.toggled(def, 'gearboxReadyOn'), { oil: 62, coolant: 72, gearbox: 20 });
     assert.deepStrictEqual(r1.missing.map((m) => [m.short, m.left]), [['Öl', 18], ['Getriebe', 30]]);
     assert.strictEqual(r1.ready, false);
