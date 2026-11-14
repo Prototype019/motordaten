@@ -5,7 +5,7 @@
     "type": "OnlineApp",
     "name": "km_diagtest",
     "vendor": "owner",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "defaultLanguage": "de_DE",
     "uiDescriptions": [
       {
