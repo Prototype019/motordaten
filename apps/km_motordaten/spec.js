@@ -19,7 +19,7 @@ module.exports = {
     texts: {
         SID_TEMP_EMPTY: '',
         SID_MD_TITLE: 'Motordaten',
-        SID_MD_RESET: 'Spitzenwerte zurücksetzen'
+        SID_MD_RESET: 'Reset'
     },
     states: [{
         id: 1, name: 'ST_OnlineApps_Motordaten', titleId: 10, title: 'SID_MD_TITLE',
