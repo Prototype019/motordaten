@@ -65,7 +65,7 @@ function mainTargets(extra) {
     const time = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
     return [
         { id: 'record', x, y: 650, w: BW, h: BH, label: rec ? `Stopp ${time}` : 'Aufnehmen', live: !!rec },
-        { id: 'reset', x: x + BW + 24, y: 650, w: BW, h: BH, label: 'Spitzen zurücksetzen' }
+        { id: 'reset', x: x + BW + 24, y: 650, w: BW, h: BH, label: 'Reset' }
     ];
 }
 
