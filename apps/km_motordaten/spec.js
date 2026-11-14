@@ -23,6 +23,13 @@ module.exports = {
             { id: 24, kind: 'row', name: 'mdList', text: '' },
             { id: 25, kind: 'button', name: 'mdRun', text: 'SID_MD_RESET' }
         ]
+    }, {
+        /* The host state of the drawn screen (src/drawn.js): the renderer draws over it while it is open;
+         * its one button stands for the reset button under the controller. */
+        id: 2, name: 'ST_OnlineApps_MotordatenLayer', titleId: 11, title: 'SID_MD_TITLE',
+        components: [
+            { id: 30, kind: 'button', name: 'mdLayerP0', text: 'SID_MD_RESET' }
+        ]
     }],
     proxies: {
         'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineSpeed2: 's', statusEngineTemperature: 's' } },

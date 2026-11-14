@@ -22,4 +22,18 @@
             </component>
         </layoutGroup>
     </container>
+    <container id="2" type="state" widget="LT_State_Wide_List">
+        <layoutGroup id="104" name="Titlebar">
+            <component id="11" type="title">
+                <property id="2" value="1"/>
+            </component>
+        </layoutGroup>
+        <layoutGroup id="105" name="List">
+            <property id="3" value="1"/>
+            <component id="30" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
+        </layoutGroup>
+    </container>
 </application>

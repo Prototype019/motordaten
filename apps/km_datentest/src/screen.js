@@ -45,6 +45,25 @@ class ListApp extends OnlineApp {
     /* Subclasses: called once before the process ends. */
     stop() {}
 
+    /* Subclasses: more of the description to bind (states, components), before the tile is registered. */
+    bind() {}
+
+    /* The tile opens state name from now on; shown now, it moves there. */
+    useEntryState(name) {
+        const state = this.rhmiApplication && this.rhmiApplication.getByName(name);
+        if (!state || !this._mdEntryUuid || this._mdEntryState === name) {
+            return;
+        }
+        const was = this._mdEntryState;
+        this._mdEntryState = name;
+        logger.info(`entry state ${name}`);
+        Promise.resolve()
+            .then(() => this.rhmiApplication.mapEntryState(this._mdEntryUuid, state))
+            .then(() => (this._mdVisible ? this.rhmiApplication.openState(name) : undefined))
+            .then(() => (this._mdVisible && was ? this.rhmiApplication.closeState(was) : undefined))
+            .catch((err) => logger.warn(`entry state ${name}: ${err && err.message}`));
+    }
+
     /* Subclasses: the screen came to the front (true) or left it (false). */
     visibilityChanged() {}
 
@@ -98,6 +117,7 @@ class ListApp extends OnlineApp {
                 this._mdSetVisible(Object.prototype.hasOwnProperty.call(stack, 'ROOT_APP'));
             }
         });
+        this.bind(rhmi);
         const foreground = this._mdStartedForeground();
         return this._mdRegisterEntryPoint()
             .then(() => this.initialized())
@@ -131,6 +151,8 @@ class ListApp extends OnlineApp {
             return Promise.reject(new Error('no entry point handed over by the manager'));
         }
         const d = ours.getDescription();
+        this._mdEntryUuid = d.uuid;
+        this._mdEntryState = this._mdScreen.root;
         return ours.init()
             .then(() => this.rhmiApplication.mapEntryState(d.uuid, this._mdRoot))
             .then(() => ours.setAvailability('ENABLED'))

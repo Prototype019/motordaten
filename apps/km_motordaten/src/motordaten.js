@@ -19,8 +19,11 @@ const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 const { ListApp, logger } = require('./screen.js');
 const { Tasu } = require('./tasu.js');
 const D = require('./decode.js');
+const { Drawn } = require('./drawn.js');
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
+const LAYER = 'ST_OnlineApps_MotordatenLayer';
+const isTrue = (raw) => raw === true || raw === 'true' || raw === 1 || raw === '1';
 const RPM_INVALID = 65535;
 const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
@@ -52,6 +55,7 @@ class Motordaten extends ListApp {
         this._round = 0;
         this._stopped = false;
         this._subscribed = false;
+        this._drawn = null;
         this._timer = setInterval(() => this._render(), 500);
     }
 
@@ -60,6 +64,7 @@ class Motordaten extends ListApp {
         if (!this._subscribed) {
             this._subscribed = true;
             this._subscribe();
+            this._startDrawn();
         }
         this._peak = {};
         this._render();
@@ -68,6 +73,36 @@ class Motordaten extends ListApp {
     stop() {
         this._stopped = true;
         clearInterval(this._timer);
+        if (this._drawn) {
+            this._drawn.close();
+        }
+    }
+
+    /* The drawn screen's host state and its proxy button. */
+    bind(rhmi) {
+        this._layerState = rhmi.getByName(LAYER);
+        this._layerButton = rhmi.getByName('mdLayerP0');
+        if (!this._layerState) {
+            logger.warn(`${LAYER} missing: list screen only`);
+            return;
+        }
+        this._layerState.on('visible', (ev) => this._drawn && this._drawn.hostVisible(isTrue(ev && ev.visible)));
+        this._layerState.on('focus', (ev) => this._drawn && this._drawn.hostFocus(isTrue(ev && ev.focus)));
+        if (this._layerButton) {
+            this._layerButton.on('action', () => this._drawn && this._drawn.proxyPress());
+            this._layerButton.on('focus', (ev) => this._drawn && this._drawn.proxyFocus(isTrue(ev && ev.value)));
+        }
+    }
+
+    /* The renderer: its answer picks the screen the tile opens (drawn, else the list). */
+    _startDrawn() {
+        if (!this._layerState) {
+            return;
+        }
+        this._drawn = new Drawn(this.getAppId(), logger);
+        this._drawn.on('mode', (mode) => this.useEntryState(mode === 'layer' ? LAYER : 'ST_OnlineApps_Motordaten'));
+        this._drawn.on('reset', () => this.run());
+        this._drawn.connect();
     }
 
     visibilityChanged(visible) {
@@ -179,6 +214,13 @@ class Motordaten extends ListApp {
             status = `Keine Antwort der DME – Zündung an?${this._gatewayError ? ` (${this._gatewayError})` : ''}`;
         }
         this.show(status, rows);
+        if (this._drawn) {
+            this._drawn.set({ rpm, rpmPeak: this._peak.rpm, oil: pick(m.oil, this._cds.oil),
+                coolant: pick(m.coolant, this._cds.coolant), intake: m.intake, charge: m.charge,
+                boost, boostTarget: above(m.boostTargetAbs), boostPeak: this._peak.boost,
+                oilPress, oilPressPeak: this._peak.oilPress, voltage: m.voltage,
+                status, statusErr: this._gateway === 'failed' });
+        }
     }
 }
 

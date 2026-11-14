@@ -130,6 +130,72 @@
           ]
         }
       }
+    },
+    "2": {
+      "type": "state",
+      "name": "ST_OnlineApps_MotordatenLayer",
+      "components": {
+        "11": {
+          "type": "title",
+          "name": "ST_OnlineApps_MotordatenLayer_Title",
+          "properties": {
+            "Visible": {
+              "value": 1,
+              "type": "UInt"
+            }
+          },
+          "rows": [
+            {
+              "Text": {
+                "value": "SID_MD_TITLE",
+                "type": "StringId"
+              }
+            }
+          ]
+        },
+        "30": {
+          "type": "button",
+          "name": "mdLayerP0",
+          "properties": {
+            "Visible": {
+              "value": 1,
+              "type": "UInt"
+            },
+            "Focusable": {
+              "value": 3,
+              "type": "UInt"
+            }
+          },
+          "rows": [
+            {
+              "PrimaryText": {
+                "value": "SID_MD_RESET",
+                "type": "StringId"
+              },
+              "FrequencyText": {
+                "value": "",
+                "type": "Text"
+              },
+              "FrequencyVisible": {
+                "value": false,
+                "type": "Bool"
+              },
+              "IconVisible": {
+                "value": false,
+                "type": "Bool"
+              },
+              "ProgressVisible": {
+                "value": false,
+                "type": "Bool"
+              },
+              "IsPlaying": {
+                "value": false,
+                "type": "Bool"
+              }
+            }
+          ]
+        }
+      }
     }
   }
 }
