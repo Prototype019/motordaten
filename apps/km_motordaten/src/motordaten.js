@@ -109,6 +109,11 @@ class Motordaten extends ListApp {
     visibilityChanged(visible) {
         if (visible) {
             this._poll();
+            // the app in front again with the drawn screen as its entry state: the layer shows, whichever
+            // way the app was opened (its tile, another app, the HMI's history)
+            if (this._drawn && this._drawn.mode === 'layer' && this.entryState() === LAYER) {
+                this._drawn.hostVisible(true);
+            }
         }
     }
 

@@ -107,8 +107,13 @@ class Drawn extends EventEmitter {
         this.emit('mode', mode);
     }
 
+    /* The host state shown or hidden. Shown counts as focused too: coming back from another app the HMI
+     * reports the state visible again but not always its focus. */
     hostVisible(on) {
         this.hostShown = on;
+        if (on) {
+            this.hostFocused = true;
+        }
         this._update();
     }
 
@@ -119,6 +124,11 @@ class Drawn extends EventEmitter {
 
     /* The controller's focus on proxy button i. */
     proxyFocus(i, on) {
+        if (on && !this.hostFocused) {
+            // a proxy of the host state has the focus: so has the state
+            this.hostFocused = true;
+            this._update();
+        }
         const t = dash.targets(this.page, this.extra)[i];
         if (on && t) {
             this.ui.focus = t.id;

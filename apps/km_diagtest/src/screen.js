@@ -64,6 +64,11 @@ class ListApp extends OnlineApp {
             .catch((err) => logger.warn(`entry state ${name}: ${err && err.message}`));
     }
 
+    /* The state the tile opens. */
+    entryState() {
+        return this._mdEntryState;
+    }
+
     /* Subclasses: the screen came to the front (true) or left it (false). */
     visibilityChanged() {}
 

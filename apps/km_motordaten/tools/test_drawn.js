@@ -68,6 +68,18 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.hostFocus(true);
     assert.strictEqual(g.visible, true);
 
+    // back from another app: the HMI says hidden and unfocused, then only visible again
+    d.hostFocus(false);
+    d.hostVisible(false);
+    assert.strictEqual(g.visible, false);
+    d.hostVisible(true);
+    assert.strictEqual(g.visible, true, 'visible again counts as focused');
+    // a proxy getting the focus means the state has it
+    d.hostFocus(false);
+    assert.strictEqual(g.visible, false);
+    d.proxyFocus(0, true);
+    assert.strictEqual(g.visible, true, 'a focused proxy shows the layer');
+
     const actions = [];
     d.on('action', (id) => actions.push(id));
     const reset = dash.targets('main').find((t) => t.id === 'reset');
