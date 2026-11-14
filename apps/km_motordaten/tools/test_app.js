@@ -23,6 +23,7 @@ const ANSWERS = {
     '22 58 91': '62 58 91 00 07', '22 58 2F': '62 58 2F 17 E2'
 };
 let asked = 0;
+const keys = [];
 
 function tasuProxy() {
     return {
@@ -33,6 +34,7 @@ function tasuProxy() {
             asked++;
             const req = Array.from(p.udsData);
             const key = [p.serviceID].concat(req).map((x) => D.hex(x)).join(' ');
+            keys.push(key);
             let a = ANSWERS[key];
             if (p.serviceID === 0x22 && req.length > 2) {
                 // several identifiers: the DME answers those it has, one after the other, in one reply
@@ -125,6 +127,9 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     unit.rhmi.emit('applicationStackChanged', { ROOT_APP: 1 });
     await unit.wait(400);
     assert.ok(asked > before, 'questions again when shown');
+
+    // what the engine does is read only while recording
+    assert.ok(!keys.some((k) => / 58 89| 56 58| 58 13/.test(k)), 'no engine values asked without a recording');
 
     console.log(`test_app (motordaten): ok, ${asked} questions`);
     realExit(0);

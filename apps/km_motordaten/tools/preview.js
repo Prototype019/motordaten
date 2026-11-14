@@ -28,7 +28,12 @@ function sampleLog() {
         r.sample({ rpm, torque: pull ? 400 + boost * 80 : 6, power: pull ? rpm * (400 + boost * 80) / 9549 * 1.36 : 0.5,
             boost, boostTarget: pull ? Math.min(1.95, boost + 0.05) : 0, oilPress: 1.9 + rpm / 2500, oil: 25 + s / 5,
             coolant: 40 + s / 6, intake: 12, charge: pull ? 30 + (s - 300) : 25, gearbox: 22 + s / 10, exhaust: 330 + (pull ? 400 : 0),
-            voltage: 14.2 }, t0 + t);
+            voltage: 14.2,
+            // the engine under the pull: richer, rail pressure up, a little knock control at the top
+            lambda: pull ? Math.max(0.82, 1 - boost * 0.09) : 1 + 0.01 * Math.sin(s), lambdaTarget: pull ? Math.max(0.8, 1 - boost * 0.1) : 1,
+            rail: pull ? 200 + boost * 75 : 60, railTarget: pull ? 200 + boost * 76 : 60, fuelLow: pull ? 5.6 : 5.9,
+            knock: pull && (s - 300) % 10 > 7 ? 1.5 : 0, ignition: pull ? 8 - boost * 3 : 12, pedal: pull ? 100 : 4,
+            load: pull ? 60 + boost * 40 : 18 }, t0 + t);
     }
     r.stop();
     return r.name;
@@ -56,7 +61,10 @@ const EXTRA = {
     pull: { recording: { ms: 83000 } },
     logs: { logs: [summary, Object.assign({}, summary, { start: new Date(Date.UTC(2026, 10, 13, 18, 5)) })] },
     log: { log: Logbook.load(logName), channel: 'rpm' },
-    logboost: { log: Logbook.load(logName), channel: 'boost', confirmDelete: true }
+    logboost: { log: Logbook.load(logName), channel: 'boost', confirmDelete: true },
+    logmix: { log: Logbook.load(logName), channel: 'mix' },
+    logfuel: { log: Logbook.load(logName), channel: 'fuel' },
+    logload: { log: Logbook.load(logName), channel: 'load' }
 };
 const Faults = require('../src/faults.js');
 /* A scan of every unit as the G87 answered over ENET (one entry in the camera); progress stops at k. */
@@ -92,6 +100,9 @@ SCENES.faultsread = {};
 SCENES.logs = {};
 SCENES.log = {};
 SCENES.logboost = {};
+SCENES.logmix = {};
+SCENES.logfuel = {};
+SCENES.logload = {};
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
     const page = name === 'settings' ? 'settings' : name === 'logs' ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';

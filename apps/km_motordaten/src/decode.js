@@ -33,7 +33,21 @@ const DIDS = [
     { id: 0x4A2D, name: 'Saugrohrdruck', t: 'u16', k: 0.078125 / 1000, o: 0, u: 'bar', d: 2 },
     { id: 0x4436, name: 'Öldruck abs.', t: 'u16', k: 0.001, o: 0, u: 'bar', d: 2 },
     { id: 0x586F, name: 'Öldruck', t: 's16', k: 0.001, o: 0, u: 'bar', d: 2 },
-    { id: 0x5811, name: 'Ölstand über Min.', t: 'u8', k: 0.01, o: 0, u: 'l', d: 2, bad: 0xFF }
+    { id: 0x5811, name: 'Ölstand über Min.', t: 'u8', k: 0.01, o: 0, u: 'l', d: 2, bad: 0xFF },
+    // what the engine does, for the recordings (read over ENET on the G87, docs/g87-s58.md)
+    { id: 0x5889, name: 'Lambda', t: 'u16', k: 0.000244140625, o: 0, u: '', d: 3, bad: 0xFFFF },
+    { id: 0x5816, name: 'Lambda Soll', t: 'u16', k: 0.000244140625, o: 0, u: '', d: 3, bad: 0xFFFF },
+    { id: 0x5658, name: 'Raildruck', t: 'u16', k: 0.02, o: 0, u: 'bar', d: 0 },
+    { id: 0x56C1, name: 'Raildruck Soll', t: 'u16', k: 0.02, o: 0, u: 'bar', d: 0 },
+    { id: 0x58F3, name: 'Kraftstoff-Niederdruck abs.', t: 'u16', k: 0.001, o: 0, u: 'bar', d: 2 },
+    { id: 0x554C, name: 'Klopfregelung Spätverstellung', t: 's8', k: 0.375, o: 0, u: '°KW', d: 1 },
+    { id: 0x59FA, name: 'Zündwinkel', t: 's8', k: 0.75, o: 0, u: '°KW', d: 1 },
+    { id: 0x480B, name: 'Fahrpedal', t: 's16', k: 0.01220703, o: 0, u: '%', d: 0 },
+    { id: 0x5813, name: 'Last', t: 'u8', k: 0.75, o: 0, u: '%', d: 0 },
+    { id: 0x4ABC, name: 'Luftmasse', t: 'u16', k: 0.1, o: 0, u: 'kg/h', d: 0 },
+    { id: 0x4600, name: 'Drosselklappe', t: 's16', k: 0.0078125, o: 0, u: '%', d: 0 },
+    { id: 0x4521, name: 'Kraftstoffmasse', t: 'u16', k: 0.1, o: 0, u: 'kg/h', d: 1 },
+    { id: 0x4AD5, name: 'Kraftstofftemperatur', t: 'u8', k: 0.75, o: -48, u: '°C', d: 0 }
 ];
 
 /* The gearbox unit's (EGS, 0x18; ZF 8HP, SGBD GSZFBCE on the G87): transmission oil, as
@@ -71,8 +85,8 @@ const hex = (n, w) => n.toString(16).toUpperCase().padStart(w || 2, '0');
 const hexBytes = (b) => b.map((x) => hex(x)).join(' ');
 
 function num(b, t) {
-    if (t === 'u8') {
-        return b.length >= 1 ? b[0] : null;
+    if (t === 'u8' || t === 's8') {
+        return b.length >= 1 ? (t === 's8' && b[0] & 0x80 ? b[0] - 0x100 : b[0]) : null;
     }
     if (b.length < 2) {
         return null;
@@ -102,7 +116,7 @@ function obdNumber(pid, uds) {
 
 const didById = (id) => DIDS.concat(EGS_DIDS).find((d) => d.id === id);
 const pidById = (id) => OBD.find((p) => p.pid === id);
-const SIZE = { u8: 1, u16: 2, s16: 2 };
+const SIZE = { u8: 1, s8: 1, u16: 2, s16: 2 };
 
 /* A reply to one 22 request for several identifiers (62 id1 data1 id2 data2 ...): { id: value or null },
  * or null when it is not a positive reply. The reply names each identifier before its data, which is as

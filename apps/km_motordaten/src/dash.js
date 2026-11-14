@@ -111,7 +111,10 @@ const CHANNELS = [
     { id: 'rpm', label: 'Drehzahl & Leistung' },
     { id: 'boost', label: 'Ladedruck' },
     { id: 'temps', label: 'Temperaturen' },
-    { id: 'oil', label: 'Öldruck' }
+    { id: 'oil', label: 'Öldruck' },
+    { id: 'mix', label: 'Lambda & Klopfen' },
+    { id: 'fuel', label: 'Kraftstoff' },
+    { id: 'load', label: 'Last & Zündung' }
 ];
 
 const FAULT_ROWS = 8;
@@ -151,11 +154,17 @@ function logsTargets(extra) {
         const col = LOG_COLS[i < 4 ? 0 : 1];
         return { id: `open:${i}`, x: col.x, y: 196 + (i % 4) * 112, w: col.w, h: 100, label: dateText(r.start) };
     });
+    if (logs.length) {
+        const sure = extra && extra.confirmDeleteAll;
+        const w = sure ? 460 : 340;
+        out.push({ id: sure ? 'deleteAll!' : 'deleteAll', x: W - PAD - w, y: 64, w, h: 84,
+            label: sure ? 'Wirklich alle löschen' : 'Alle löschen', danger: sure });
+    }
     return out;
 }
 
 function logTargets(extra) {
-    const out = CHANNELS.map((c, i) => ({ id: `chan:${c.id}`, x: X0 + i * 420, y: 150, w: 396, h: 72, label: c.label }));
+    const out = CHANNELS.map((c, i) => ({ id: `chan:${c.id}`, x: X0 + i * 360, y: 150, w: 340, h: 72, label: c.label }));
     const confirm = extra && extra.confirmDelete;
     out.push({ id: confirm ? 'delete!' : 'delete', x: W - PAD - 300 - 24 - (confirm ? 360 : 300), y: 660,
         w: confirm ? 360 : 300, h: BH, label: confirm ? 'Wirklich löschen' : 'Löschen', danger: confirm });
@@ -500,6 +509,7 @@ function logsPage(rec, ui, extra) {
     rec.text('Aufzeichnungen', X0, 120, 56, C.text, { font: 'label' });
     rec.text(logs.length ? `${logs.length} gespeichert, die neueste zuerst. Es bleiben die letzten 20.` :
         'Noch keine Aufzeichnung. Starte eine mit Aufnehmen im Reiter Live.', X0, 166, 30, C.dim, { font: 'label' });
+    logsTargets(extra).filter((t) => t.id.indexOf('deleteAll') === 0).forEach((t) => button(rec, t, ui));
     logsTargets(extra).filter((t) => t.id.indexOf('open:') === 0).forEach((t, i) => {
         const r = logs[i];
         if (ui && ui.focus === t.id) {
@@ -542,7 +552,14 @@ const GROUPS = {
         curves: [['oil', C.text, 'left', 'Öl'], ['coolant', C.ice, 'left', 'Kühlmittel'], ['charge', C.cold, 'left', 'Ladeluft'],
             ['gearbox', C.dim, 'left', 'Getriebe']] },
     oil: { axes: { left: { unit: 'bar', d: 1, floor: 2, color: C.text }, right: { unit: 'U/min', d: 0, floor: 8000, color: C.dim } },
-        curves: [['oilPress', C.text, 'left', 'Öldruck'], ['rpm', C.dim, 'right', 'Drehzahl']] }
+        curves: [['oilPress', C.text, 'left', 'Öldruck'], ['rpm', C.dim, 'right', 'Drehzahl']] },
+    // what the engine does: the mixture (under 1 rich) and the knock control taking ignition back
+    mix: { axes: { left: { unit: 'Lambda', bare: true, d: 2, floor: 1.3, from: 0.7, to: 1.3, color: C.text }, right: { unit: '°KW', d: 0, floor: 4, color: C.limit } },
+        curves: [['lambda', C.text, 'left', 'Lambda', 'min'], ['lambdaTarget', C.dim, 'left', 'Soll', 'min'], ['knock', C.limit, 'right', 'Klopfen spät']] },
+    fuel: { axes: { left: { unit: 'bar', d: 0, floor: 200, color: C.text }, right: { unit: 'bar', d: 1, floor: 8, color: C.cold } },
+        curves: [['rail', C.text, 'left', 'Raildruck'], ['railTarget', C.dim, 'left', 'Soll'], ['fuelLow', C.cold, 'right', 'Niederdruck (Pumpe)', 'min']] },
+    load: { axes: { left: { unit: '%', d: 0, floor: 100, color: C.text }, right: { unit: '°KW', d: 0, floor: 20, color: C.ice } },
+        curves: [['pedal', C.dim, 'left', 'Pedal'], ['load', C.text, 'left', 'Last'], ['ignition', C.ice, 'right', 'Zündwinkel']] }
 };
 
 /* The smallest round number (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 x 10^n) at least v: its quarters stay round too. */
@@ -560,6 +577,13 @@ function niceUp(v) {
 }
 
 const axisText = (v, d) => (d ? de(v, d) : thousands(v));
+
+/* The lowest value of an axis's curves in a recording (Infinity without one). */
+function lowest(group, name, log) {
+    let m = Infinity;
+    group.curves.filter((c) => c[2] === name).forEach((c) => (log.series[c[0]] || []).forEach((y) => { if (isNum(y) && y < m) m = y; }));
+    return m;
+}
 
 function logPage(rec, ui, extra) {
     const log = extra && extra.log;
@@ -587,8 +611,10 @@ function logPage(rec, ui, extra) {
         group.curves.filter((c) => c[2] === name).forEach((c) => (log.series[c[0]] || []).forEach((y) => {
             if (isNum(y)) { hi = Math.max(hi, y); lo = Math.min(lo, y); }
         }));
-        const top = niceUp(Math.max(hi, ax.floor));
-        const bottom = lo < 0 ? -niceUp(-lo) : 0;
+        // an axis with a 'to' (lambda) ends there while every value is below it: 1.0 on the middle line
+        const top = isNum(ax.to) && hi <= ax.to ? ax.to : niceUp(Math.max(hi, ax.floor));
+        // an axis with a 'from' (lambda) starts there while every value is above it
+        const bottom = lo < 0 ? -niceUp(-lo) : isNum(ax.from) && lowest(group, name, log) >= ax.from ? ax.from : 0;
         scale[name] = { lo: bottom, hi: top };
     });
     const yOf = (name, v) => {
@@ -639,8 +665,9 @@ function logPage(rec, ui, extra) {
         });
         flush();
         const ax = group.axes[c[2]];
-        const peak = ys.reduce((m, y) => (isNum(y) && (m === null || y > m) ? y : m), null);
-        const text = `${c[3]}  max ${peak === null ? '–' : axisText(peak, ax.d === 0 ? 0 : Math.max(ax.d, 1))} ${ax.unit}`;
+        const low = c[4] === 'min';
+        const peak = ys.reduce((m, y) => (isNum(y) && (m === null || (low ? y < m : y > m)) ? y : m), null);
+        const text = `${c[3]}  ${low ? 'min' : 'max'} ${peak === null ? '–' : axisText(peak, ax.d === 0 ? 0 : Math.max(ax.d, 1))}${ax.bare ? '' : ` ${ax.unit}`}`;
         rec.fillRect(lx, 666, 28, 6, c[1]);
         lx += 40 + rec.text(text, lx + 40, 680, 28, C.text, { font: 'scale' }) + 56;
     });

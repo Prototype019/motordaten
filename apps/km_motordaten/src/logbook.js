@@ -17,7 +17,10 @@ const path = require('path');
 const clock = require('./clock.js');
 
 const FIELDS = Object.freeze(['rpm', 'torque', 'power', 'boost', 'boostTarget', 'oilPress', 'oil', 'coolant', 'intake',
-    'charge', 'gearbox', 'exhaust', 'voltage']);
+    'charge', 'gearbox', 'exhaust', 'voltage',
+    // what the engine does (only recorded, not shown live)
+    'lambda', 'lambdaTarget', 'rail', 'railTarget', 'fuelLow', 'knock', 'ignition', 'pedal', 'load', 'airMass',
+    'throttle', 'fuelFlow', 'fuelTemp']);
 const SAMPLE_MS = 100;
 const FLUSH_MS = 1000;
 const MAX_MS = 30 * 60 * 1000;
@@ -120,6 +123,11 @@ function remove(name) {
     try { fs.unlinkSync(path.join(dir(), name)); } catch (e) { /* gone */ }
 }
 
+/* Every recording but keep (the one running), e.g. the logbook emptied. */
+function removeAll(keep) {
+    list().filter((r) => r.name !== keep).forEach((r) => remove(r.name));
+}
+
 function parse(name) {
     if (!startOf(name)) {
         return null;
@@ -130,8 +138,14 @@ function parse(name) {
     } catch (e) {
         return null;
     }
-    const rows = text.split('\n').slice(1).filter(Boolean).map((l) => l.split(',').map((c) => (c === '' ? null : Number(c))));
-    return { name, start: startOf(name), rows };
+    const lines = text.split('\n');
+    // the columns by the header, so recordings made with fewer fields still read
+    const head = (lines[0] || '').split(',');
+    const col = {};
+    FIELDS.forEach((f) => { const i = head.indexOf(f); col[f] = i > 0 ? i : -1; });
+    const rows = lines.slice(1).filter(Boolean).map((l) => l.split(',').map((c) => (c === '' ? null : Number(c))));
+    const at = (r, f) => (col[f] > 0 && r[col[f]] !== undefined ? r[col[f]] : null);
+    return { name, start: startOf(name), rows, at };
 }
 
 /* A recording's duration (ms), samples, peaks (each field's maximum) and spark (engine speed, thinned), or null. */
@@ -141,15 +155,15 @@ function summary(name) {
         return null;
     }
     const peak = {};
-    FIELDS.forEach((f, i) => {
+    FIELDS.forEach((f) => {
         let m = null;
-        p.rows.forEach((r) => { if (r[i + 1] !== null && (m === null || r[i + 1] > m)) m = r[i + 1]; });
+        p.rows.forEach((r) => { const v = p.at(r, f); if (v !== null && (m === null || v > m)) m = v; });
         peak[f] = m;
     });
     const last = p.rows.length ? p.rows[p.rows.length - 1][0] : 0;
     // the engine speed thinned to SPARK points, for the list
     const step = Math.max(1, Math.ceil(p.rows.length / SPARK));
-    const spark = p.rows.filter((r, i) => i % step === 0).map((r) => r[1]);
+    const spark = p.rows.filter((r, i) => i % step === 0).map((r) => p.at(r, 'rpm'));
     return { name, start: p.start, duration: last, samples: p.rows.length, peak, spark };
 }
 
@@ -163,8 +177,8 @@ function load(name) {
     const step = Math.max(1, Math.ceil(p.rows.length / POINTS));
     const kept = p.rows.filter((r, i) => i % step === 0);
     const series = {};
-    FIELDS.forEach((f, i) => { series[f] = kept.map((r) => r[i + 1]); });
+    FIELDS.forEach((f) => { series[f] = kept.map((r) => p.at(r, f)); });
     return { name, start: p.start, duration: p.rows.length ? p.rows[p.rows.length - 1][0] : 0, t: kept.map((r) => r[0]), series };
 }
 
-module.exports = { Recording, FIELDS, list, summary, load, remove, prune, SAMPLE_MS, MAX_MS, KEEP };
+module.exports = { Recording, FIELDS, list, summary, load, remove, removeAll, prune, SAMPLE_MS, MAX_MS, KEEP };

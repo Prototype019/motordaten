@@ -80,6 +80,13 @@ const RPM_FRESH_MS = 400;      // the DME's engine speed counts this long; the c
 /* One DME request each round: [key, DID], at most 8. */
 const FAST = [['rpm', 0x4807], ['torque', 0x5891], ['boostAbs', 0x4205], ['boostTargetAbs', 0x4AB0],
     ['oilPressAbs', 0x4436], ['oil', 0x4402], ['coolant', 0x4300], ['charge', 0x59D4]];
+/* What the engine does, read only while recording (for the logs, not shown live): every other round the
+ * first, every ENGINE2_EVERY rounds the second (DIDs read over ENET on the G87, docs/g87-s58.md). */
+const ENGINE = [['lambda', 0x5889], ['lambdaTarget', 0x5816], ['rail', 0x5658], ['railTarget', 0x56C1],
+    ['fuelLowAbs', 0x58F3], ['knock', 0x554C], ['ignition', 0x59FA], ['pedal', 0x480B]];
+const ENGINE2 = [['load', 0x5813], ['airMass', 0x4ABC], ['throttle', 0x4600], ['fuelFlow', 0x4521], ['fuelTemp', 0x4AD5]];
+const ENGINE2_EVERY = 6;
+
 /* One DME request every SLOW_EVERY rounds: slow to change. */
 const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F]];
 const PS_PER_KW = 1.35962;
@@ -231,6 +238,7 @@ class Motordaten extends ListApp {
         const d = this._drawn;
         if (id.indexOf('tab:') === 0) {
             const page = id.slice(4);
+            d.setExtra({ confirmDeleteAll: false });
             if (page === 'logs') {
                 this._showLogs();
             }
@@ -275,6 +283,13 @@ class Motordaten extends ListApp {
             this._showLogs();
             d.setExtra({ log: null, logName: null, confirmDelete: false });
             d.setPage('logs');
+        } else if (id === 'deleteAll') {
+            d.setExtra({ confirmDeleteAll: true });
+        } else if (id === 'deleteAll!') {
+            Logbook.removeAll(this._recording && this._recording.name);
+            this._summaries.clear();
+            d.setExtra({ confirmDeleteAll: false });
+            this._showLogs();
         } else if (id === 'back') {
             d.setExtra({ confirmDelete: false });
             this._showLogs();
@@ -451,6 +466,8 @@ class Motordaten extends ListApp {
         }
         try {
             this._recording = new Logbook.Recording();
+            // the engine's values are read only while recording: none left from an earlier one
+            ENGINE.concat(ENGINE2).forEach((kv) => { this._dme[kv[0]] = null; this._at[kv[0]] = 0; });
             logger.info(`recording ${this._recording.name}`);
         } catch (e) {
             logger.warn(`recording not started: ${e && e.message}`);
@@ -626,7 +643,11 @@ class Motordaten extends ListApp {
         const slow = this._round % SLOW_EVERY === 0 || !isNum(this._dme.ambient) || !isNum(this._dme.gearbox);
         this._round++;
         const busyBefore = this._tasu.busy;
+        const rec = !!this._recording;
+        const round = this._round;
         return this._read(FAST)
+            .then(() => (rec && round % 2 === 1 ? this._read(ENGINE) : undefined))
+            .then(() => (rec && round % ENGINE2_EVERY === 3 ? this._read(ENGINE2) : undefined))
             .then(() => (slow ? this._read(SLOW)
                 .then(() => this._tasu.request(0x22, [0x60, 0x00], undefined, EGS))
                 .then((u) => this._keep('gearbox', D.didNumber(D.didById(0x6000), u)), () => this._keep('gearbox', null))
@@ -706,7 +727,11 @@ class Motordaten extends ListApp {
         const v = {
             rpm: this._rpm(), oil: pick(m.oil, this._cds.oil), coolant: pick(m.coolant, this._cds.coolant),
             intake: m.intake, charge: m.charge, boost: above(m.boostAbs), boostTarget: above(m.boostTargetAbs),
-            oilPress: above(m.oilPressAbs), gearbox: m.gearbox, exhaust: m.exhaust, voltage: m.voltage
+            oilPress: above(m.oilPressAbs), gearbox: m.gearbox, exhaust: m.exhaust, voltage: m.voltage,
+            // only while recording (ENGINE): for the logs
+            lambda: m.lambda, lambdaTarget: m.lambdaTarget, rail: m.rail, railTarget: m.railTarget,
+            fuelLow: above(m.fuelLowAbs), knock: m.knock, ignition: m.ignition, pedal: m.pedal, load: m.load,
+            airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp
         };
         // on the overrun the DME reports the engine's drag as negative torque: shown as 0
         v.torque = isNum(m.torque) ? Math.max(0, m.torque) : null;
