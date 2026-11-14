@@ -689,7 +689,7 @@ function mhdPage(rec, cfg, ui) {
     rec.text('Max Cooling-Knopf auf der Live-Seite', MHD_SWITCH.x + MHD_SWITCH.w + 56, MHD_SWITCH.y + 64, 44, on ? C.text : C.dim, { font: 'label' });
     const lines = [
         'MHD lässt Wasserpumpe und Lüfter auf voller Leistung laufen, etwa vor oder nach schnellen Runden.',
-        'Einschalten nur bei laufendem Motor und mit Rückfrage, Ausschalten jederzeit.',
+        'Einschalten nur bei laufendem Motor, Ausschalten jederzeit, beides mit einem Tippen.',
         'Die App sendet dafür genau einen Befehl an die Motorsteuerung (2F 03 01 an, 2F 03 00 aus).',
         'Ob es aktiv ist, meldet MHD nicht zurück: die App zeigt den zuletzt bestätigten Befehl.'
     ];

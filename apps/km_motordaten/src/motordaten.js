@@ -656,7 +656,7 @@ class Motordaten extends ListApp {
         this._coolingTimer = setTimeout(() => { this._cooling = Object.assign({}, this._cooling, { note: null }); this._coolingShown(); }, 3000);
     }
 
-    /* A press: on, it goes off at once; off, On asks first, and only with the engine running. */
+    /* A press: on, it goes off; off, it goes on (only with the engine running). */
     _coolingPressed() {
         const c = this._cooling || {};
         if (!this._limits.mhdCoolingOn || c.busy) {
@@ -671,11 +671,7 @@ class Motordaten extends ListApp {
             this._coolingNote('Erst Motor starten');
             return;
         }
-        clearTimeout(this._coolingTimer);
-        this._cooling = Object.assign({}, c, { confirm: true, note: null });
-        this._coolingShown();
-        // unanswered, the question goes away
-        this._coolingTimer = setTimeout(() => { this._cooling = Object.assign({}, this._cooling, { confirm: false }); this._coolingShown(); }, 5000);
+        this._sendCooling(true);
     }
 
     _sendCooling(on) {
