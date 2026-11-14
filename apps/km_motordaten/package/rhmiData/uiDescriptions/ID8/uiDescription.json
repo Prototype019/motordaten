@@ -45,9 +45,9 @@
             }
           ]
         },
-        "21": {
+        "24": {
           "type": "button",
-          "name": "mdRpm",
+          "name": "mdList",
           "properties": {
             "Visible": {
               "value": 1,
@@ -61,8 +61,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "SID_MD_RPM",
-                "type": "StringId"
+                "value": "",
+                "type": "Text"
               },
               "FrequencyText": {
                 "value": "",
@@ -87,9 +87,9 @@
             }
           ]
         },
-        "22": {
+        "25": {
           "type": "button",
-          "name": "mdOil",
+          "name": "mdRun",
           "properties": {
             "Visible": {
               "value": 1,
@@ -103,7 +103,7 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "SID_MD_OIL",
+                "value": "SID_MD_RESET",
                 "type": "StringId"
               },
               "FrequencyText": {
@@ -111,49 +111,7 @@
                 "type": "Text"
               },
               "FrequencyVisible": {
-                "value": true,
-                "type": "Bool"
-              },
-              "IconVisible": {
                 "value": false,
-                "type": "Bool"
-              },
-              "ProgressVisible": {
-                "value": false,
-                "type": "Bool"
-              },
-              "IsPlaying": {
-                "value": false,
-                "type": "Bool"
-              }
-            }
-          ]
-        },
-        "23": {
-          "type": "button",
-          "name": "mdCoolant",
-          "properties": {
-            "Visible": {
-              "value": 1,
-              "type": "UInt"
-            },
-            "Focusable": {
-              "value": 3,
-              "type": "UInt"
-            }
-          },
-          "rows": [
-            {
-              "PrimaryText": {
-                "value": "SID_MD_COOLANT",
-                "type": "StringId"
-              },
-              "FrequencyText": {
-                "value": "",
-                "type": "Text"
-              },
-              "FrequencyVisible": {
-                "value": true,
                 "type": "Bool"
               },
               "IconVisible": {

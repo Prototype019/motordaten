@@ -1,7 +1,7 @@
 'use strict';
 /* Motordaten: package and screen description (tools/gen.js). */
 module.exports = {
-    description: 'Motordaten: Drehzahl und Temperaturen',
+    description: 'Motordaten: Temperaturen, Ladedruck, Öldruck und Drehzahl der DME live',
     loggingId: 'KMMD',
     icon: 'motordaten_icon.png',
     titleSid: 'SID_MD_TITLE',
@@ -14,20 +14,22 @@ module.exports = {
     texts: {
         SID_TEMP_EMPTY: '',
         SID_MD_TITLE: 'Motordaten',
-        SID_MD_RPM: 'Drehzahl',
-        SID_MD_OIL: 'Öltemperatur',
-        SID_MD_COOLANT: 'Kühlmitteltemperatur'
+        SID_MD_RESET: 'Spitzenwerte zurücksetzen'
     },
     states: [{
         id: 1, name: 'ST_OnlineApps_Motordaten', titleId: 10, title: 'SID_MD_TITLE',
         components: [
             { id: 20, kind: 'label', name: 'mdStatus', text: '' },
-            { id: 21, kind: 'row', name: 'mdRpm', text: 'SID_MD_RPM' },
-            { id: 22, kind: 'row', name: 'mdOil', text: 'SID_MD_OIL' },
-            { id: 23, kind: 'row', name: 'mdCoolant', text: 'SID_MD_COOLANT' }
+            { id: 24, kind: 'row', name: 'mdList', text: '' },
+            { id: 25, kind: 'button', name: 'mdRun', text: 'SID_MD_RESET' }
         ]
     }],
     proxies: {
-        'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineSpeed2: 's', statusEngineTemperature: 's' } }
+        'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineSpeed2: 's', statusEngineTemperature: 's' } },
+        'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
+            instances: 'SystemFunctionsInternalTasuInst1',
+            methods: ['sendTasuRequest'],
+            broadcasts: ['sendTasuResponse']
+        }
     }
 };

@@ -4,9 +4,9 @@
  * apps/<id>/spec.js: package.json, npm-shrinkwrap.json, manifest.json (the
  * platform proxies of tools/base-manifest.json plus the spec's own),
  * permissions.json, config/base.json, rhmiData/application.json, the iDrive 8
- * UI (uiDescriptions/ID8) and the RHMI text files. It also copies
- * shared/screen.js to apps/<id>/src/screen.js for the apps that list it as a
- * module. Run after every change:
+ * UI (uiDescriptions/ID8) and the RHMI text files. Every module an app lists
+ * as src/<name> that shared/<name> has is copied from there (the list screen,
+ * the diagnostic link, the value tables). Run after every change:
  *
  *   node tools/gen.js            every app
  *   node tools/gen.js <id>       one app
@@ -141,9 +141,12 @@ function write(id) {
     fs.writeFileSync(path.join(ui, 'application.xml'), xml(spec));
     fs.writeFileSync(path.join(ui, 'uiDescription.json'), json(uiDescription(spec)));
     LANGS.forEach((l) => fs.writeFileSync(path.join(texts, `${l}.json`), json(spec.texts)));
-    if (app.modules.indexOf('src/screen.js') >= 0) {
-        fs.copyFileSync(path.join(REPO, 'shared', 'screen.js'), path.join(dir, 'src', 'screen.js'));
-    }
+    app.modules.forEach((m) => {
+        const shared = path.join(REPO, 'shared', path.basename(m));
+        if (m.indexOf('src/') === 0 && fs.existsSync(shared)) {
+            fs.copyFileSync(shared, path.join(dir, m));
+        }
+    });
     return `${app.id} ${app.version}: ${spec.states.length} state(s)`;
 }
 

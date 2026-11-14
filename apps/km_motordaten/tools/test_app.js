@@ -1,100 +1,111 @@
 'use strict';
 /**
- * Runs src/motordaten.js against a fake oap-sdk: start, entry point, CDS
- * values, and checks what the screen gets written.
+ * Runs src/motordaten.js on a fake head unit whose DME answers with the raw
+ * replies read from the G87 M2 over ENET (docs/g87-s58.md, engine off), and
+ * whose CDS signals give the engine speed; then with boost and a peak, the
+ * peak reset, and hiding (no more questions) and showing again.
  *
  *   node tools/test_app.js
  */
 const assert = require('assert');
-const path = require('path');
-const Module = require('module');
 const EventEmitter = require('events');
-const spec = require('../spec.js');
+const D = require('../src/decode.js');
 
-const writes = {};
-const props = {};
-const subs = {};
-let opened = null;
+const events = new EventEmitter();
+const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 0, 0].concat(uds)), errorCode: 'NO_ERROR' });
+const bytes = (s) => s.split(' ').map((x) => parseInt(x, 16));
 
-const names = new Set();
-spec.states.forEach((s) => { names.add(s.name); s.components.forEach((c) => names.add(c.name)); });
+/* Measured on the car (engine off). */
+const ANSWERS = {
+    '22 44 02': '62 44 02 00 66', '22 43 00': '62 43 00 0C 4C', '22 58 0F': '62 58 0F 4B',
+    '22 59 D4': '62 59 D4 2E AF', '22 42 05': '62 42 05 30 B7', '22 4A B0': '62 4A B0 61 80',
+    '22 42 01': '62 42 01 61 84', '22 44 36': '62 44 36 03 ED', '01 42': '41 42 35 FC'
+};
+let asked = 0;
 
-function component(name) {
+function tasuProxy() {
     return {
-        setValue: (row, cell, value) => { writes[`${name}.${cell}`] = value; return Promise.resolve(); },
-        setProperty: (p, v) => { props[`${name}.${p}`] = v; return Promise.resolve(); }
+        init: () => Promise.resolve(),
+        waitUntilAvailable: () => Promise.resolve(),
+        sendTasuResponse: { subscribe: (cb) => { events.on('r', cb); return Promise.resolve(); } },
+        sendTasuRequest: (p) => {
+            asked++;
+            const key = [p.serviceID].concat(Array.from(p.udsData)).map((x) => D.hex(x)).join(' ');
+            const a = ANSWERS[key];
+            if (a) {
+                setTimeout(() => events.emit('r', frame(0x12, bytes(a))), 2);
+            }
+            return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });
+        }
     };
 }
 
-const rhmi = Object.assign(new EventEmitter(), {
-    getByName: (n) => (names.has(n) ? component(n) : null),
-    mapEntryState: () => Promise.resolve(),
-    openEntryState: (uuid) => { opened = uuid; return Promise.resolve(); }
-});
-
-const appJson = require('../package/rhmiData/application.json');
-const UUID = appJson.application.entryPoints[0].uuid;
-
-class OnlineApp extends EventEmitter {
-    constructor() {
-        super();
-        this.rhmiApplication = rhmi;
-        this.appDescription = appJson;
-    }
-    start() { setImmediate(() => this.emit('initialized')); return Promise.resolve(); }
-    initialized() { return Promise.resolve(); }
-    getAppId() { return 'km_motordaten'; }
-    getEntryPoints() {
-        return [{ getDescription: () => ({ uuid: UUID, name: 'km_motordaten' }), init: () => Promise.resolve(),
-            setAvailability: () => Promise.resolve() }];
-    }
-    getLastExecutedEntryPointUuid() { return UUID; }
-    destroyBundles() { return Promise.resolve(); }
+const cds = {};
+function cdsProxy() {
+    const field = (n) => ({ subscribe: (cb) => { cds[n] = cb; return Promise.resolve(); } });
+    return { init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
+        statusEngineSpeed2: field('rpm'), statusEngineTemperature: field('temps') };
 }
 
-const field = (n) => ({ subscribe: (cb) => { subs[n] = cb; return Promise.resolve(); } });
-const fakes = {
-    'oap-sdk/src/core/OnlineApp.js': OnlineApp,
-    'oap-sdk/src/logging/logging': { getSDKLogger: () => ({ info() {}, warn() {}, error: (m) => console.error(m) }) },
-    'oap-sdk/src/someip/someipBuilders': {
-        buildTypedProxy: (iface) => {
-            assert.strictEqual(iface, 'de.bmw.infotainment.vehicle.CDS');
-            return Promise.resolve({ init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
-                statusEngineSpeed2: field('rpm'), statusEngineTemperature: field('temps') });
-        }
-    }
-};
-const load = Module._load;
-Module._load = function (req, ...rest) {
-    return Object.prototype.hasOwnProperty.call(fakes, req) ? fakes[req] : load.call(this, req, ...rest);
-};
-
+const unit = require('../../../tools/fake_unit.js').install(require('../spec.js'),
+    require('../package/rhmiData/application.json'), {
+        'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasuProxy,
+        'de.bmw.infotainment.vehicle.CDS': cdsProxy
+    });
 const realExit = process.exit;
 process.exit = () => {};
-require(path.join(__dirname, '..', 'src', 'motordaten.js'));
+const { Tasu } = require('../src/tasu.js');
+const orig = Tasu.prototype.request;
+Tasu.prototype.request = function (sid, data) { return orig.call(this, sid, data, 100); };
+require('../src/motordaten.js');
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
+
 (async () => {
-    await wait(50);
-    assert.strictEqual(opened, UUID, 'entry state opened');
-    assert.ok(subs.rpm && subs.temps, 'CDS subscribed');
-    assert.strictEqual(writes['mdStatus.Text'], 'Verbunden – Zündung an für Werte');
-    assert.strictEqual(writes['mdRpm.FrequencyText'], '–');
+    await unit.wait(1500);
+    assert.strictEqual(unit.opened, unit.uuid, 'entry state opened');
+    assert.ok(cds.rpm, 'CDS subscribed');
+    cds.rpm({ actualValueRPMEngineCrankshaft: 864 * 4 });
+    await unit.wait(700);
+    assert.strictEqual(get('Drehzahl'), '864 U/min · max 864');
+    assert.strictEqual(get('Öltemperatur'), '29 °C');
+    assert.strictEqual(get('Kühlmittel'), '42 °C');
+    assert.strictEqual(get('Ansaugluft'), '8 °C');
+    assert.strictEqual(get('Ladeluft'), '7 °C');
+    assert.strictEqual(get('Ladedruck'), '-0.00 bar · max -0.00');
+    assert.strictEqual(get('Öldruck'), '0.03 bar · max 0.03');
+    assert.strictEqual(get('Bordspannung'), '13.8 V');
+    assert.strictEqual(unit.props['mdStatus.Visible'], 0, 'no status while answers come');
+    assert.deepStrictEqual(unit.status.slice(0, 2), ['registerActive', 'registerHmiVisible']);
 
-    subs.rpm({ actualValueRPMEngineCrankshaft: 3500 * 4 });
-    subs.temps({ temperatureEngineOilDrive: 98 + 48, temperatureEngineDrive: 90 + 48 });
-    await wait(300);
-    assert.strictEqual(writes['mdRpm.FrequencyText'], '3500 U/min');
-    assert.strictEqual(writes['mdOil.FrequencyText'], '98 °C');
-    assert.strictEqual(writes['mdCoolant.FrequencyText'], '90 °C');
-    assert.strictEqual(props['mdStatus.Visible'], 0, 'status hidden once data flows');
+    // boost under load: 2.10 bar above ambient, then back; the peak stays
+    ANSWERS['22 42 05'] = `62 42 05 ${D.hex(Math.round(3075 / 0.078125) >> 8)} ${D.hex(Math.round(3075 / 0.078125) & 0xFF)}`;
+    await unit.wait(500);
+    assert.ok(/^2\.10 bar · max 2\.10$/.test(get('Ladedruck')), get('Ladedruck'));
+    ANSWERS['22 42 05'] = '62 42 05 30 B7';
+    cds.rpm({ actualValueRPMEngineCrankshaft: 6500 * 4 });
+    await unit.wait(500);
+    cds.rpm({ actualValueRPMEngineCrankshaft: 900 * 4 });
+    await unit.wait(500);
+    assert.ok(/^-0\.00 bar · max 2\.10$/.test(get('Ladedruck')), get('Ladedruck'));
+    assert.strictEqual(get('Drehzahl'), '900 U/min · max 6500');
 
-    subs.rpm({ actualValueRPMEngineCrankshaft: 65535 });
-    subs.temps({ temperatureEngineOilDrive: 255, temperatureEngineDrive: 255 });
-    await wait(300);
-    assert.strictEqual(writes['mdRpm.FrequencyText'], '–', 'invalid rpm');
-    assert.strictEqual(writes['mdOil.FrequencyText'], '–', 'invalid temp');
+    // the button resets the peaks
+    unit.press('mdRun');
+    await unit.wait(600);
+    assert.strictEqual(get('Drehzahl'), '900 U/min · max 900');
 
-    console.log('test_app: ok');
+    // hidden: no more questions to the DME; shown again: they go on
+    unit.rhmi.emit('applicationStackChanged', { SOME_OTHER_APP: 1 });
+    await unit.wait(400);
+    const before = asked;
+    await unit.wait(600);
+    assert.strictEqual(asked, before, 'no questions while hidden');
+    assert.deepStrictEqual(unit.status.slice(-2), ['unregisterHmiVisible', 'registerInactive']);
+    unit.rhmi.emit('applicationStackChanged', { ROOT_APP: 1 });
+    await unit.wait(400);
+    assert.ok(asked > before, 'questions again when shown');
+
+    console.log(`test_app (motordaten): ok, ${asked} questions`);
     realExit(0);
-})().catch((e) => { console.error(e); realExit(1); });
+})().catch((e) => { console.error(e, unit.log.slice(-8), unit.rows('mdList')); realExit(1); });

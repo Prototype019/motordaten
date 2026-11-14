@@ -45,6 +45,13 @@ class ListApp extends OnlineApp {
     /* Subclasses: called once before the process ends. */
     stop() {}
 
+    /* Subclasses: the screen came to the front (true) or left it (false). */
+    visibilityChanged() {}
+
+    isVisible() {
+        return this._mdVisible;
+    }
+
     show(status, rows) {
         this._mdStatus = status;
         if (rows) {
@@ -151,6 +158,7 @@ class ListApp extends OnlineApp {
             this._mdWritten = {};
             this._mdRender();
         }
+        try { this.visibilityChanged(visible); } catch (e) { logger.warn(`visibilityChanged: ${e && e.message}`); }
         if (!this._mdReady) {
             return;
         }

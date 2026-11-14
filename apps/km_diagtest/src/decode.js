@@ -1,12 +1,13 @@
 'use strict';
 /**
- * What the Diagnose-Test asks the engine unit (DME) and how its answers read.
+ * What the apps ask the engine unit (DME) and how its answers read.
  *
  * DIDS: BMW ReadDataByIdentifier (22) values of the G-series DME8FF_R
  * (B58 / B48 / B38) with their scaling, from cauliflowermossgrape/idrive7-apps
  * (MIT, apps/live_data/builtin/DME8FF_R.json, made from the public EdiabasX
- * SGBD reference). Whether the S58's DME answers the same identifiers is what
- * the test finds out. value = raw * k + o, big-endian.
+ * SGBD reference). The G87 M2's S58 DME is a DME8FF_R too (SGBD index
+ * 0F26E8) and answers all of them (docs/g87-s58.md). value = raw * k + o,
+ * big-endian; a raw value equal to bad is no value.
  *
  * OBD: SAE J1979 service 01 PIDs with their standard formulas.
  *
@@ -70,6 +71,26 @@ function num(b, t) {
 
 const show = (v, u, d) => `${v.toFixed(d)} ${u}`;
 
+/* The value of a positive 22 reply for did (in its unit), or null. */
+function didNumber(did, uds) {
+    if (!uds || uds[0] !== 0x62 || uds[1] !== (did.id >> 8) || uds[2] !== (did.id & 0xFF)) {
+        return null;
+    }
+    const raw = num(uds.slice(3), did.t);
+    return raw === null || raw === did.bad ? null : raw * did.k + did.o;
+}
+
+/* The value of a positive 01 reply for pid, or null. */
+function obdNumber(pid, uds) {
+    if (!uds || uds[0] !== 0x41 || uds[1] !== pid.pid || uds.length < 2 + pid.n) {
+        return null;
+    }
+    return pid.f(uds.slice(2));
+}
+
+const didById = (id) => DIDS.find((d) => d.id === id);
+const pidById = (id) => OBD.find((p) => p.pid === id);
+
 /* A 22 reply for did: "<value>", "nein: <nrc>", or null when it is not ours. */
 function didValue(did, uds) {
     if (uds[0] === 0x7F && uds[1] === 0x22) {
@@ -120,4 +141,5 @@ function dmeType(uds) {
     return { index, type: DME_INDEX[index] || null };
 }
 
-module.exports = { DIDS, OBD, DME_INDEX, NRC, hex, hexBytes, didValue, obdValue, supported, dmeType };
+module.exports = { DIDS, OBD, DME_INDEX, NRC, hex, hexBytes, didValue, obdValue, didNumber, obdNumber, didById, pidById,
+    supported, dmeType };

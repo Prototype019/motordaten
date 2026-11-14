@@ -48,6 +48,7 @@ function install(spec, appJson, proxies) {
         mapEntryState: () => Promise.resolve(),
         openEntryState: (uuid) => { unit.opened = uuid; return Promise.resolve(); }
     });
+    unit.rhmi = rhmi;
     const UUID = appJson.application.entryPoints[0].uuid;
     unit.uuid = UUID;
 

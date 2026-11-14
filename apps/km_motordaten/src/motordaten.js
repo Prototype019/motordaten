@@ -1,219 +1,184 @@
 'use strict';
 /**
- * Motordaten: engine speed, oil and coolant temperature on one iDrive 8
- * widget screen (tools/gen.js). Values come from the CDS interface over
- * SOME/IP; the status line at the top shows what the app is waiting for or
- * what failed, so a test in the car needs no log.
+ * Motordaten: the engine's live values on one iDrive 8 screen.
+ *
+ * - From the DME (address 0x12) through the head unit's diagnostic gateway,
+ *   read-only (src/tasu.js, identifiers of src/decode.js; the G87's S58 DME
+ *   is a DME8FF_R, docs/g87-s58.md): oil and coolant temperature, intake and
+ *   charge air temperature, boost and boost target, oil pressure; ambient
+ *   pressure and the supply voltage less often. Boost and oil pressure show
+ *   above ambient. Asked one after another, only while the screen is in
+ *   front.
+ * - From the car's own signals (CDS): engine speed, and oil and coolant
+ *   temperature while the DME does not answer.
+ *
+ * Engine speed, boost and oil pressure keep their peaks; the button resets
+ * them. The status line says what is missing.
  */
-const OnlineApp = require('oap-sdk/src/core/OnlineApp.js');
-const logging = require('oap-sdk/src/logging/logging');
 const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
-
-const logger = logging.getSDKLogger();
+const { ListApp, logger } = require('./screen.js');
+const { Tasu } = require('./tasu.js');
+const D = require('./decode.js');
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
-const ROOT = 'ST_OnlineApps_Motordaten';
-const RENDER_MS = 250;
-const COMPONENTS = ['mdStatus', 'mdRpm', 'mdOil', 'mdCoolant'];
-
-/* Raw CDS values to real units; null for the invalid marker or no value. */
 const RPM_INVALID = 65535;
 const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
-function rpmOf(raw) {
-    if (typeof raw !== 'number' || raw === RPM_INVALID) {
-        return null;
-    }
-    const rpm = raw * 0.25;
-    return rpm < ENGINE_STOPPED_RPM ? 0 : rpm;
-}
-function tempOf(raw) {
-    return typeof raw !== 'number' || raw === TEMP_INVALID ? null : raw - 48;
-}
+const CYCLE_MS = 150;          // at least this long per round of questions
+const SLOW_EVERY = 20;         // ambient pressure and voltage every this many rounds
+const REOPEN_MS = 10000;       // a failed gateway is tried again after this long (while shown)
 
-const fmt = (v, unit) => (v === null || v === undefined ? '–' : `${Math.round(v)} ${unit}`);
+/* Asked every round: [key, DID]. */
+const FAST = [['oil', 0x4402], ['coolant', 0x4300], ['intake', 0x580F], ['charge', 0x59D4],
+    ['boostAbs', 0x4205], ['boostTargetAbs', 0x4AB0], ['oilPressAbs', 0x4436]];
+/* Asked every SLOW_EVERY rounds. */
+const SLOW = [['ambient', 0x4201]];
 
-class Motordaten extends OnlineApp {
+const isNum = (v) => typeof v === 'number' && isFinite(v);
+const fmt = (v, unit, d) => (isNum(v) ? `${v.toFixed(d)} ${unit}` : '–');
+const withPeak = (v, peak, unit, d) => (isNum(v) ? `${v.toFixed(d)} ${unit}${isNum(peak) ? ` · max ${peak.toFixed(d)}` : ''}` : '–');
+
+class Motordaten extends ListApp {
     constructor() {
-        super();
-        this._components = {};
-        this._written = {};
-        this._data = { rpm: null, oil: null, coolant: null };
-        this._status = 'Warte auf Fahrzeugdaten …';
-        this._timer = null;
-        this._visible = false;
-        this._shutdownPromise = null;
-        this.on('initialized', () => {
-            this._appInitialized().catch((err) => logger.error(`init failed: ${err && err.message}`));
-        });
-        this.on('shutdown', (reason) => this._handleShutdown(reason));
-        this.on('error', (err) => logger.warn(`OnlineApp error: ${err && err.message}`));
-        this.on('entryPointExecute', (uuid) => this._open(uuid));
+        super({ root: 'ST_OnlineApps_Motordaten', prefix: 'md' });
+        this._tasu = new Tasu(logger);
+        this._dme = {};             // key -> value from the DME (null: no answer)
+        this._cds = {};             // rpm, oil, coolant from the car's signals
+        this._peak = {};
+        this._gateway = 'wait';     // wait | open | failed
+        this._gatewayError = '';
+        this._lastOpen = 0;
+        this._polling = false;
+        this._round = 0;
+        this._stopped = false;
+        this._subscribed = false;
+        this._timer = setInterval(() => this._render(), 500);
     }
 
-    _appInitialized() {
-        logger.info(`motordaten ${this.getAppId()} starting`);
-        if (!this.rhmiApplication) {
-            return this.initialized();
+    /* The button: peaks start again. Also run once after start. */
+    run() {
+        if (!this._subscribed) {
+            this._subscribed = true;
+            this._subscribe();
         }
-        return this._setupRhmi()
-            .then(() => this._registerEntryPoint())
-            .then(() => this.initialized())
-            .then(() => {
-                this._subscribe();
-                this._timer = setInterval(() => this._render(), RENDER_MS);
-                const last = this.getLastExecutedEntryPointUuid && this.getLastExecutedEntryPointUuid();
-                return last ? this._open(last) : undefined;
-            });
-    }
-
-    _setupRhmi() {
-        const rhmi = this.rhmiApplication;
-        this._root = rhmi.getByName(ROOT);
-        if (!this._root) {
-            return Promise.reject(new Error(`uiDescription has no ${ROOT}`));
-        }
-        COMPONENTS.forEach((n) => {
-            this._components[n] = rhmi.getByName(n);
-            if (!this._components[n]) {
-                logger.warn(`component ${n} missing`);
-            }
-        });
-        rhmi.on('restoreHmi', () => {
-            this._written = {};
-            this._render();
-        });
-        rhmi.on('applicationStackChanged', (stack) => {
-            const keys = stack && typeof stack === 'object' ? Object.keys(stack) : [];
-            if (keys.length) {
-                this._report(Object.prototype.hasOwnProperty.call(stack, 'ROOT_APP'));
-            }
-        });
-        return Promise.resolve();
-    }
-
-    _registerEntryPoint() {
-        const descriptions = (this.appDescription && this.appDescription.application.entryPoints) || [];
-        const ours = this.getEntryPoints().find(
-            (ep) => descriptions.some((d) => d.uuid === ep.getDescription().uuid));
-        if (!ours) {
-            return Promise.reject(new Error('no entry point handed over by the manager'));
-        }
-        const d = ours.getDescription();
-        return ours.init()
-            .then(() => this.rhmiApplication.mapEntryState(d.uuid, this._root))
-            .then(() => ours.setAvailability('ENABLED'))
-            .then(() => logger.info(`entry point ${d.name} ENABLED`));
-    }
-
-    _open(uuid) {
-        if (this._shutdownPromise || !this.rhmiApplication || !uuid) {
-            return Promise.resolve();
-        }
-        this._written = {};
+        this._peak = {};
         this._render();
-        this._report(true);
-        return Promise.resolve(this.rhmiApplication.openEntryState(uuid))
-            .catch((err) => logger.warn(`openEntryState failed: ${err && err.message}`));
     }
 
-    /* Tells MainApp the app is (no longer) in front, as the MGU Store does. */
-    _report(visible) {
-        if (this._shutdownPromise || this._visible === visible) {
-            return;
+    stop() {
+        this._stopped = true;
+        clearInterval(this._timer);
+    }
+
+    visibilityChanged(visible) {
+        if (visible) {
+            this._poll();
         }
-        this._visible = visible;
-        (visible ? ['registerActive', 'registerHmiVisible'] : ['unregisterHmiVisible', 'registerInactive']).forEach((name) => {
-            if (typeof this[name] === 'function') {
-                Promise.resolve()
-                    .then(() => this[name]())
-                    .catch((err) => logger.warn(`${name} failed: ${err && err.message}`));
-            }
-        });
     }
 
-    /* ---- vehicle data ---- */
+    /* ---- the car's signals ---- */
 
     _subscribe() {
         let proxy;
-        // from a fresh tick, as the SDK does: the native binding can deadlock inline
         new Promise((resolve) => setImmediate(resolve))
             .then(() => someipBuilders.buildTypedProxy(IF_CDS, '1'))
             .then((p) => { proxy = p; return proxy.init(); })
             .then(() => proxy.waitUntilAvailable())
             .then(() => Promise.all([
-                proxy.statusEngineSpeed2.subscribe((v) => this._onRpm(v)),
-                proxy.statusEngineTemperature.subscribe((v) => this._onTemps(v))
+                proxy.statusEngineSpeed2.subscribe((v) => {
+                    const raw = v && v.actualValueRPMEngineCrankshaft;
+                    const rpm = isNum(raw) && raw !== RPM_INVALID ? raw * 0.25 : null;
+                    this._cds.rpm = rpm !== null && rpm < ENGINE_STOPPED_RPM ? 0 : rpm;
+                }),
+                proxy.statusEngineTemperature.subscribe((v) => {
+                    const t = (raw) => (isNum(raw) && raw !== TEMP_INVALID ? raw - 48 : null);
+                    this._cds.oil = t(v && v.temperatureEngineOilDrive);
+                    this._cds.coolant = t(v && v.temperatureEngineDrive);
+                })
             ]))
-            .then(() => {
-                logger.info('CDS subscribed');
-                this._status = 'Verbunden – Zündung an für Werte';
-                this._render();
-            })
-            .catch((err) => {
-                const msg = (err && err.message) || String(err);
-                logger.error(`CDS unavailable: ${msg}`);
-                this._status = `Fehler CDS: ${msg}`;
-                this._render();
-            });
+            .then(() => logger.info('CDS subscribed'))
+            .catch((err) => logger.warn(`CDS unavailable: ${err && err.message}`));
     }
 
-    _onRpm(v) {
-        this._data.rpm = rpmOf(v && v.actualValueRPMEngineCrankshaft);
-        this._status = '';
+    /* ---- the DME ---- */
+
+    _poll() {
+        if (this._polling || this._stopped) {
+            return;
+        }
+        this._polling = true;
+        const next = () => {
+            if (this._stopped || !this.isVisible()) {
+                this._polling = false;
+                return;
+            }
+            const started = Date.now();
+            this._ask()
+                .catch((e) => logger.warn(`round: ${e && e.message}`))
+                .then(() => {
+                    this._render();
+                    setTimeout(next, Math.max(0, CYCLE_MS - (Date.now() - started)));
+                });
+        };
+        next();
     }
 
-    _onTemps(v) {
-        this._data.oil = tempOf(v && v.temperatureEngineOilDrive);
-        this._data.coolant = tempOf(v && v.temperatureEngineDrive);
-        this._status = '';
+    /* One round: opens the gateway if needed, then asks FAST (and SLOW every SLOW_EVERY rounds). */
+    _ask() {
+        if (this._gateway !== 'open') {
+            if (this._gateway === 'failed' && Date.now() - this._lastOpen < REOPEN_MS) {
+                return new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            this._lastOpen = Date.now();
+            return this._tasu.open()
+                .then(() => { this._gateway = 'open'; this._gatewayError = ''; },
+                    (e) => { this._gateway = 'failed'; this._gatewayError = e.message; });
+        }
+        const slow = this._round % SLOW_EVERY === 0;
+        this._round++;
+        const ask = FAST.concat(slow ? SLOW : []);
+        return ask.reduce((p, kv) => p.then(() => this._tasu.request(0x22, [kv[1] >> 8, kv[1] & 0xFF])
+            .then((u) => { this._dme[kv[0]] = D.didNumber(D.didById(kv[1]), u); },
+                (e) => { this._dme[kv[0]] = null; this._gatewayError = e.message; })), Promise.resolve())
+            .then(() => (slow ? this._tasu.request(0x01, [0x42])
+                .then((u) => { this._dme.voltage = D.obdNumber(D.pidById(0x42), u); }, () => undefined) : undefined));
     }
 
     /* ---- screen ---- */
 
+    _peakOf(key, v) {
+        if (isNum(v)) {
+            this._peak[key] = isNum(this._peak[key]) ? Math.max(this._peak[key], v) : v;
+        }
+        return this._peak[key];
+    }
+
     _render() {
-        this._label('mdStatus', this._status);
-        this._value('mdRpm', fmt(this._data.rpm, 'U/min'));
-        this._value('mdOil', fmt(this._data.oil, '°C'));
-        this._value('mdCoolant', fmt(this._data.coolant, '°C'));
-    }
-
-    _write(name, cell, value) {
-        const comp = this._components[name];
-        const key = `${name}.${cell}`;
-        if (!comp || this._written[key] === value) {
-            return;
+        const m = this._dme;
+        const ambient = isNum(m.ambient) ? m.ambient / 1000 : null;      // hPa -> bar
+        const above = (abs) => (isNum(abs) && ambient !== null ? abs - ambient : null);
+        const pick = (a, b) => (isNum(a) ? a : (isNum(b) ? b : null));
+        const rpm = pick(this._cds.rpm, null);
+        const boost = above(m.boostAbs);
+        const oilPress = above(m.oilPressAbs);
+        const rows = [
+            ['Drehzahl', withPeak(rpm, this._peakOf('rpm', rpm), 'U/min', 0)],
+            ['Öltemperatur', fmt(pick(m.oil, this._cds.oil), '°C', 0)],
+            ['Kühlmittel', fmt(pick(m.coolant, this._cds.coolant), '°C', 0)],
+            ['Ansaugluft', fmt(m.intake, '°C', 0)],
+            ['Ladeluft', fmt(m.charge, '°C', 0)],
+            ['Ladedruck', withPeak(boost, this._peakOf('boost', boost), 'bar', 2)],
+            ['Ladedruck Soll', fmt(above(m.boostTargetAbs), 'bar', 2)],
+            ['Öldruck', withPeak(oilPress, this._peakOf('oilPress', oilPress), 'bar', 2)],
+            ['Bordspannung', fmt(m.voltage, 'V', 1)]
+        ];
+        let status = '';
+        if (this._gateway === 'failed') {
+            status = `DME nicht erreichbar: ${this._gatewayError}`;
+        } else if (this._gateway === 'open' && this._round > 2 && FAST.every((kv) => !isNum(m[kv[0]]))) {
+            status = `Keine Antwort der DME – Zündung an?${this._gatewayError ? ` (${this._gatewayError})` : ''}`;
         }
-        this._written[key] = value;
-        Promise.resolve(comp.setValue(0, cell, value, 'Text'))
-            .catch((err) => logger.warn(`write ${key} failed: ${err && err.message}`));
-    }
-
-    _label(name, text) {
-        this._write(name, 'Text', text);
-        const comp = this._components[name];
-        const key = `${name}.visible`;
-        if (comp && this._written[key] !== !!text) {
-            this._written[key] = !!text;
-            Promise.resolve(comp.setProperty('Visible', text ? 1 : 0, 'UInt'))
-                .catch((err) => logger.warn(`visibility ${name} failed: ${err && err.message}`));
-        }
-    }
-
-    _value(name, text) {
-        this._write(name, 'FrequencyText', text);
-    }
-
-    _handleShutdown(reason) {
-        if (this._shutdownPromise) {
-            return this._shutdownPromise;
-        }
-        logger.info(`motordaten shutting down (${reason})`);
-        clearInterval(this._timer);
-        this._shutdownPromise = Promise.resolve()
-            .then(() => this.destroyBundles().catch(() => undefined))
-            .then(() => process.exit(0));
-        return this._shutdownPromise;
+        this.show(status, rows);
     }
 }
 

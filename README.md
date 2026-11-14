@@ -5,7 +5,7 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 
 | App | Was sie tut |
 |---|---|
-| **Motordaten** (`km_motordaten`) | Drehzahl, Öl- und Kühlmitteltemperatur aus den Fahrzeugsignalen. |
+| **Motordaten** (`km_motordaten`) | Live aus der DME (über das Diagnose-Gateway der Headunit, nur lesend): Öl-, Kühlmittel-, Ansaug- und Ladelufttemperatur, Ladedruck mit Soll, Öldruck, Bordspannung; Drehzahl aus den Fahrzeugsignalen. Spitzenwerte für Drehzahl, Ladedruck und Öldruck, mit Knopf zum Zurücksetzen. Fragt nur, solange die App im Vordergrund ist. |
 | **Daten-Test** (`km_datentest`) | Liest den Dienst-Katalog der Headunit und zeigt, welche Fahrzeugsignale und Diagnose-Dienste es gibt. Ruft nichts im Auto auf. |
 | **Diagnose-Test** (`km_diagtest`) | Fragt die DME über das Diagnose-Gateway der Headunit: DME-Typ, unterstützte OBD-II-Werte, BMW-Werte (Öl, Ansaugluft, Ladedruck, Öldruck …). Nur lesend. |
 
@@ -24,9 +24,9 @@ Mit Zündung an öffnen.
 
 ## Nur lesend
 
-Der Diagnose-Test schickt ausschließlich an die DME (0x12):
+Motordaten und Diagnose-Test schicken ausschließlich an die DME (0x12):
 `22 <ID>` (ReadDataByIdentifier) und OBD-II `01` / `09` mit einer PID.
-Alles andere lehnt `src/tasu.js` ab, bevor es das Gateway erreicht: keine
+Alles andere lehnt `shared/tasu.js` ab, bevor es das Gateway erreicht: keine
 Sitzungswechsel, kein Löschen, kein Schreiben, keine Routinen. Eine Anfrage
 nach der anderen, mindestens 25 ms Abstand.
 
@@ -38,7 +38,8 @@ node tools/make_icon.js <id> [r,g,b]           # Kachel-Icon
 (cd apps/<id> && node tools/test_app.js)       # App auf einer simulierten Headunit
 ```
 
-`shared/screen.js` (Listen-Bildschirm) kopiert `tools/gen.js` in die Apps.
+`shared/` (Listen-Bildschirm, Diagnose-Link, Werte-Tabellen) kopiert `tools/gen.js` in die Apps.
+`tools/enet/live.py` zeigt dieselben DME-Werte live am Mac über ein ENET-Kabel.
 Die Headunit baut die Apps selbst (`mgu-app.json`, `"build": "unit"`) und
 setzt BMWs oap-sdk aus einer vorhandenen BMW-App ein. Das SDK gehört nie in
 dieses Repository.
