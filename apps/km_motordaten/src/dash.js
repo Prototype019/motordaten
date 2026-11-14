@@ -157,7 +157,6 @@ const FAULT_ROWS = 8;
  */
 const FAULT_PANEL = { cards: { x: X0, y: 256, w: 1180, h: 112, gap: 14, max: 4 },
     chips: { x: X0 + 1240, y: 256, w: W - PAD - X0 - 1240, cols: 3, h: 42, gap: 8 } };
-const CHIP_ORDER = { faults: 0, read: 1, wait: 2, ok: 3, refused: 4, none: 5, error: 6 };
 
 function faultLayout(f) {
     const scan = (f && f.scan) || [];
@@ -166,11 +165,11 @@ function faultLayout(f) {
         .sort((a, b) => (active(b) - active(a)) || (b.entries.length - a.entries.length) || a.name.localeCompare(b.name, 'de'));
     const P = FAULT_PANEL.cards;
     const cards = faulty.slice(0, P.max).map((u, i) => ({ u, box: { x: P.x, y: P.y + i * (P.h + P.gap), w: P.w, h: P.h } }));
-    const rest = faulty.slice(P.max).concat(scan.filter((u) => u.state !== 'faults')
-        .sort((a, b) => (CHIP_ORDER[a.state] - CHIP_ORDER[b.state]) || a.name.localeCompare(b.name, 'de')));
+    // every unit in a fixed place (by name), whatever its reading says: nothing moves while they are read
+    const rest = scan.slice().sort((a, b) => a.name.localeCompare(b.name, 'de'));
     const Q = FAULT_PANEL.chips;
     const cw = (Q.w - Q.gap * (Q.cols - 1)) / Q.cols;
-    const chips = rest.map((u, i) => ({ u, box: { x: Q.x + (i % Q.cols) * (cw + Q.gap), y: Q.y + Math.floor(i / Q.cols) * (Q.h + Q.gap),
+    const chips = rest.map((u, i) => ({ u, card: cards.some((c) => c.u === u), box: { x: Q.x + (i % Q.cols) * (cw + Q.gap), y: Q.y + Math.floor(i / Q.cols) * (Q.h + Q.gap),
         w: cw, h: Q.h } }));
     return { faulty, cards, chips };
 }
@@ -179,7 +178,7 @@ function faultsTargets(extra) {
     const f = (extra && extra.faults) || {};
     const out = [];
     const L2 = faultLayout(f);
-    L2.cards.concat(L2.chips).filter((c) => c.u.state === 'faults')
+    L2.cards.concat(L2.chips.filter((c) => !c.card)).filter((c) => c.u.state === 'faults')
         .forEach((c) => out.push(Object.assign({ id: `unit:${c.u.addr}`, label: c.u.name }, c.box)));
     out.push({ id: 'faults:read', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Neu lesen' });
     if (f.entries && f.entries.length && !f.reading) {
@@ -698,12 +697,12 @@ function faultsPage(rec, ui, extra) {
         rec.polyline([[cx - 8, box.y + box.h / 2 - 14], [cx + 4, box.y + box.h / 2], [cx - 8, box.y + box.h / 2 + 14]], 4, C.dim);
     });
     if (lay.faulty.length > P.max) {
-        rec.text(`+ ${lay.faulty.length - P.max} weitere rechts`, P.x, P.y + P.max * (P.h + P.gap) + 6, 26, C.dim, { font: 'label' });
+        rec.text(`+ ${lay.faulty.length - P.max} weitere rechts (rot)`, P.x, P.y + P.max * (P.h + P.gap) + 6, 26, C.dim, { font: 'label' });
     }
 
     // right: every other unit as a chip, the dot saying how it stands
     const ok = lay.chips.filter((c) => c.u.state === 'ok').length;
-    rec.text(`Steuergeräte  ${ok} ohne Fehler`, Q.x, Q.y - 16, 26, C.dim, { font: 'label' });
+    rec.text(`Alle Steuergeräte  ${ok} von ${lay.chips.length} ohne Fehler`, Q.x, Q.y - 16, 26, C.dim, { font: 'label' });
     lay.chips.forEach(({ u, box }) => {
         const id = `unit:${u.addr}`;
         const look = u.state === 'read' && u.try > 1 ? { color: C.ice, text: `liest … (${u.try}.)` } : TILE[u.state] || TILE.wait;
