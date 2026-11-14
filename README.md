@@ -5,7 +5,7 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 
 | App | Was sie tut |
 |---|---|
-| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche (über `mgu-render`, sonst Liste). Live aus DME und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10 Runden pro Sekunde: Drehzahl, Leistung, Drehmoment, Ladedruck mit Soll, Öldruck, Öl-, Kühlmittel-, Ansaug-, Ladeluft-, Getriebeöl- und Abgastemperatur, Bordnetz. Spitzenwerte mit Reset; Seite „Einstellungen“ für die Grenzwerte (rot ab …, Öl bereit ab …). |
+| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche (über `mgu-render`, sonst Liste). Live aus DME und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10 Runden pro Sekunde: Drehzahl, Leistung, Drehmoment, Ladedruck mit Soll, Öldruck, Öl-, Kühlmittel-, Ansaug-, Ladeluft-, Getriebeöl- und Abgastemperatur, Bordnetz. Spitzenwerte mit Reset. Reiter Live, Logs (Aufzeichnungen mit Diagrammen; Fehlerspeicher aller Steuergeräte, nur lesend) und Grenzwerte. |
 | **Daten-Test** (`km_datentest`) | Liest den Dienst-Katalog der Headunit und zeigt, welche Fahrzeugsignale und Diagnose-Dienste es gibt. Ruft nichts im Auto auf. |
 | **Diagnose-Test** (`km_diagtest`) | Fragt die DME über das Diagnose-Gateway der Headunit: DME-Typ, unterstützte OBD-II-Werte, BMW-Werte (Öl, Ansaugluft, Ladedruck, Öldruck …). Nur lesend. |
 
@@ -25,7 +25,8 @@ Mit Zündung an öffnen.
 ## Nur lesend
 
 Motordaten und Diagnose-Test schicken ausschließlich an die DME (0x12):
-`22 <ID>` (ReadDataByIdentifier) und OBD-II `01` / `09` mit einer PID.
+`22 <ID>` (ReadDataByIdentifier, bis zu 8 Kennungen), OBD-II `01` / `09` mit einer PID und den
+Fehlerspeicher `19 02` (auch an alle Steuergeräte gleichzeitig); Einzelanfragen nur an DME und Getriebe.
 Alles andere lehnt `shared/tasu.js` ab, bevor es das Gateway erreicht: keine
 Sitzungswechsel, kein Löschen, kein Schreiben, keine Routinen. Eine Anfrage
 nach der anderen, mindestens 25 ms Abstand.

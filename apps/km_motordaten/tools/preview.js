@@ -56,12 +56,20 @@ const EXTRA = {
     log: { log: Logbook.load(logName), channel: 'rpm' },
     logboost: { log: Logbook.load(logName), channel: 'boost', confirmDelete: true }
 };
+EXTRA.faults = { faults: { units: 28, at: new Date(2026, 10, 14, 11, 2), entries: [
+    { ecu: 0x5D, unit: 'Fahrerassistenz-Kamera', code: '800ABF', status: 0x2F, state: 'aktiv' },
+    { ecu: 0x12, unit: 'Motor (DME)', code: '1F2A01', status: 0x28, state: 'gespeichert' }] } };
+EXTRA.faultsread = { faults: { reading: true } };
+EXTRA.faultsnone = { faults: { units: 28, entries: [], at: new Date(2026, 10, 14, 11, 2) } };
+SCENES.faults = {};
+SCENES.faultsread = {};
+SCENES.faultsnone = {};
 SCENES.logs = {};
 SCENES.log = {};
 SCENES.logboost = {};
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
-    const page = name === 'settings' ? 'settings' : name === 'logs' ? 'logs' : /^log/.test(name) ? 'log' : 'main';
+    const page = name === 'settings' ? 'settings' : name === 'logs' ? 'logs' : /^log/.test(name) ? 'log' : /^faults/.test(name) ? 'faults' : 'main';
     const cfg = name === 'settings' ? Object.assign(Limits.defaults(), { rpmRed: 6800, oilReady: 80 }) : Limits.defaults();
     dash.draw(rec, page, SCENES[name], cfg, { focus: name === 'pull' ? 'reset' : name === 'settings' ? 'inc:oilReady' : null },
         EXTRA[name] || {});

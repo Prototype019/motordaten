@@ -15,7 +15,8 @@
  *            DME that echoes this request (or refuses this service) counts;
  *            transport errors of other requests are not ours.
  *
- * Only ReadDataByIdentifier (22, up to 8 identifiers of 2 bytes) and OBD-II 01 / 09
+ * Only ReadDataByIdentifier (22, up to 8 identifiers of 2 bytes), OBD-II 01 / 09
+ * and the fault memory by status mask (19 02, also to all units at once: faults())
  * (one PID) to the DME or the EGS pass request(); everything else is refused here,
  * before anything reaches the car. One request at a time, at least GAP_MS
  * apart. Proxy building, init and every call run from a fresh setImmediate
@@ -46,7 +47,12 @@ const BUSY_MS = 200;
 /* Service -> length of its request data. Nothing else is sent. */
 /* Service -> the lengths its request data may have. 22 takes up to 8 identifiers of 2 bytes in one
  * request (the DME answers them in one reply, docs/g87-s58.md). Nothing else is sent. */
-const ALLOWED = Object.freeze({ 0x22: Object.freeze([2, 4, 6, 8, 10, 12, 14, 16]), 0x01: Object.freeze([1]), 0x09: Object.freeze([1]) });
+const ALLOWED = Object.freeze({ 0x22: Object.freeze([2, 4, 6, 8, 10, 12, 14, 16]), 0x01: Object.freeze([1]), 0x09: Object.freeze([1]),
+    0x19: Object.freeze([2]) });
+/* The address every unit answers (a functional request), and the one request that may go to it:
+ * the fault memory by status mask (19 02 <mask>). */
+const ALL = 0xDF;
+const FAULTS = 0x02;
 
 function toBytes(b) {
     if (!b) {
@@ -85,7 +91,8 @@ const isByte = (x) => Number.isInteger(x) && x >= 0 && x <= 0xFF;
 /* Only the reads ALLOWED names, with whole bytes: a copy of the data, or an error. */
 function checkRead(sid, data) {
     if (!Number.isInteger(sid) || !Object.prototype.hasOwnProperty.call(ALLOWED, sid) ||
-        !Array.isArray(data) || ALLOWED[sid].indexOf(data.length) < 0 || !data.every(isByte)) {
+        !Array.isArray(data) || ALLOWED[sid].indexOf(data.length) < 0 || !data.every(isByte) ||
+        (sid === 0x19 && data[0] !== FAULTS)) {
         throw new Error(`nur lesen: Dienst ${sid} nicht erlaubt`);
     }
     return data.slice();
@@ -203,6 +210,77 @@ class Tasu extends EventEmitter {
         return p;
     }
 
+    /**
+     * The fault memory of every unit: 19 02 <mask> to all of them at once.
+     * Resolves with Map(unit address -> its reply) once no reply came for
+     * idleMs (a pending one waits longer), at most maxMs.
+     */
+    faults(mask, idleMs, maxMs) {
+        let bytes;
+        try {
+            bytes = checkRead(0x19, [FAULTS, mask]);
+        } catch (e) {
+            return Promise.reject(e);
+        }
+        const run = () => this._collect(0x19, bytes, idleMs || 3000, maxMs || 20000);
+        const p = this._chain.then(run, run);
+        this._chain = p.catch(() => undefined);
+        return p;
+    }
+
+    _collect(sid, data, idleMs, maxMs) {
+        if (!this._proxy()) {
+            return Promise.reject(new Error('Diagnose-Dienst nicht offen'));
+        }
+        const self = this;
+        return new Promise((resolve, reject) => {
+            const replies = new Map();
+            let idle = null;
+            let done = false;
+            const hard = setTimeout(() => finish(), maxMs);
+            const kick = (ms) => { clearTimeout(idle); idle = setTimeout(() => finish(), ms); };
+            const onFrame = (f) => {
+                const u = f.uds;
+                const answer = (u[0] === sid + 0x40 && u[1] === data[0]) || (u[0] === 0x7F && u[1] === sid);
+                if (!answer) {
+                    return;
+                }
+                const pending = u[0] === 0x7F && u[2] === 0x78;
+                if (!pending || !replies.has(f.ecu)) {
+                    replies.set(f.ecu, u);
+                }
+                kick(pending ? 10000 : idleMs);
+            };
+            function finish(err) {
+                if (done) {
+                    return;
+                }
+                done = true;
+                clearTimeout(idle);
+                clearTimeout(hard);
+                self.removeListener('frame', onFrame);
+                self._last = Date.now();
+                if (err) {
+                    reject(err);
+                } else {
+                    // a unit still pending at the end gave no answer
+                    replies.forEach((u, ecu) => { if (u[0] === 0x7F && u[2] === 0x78) replies.delete(ecu); });
+                    resolve(replies);
+                }
+            }
+            this.on('frame', onFrame);
+            this._send(sid, data, ALL)
+                .then((verdict) => {
+                    if (['NO_ERROR', 'REQUEST_PENDING', '0', '1'].indexOf(verdict) < 0) {
+                        finish(new Error(`Gateway: ${verdict}`));
+                    } else if (!idle) {
+                        kick(idleMs + 2000);     // the first replies can take a moment
+                    }
+                })
+                .catch((e) => finish(e));
+        });
+    }
+
     _send(sid, data, target) {
         const proxy = this._proxy();
         const params = { sourceAddress: this.tester, targetAddress: target, serviceID: sid, subroutineID: 0,
@@ -297,4 +375,4 @@ Tasu.prototype.useTester = function (addr) {
     this.tester = addr;
 };
 
-module.exports = { Tasu, ALLOWED, DME, EGS, UNITS, IFACE, INSTANCE, TESTERS, checkRead };
+module.exports = { Tasu, ALLOWED, DME, EGS, UNITS, ALL, IFACE, INSTANCE, TESTERS, checkRead };

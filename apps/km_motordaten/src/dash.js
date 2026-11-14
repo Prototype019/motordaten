@@ -13,6 +13,7 @@
  *   Standard.
  * Page 'logs': the recordings (src/logbook.js) with date, duration, peaks.
  * Page 'log': one recording's curves by channel group, Löschen (twice), Zurück.
+ * Page 'faults' (in the Logs tab, beside the recordings): every unit's fault memory, read only.
  *
  * draw(rec, page, v, cfg, ui, extra) records one frame into a kit_record Recorder
  * (or a kit_canvas Canvas): v the values (null: none; rpmBar / boostBar the
@@ -111,13 +112,22 @@ const CHANNELS = [
     { id: 'oil', label: 'Öldruck' }
 ];
 
+/* The Logs tab's two views, switched at its top right. */
+const SEGMENTS = [{ id: 'seg:logs', page: 'logs', label: 'Aufzeichnungen' }, { id: 'seg:faults', page: 'faults', label: 'Fehlerspeicher' }]
+    .map((t, i) => Object.assign(t, { x: W - PAD - (2 - i) * 340 + 16, y: 64, w: 324, h: 76 }));
+const FAULT_ROWS = 8;
+
+function faultsTargets() {
+    return SEGMENTS.concat([{ id: 'faults:read', x: W - PAD - 300, y: 660, w: 300, h: BH, label: 'Neu lesen' }]);
+}
+
 function logsTargets(extra) {
     const logs = (extra && extra.logs) || [];
     const out = logs.slice(0, LOG_ROWS).map((r, i) => {
         const col = LOG_COLS[i < 4 ? 0 : 1];
         return { id: `open:${i}`, x: col.x, y: 196 + (i % 4) * 112, w: col.w, h: 100, label: dateText(r.start) };
     });
-    return out;
+    return SEGMENTS.concat(out);
 }
 
 function logTargets(extra) {
@@ -138,6 +148,8 @@ function targets(page, extra) {
         own = logsTargets(extra);
     } else if (page === 'log') {
         own = logTargets(extra);
+    } else if (page === 'faults') {
+        own = faultsTargets(extra);
     }
     return TABS.concat(own);
 }
@@ -146,7 +158,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'log' ? 'logs' : page;
+    const current = page === 'log' || page === 'faults' ? 'logs' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) {
@@ -334,12 +346,58 @@ function settings(rec, cfg, ui) {
 }
 
 
+function segments(rec, page, ui) {
+    SEGMENTS.forEach((t) => button(rec, t, ui, { size: 28, primary: t.page === page }));
+}
+
+const STATE_COLOR = { aktiv: C.limit, gespeichert: C.ice, 'vorläufig': C.dim, Historie: C.dim };
+
+function faultsPage(rec, ui, extra) {
+    const f = (extra && extra.faults) || {};
+    rec.text('Fehlerspeicher', X0, 120, 56, C.text, { font: 'label' });
+    segments(rec, 'faults', ui);
+    let note;
+    if (f.reading) {
+        note = 'Lese alle Steuergeräte … das dauert einige Sekunden.';
+    } else if (f.error) {
+        note = `Lesen fehlgeschlagen: ${f.error}. Zündung an?`;
+    } else if (f.units === undefined) {
+        note = 'Liest die Fehlerspeicher aller Steuergeräte, nur lesend.';
+    } else {
+        const n = f.entries.length;
+        note = `${f.units} Steuergeräte geantwortet, ${n === 0 ? 'keine Einträge' : n === 1 ? '1 Eintrag' : `${n} Einträge`}` +
+            (f.at ? ` · gelesen ${two(f.at.getHours())}:${two(f.at.getMinutes())}` : '');
+    }
+    rec.text(note, X0, 166, 30, f.error ? C.limit : C.dim, { font: 'label' });
+    const entries = f.entries || [];
+    if (!f.reading && f.units !== undefined && !entries.length) {
+        rec.text('Alle Steuergeräte sind ohne Eintrag.', X0, 300, 44, C.text, { font: 'label' });
+    }
+    entries.slice(0, FAULT_ROWS).forEach((e, i) => {
+        const col = LOG_COLS[i < 4 ? 0 : 1];
+        const y = 196 + (i % 4) * 112;
+        rec.fillRect(col.x, y + 104, col.w, 2, C.line);
+        rec.text(e.unit, col.x + 8, y + 48, 36, C.text, { font: 'label' });
+        rec.text(`Code ${e.code}  ·  0x${e.ecu.toString(16).toUpperCase().padStart(2, '0')}`, col.x + 8, y + 88, 28, C.dim,
+            { font: 'scale' });
+        const color = STATE_COLOR[e.state] || C.dim;
+        const w = rec.textWidth(e.state, 30, { font: 'label' }) + 40;
+        rec.strokeRoundRect(col.x + col.w - w - 8, y + 26, w, 52, 26, 3, color);
+        rec.text(e.state, col.x + col.w - w / 2 - 8, y + 62, 30, color, { font: 'label', align: 'center' });
+    });
+    if (entries.length > FAULT_ROWS) {
+        rec.text(`+${entries.length - FAULT_ROWS} weitere`, X0, 700, 30, C.dim, { font: 'label' });
+    }
+    faultsTargets(extra).filter((t) => t.id === 'faults:read').forEach((t) => button(rec, t, ui));
+}
+
 function logsPage(rec, ui, extra) {
     const logs = (extra && extra.logs) || [];
     rec.text('Aufzeichnungen', X0, 120, 56, C.text, { font: 'label' });
     rec.text(logs.length ? `${logs.length} gespeichert, die neueste zuerst. Es bleiben die letzten 20.` :
         'Noch keine Aufzeichnung. Starte eine mit Aufnehmen im Reiter Live.', X0, 166, 30, C.dim, { font: 'label' });
-    logsTargets(extra).forEach((t, i) => {
+    segments(rec, 'logs', ui);
+    logsTargets(extra).filter((t) => t.id.indexOf('open:') === 0).forEach((t, i) => {
         const r = logs[i];
         if (ui && ui.focus === t.id) {
             rec.strokeRoundRect(t.x - 8, t.y - 4, t.w + 16, t.h + 8, 16, 5, C.ice);
@@ -498,6 +556,10 @@ function draw(rec, page, v, cfg, ui, extra) {
     }
     if (page === 'log') {
         logPage(rec, ui, extra);
+        return rec;
+    }
+    if (page === 'faults') {
+        faultsPage(rec, ui, extra);
         return rec;
     }
     rpmBand(rec, v, cfg);

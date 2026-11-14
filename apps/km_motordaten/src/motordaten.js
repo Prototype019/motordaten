@@ -29,6 +29,8 @@ const D = require('./decode.js');
 const { Drawn } = require('./drawn.js');
 const Limits = require('./limits.js');
 const Logbook = require('./logbook.js');
+const Faults = require('./faults.js');
+const FAULT_MASK = 0x0D;     // failing now, pending, confirmed
 const PROXIES = 24;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
@@ -159,6 +161,16 @@ class Motordaten extends ListApp {
                 this._showLogs();
             }
             d.setPage(page);
+        } else if (id === 'seg:logs') {
+            this._showLogs();
+            d.setPage('logs');
+        } else if (id === 'seg:faults') {
+            d.setPage('faults');
+            if (!d.extra.faults) {
+                this._readFaults();
+            }
+        } else if (id === 'faults:read') {
+            this._readFaults();
         } else if (id === 'record') {
             this._toggleRecording();
         } else if (id === 'reset') {
@@ -188,6 +200,25 @@ class Motordaten extends ListApp {
             this._showLogs();
             d.setPage('logs');
         }
+    }
+
+    /* Every unit's fault memory, read only (19 02 to all units at once); the page shows it as it comes. */
+    _readFaults() {
+        const d = this._drawn;
+        if (!d || (d.extra.faults && d.extra.faults.reading)) {
+            return;
+        }
+        d.setExtra({ faults: { reading: true } });
+        const open = this._gateway === 'open' ? Promise.resolve() : this._tasu.open().then(() => { this._gateway = 'open'; });
+        open
+            .then(() => this._tasu.faults(FAULT_MASK))
+            .then((replies) => {
+                const f = Faults.parse(replies);
+                logger.info(`faults: ${f.units} units, ${f.entries.map((e) => `${e.ecu.toString(16)}:${e.code}/${e.status}`).join(' ')}`);
+                d.setExtra({ faults: { units: f.units, entries: f.entries, at: new Date() } });
+            }, (e) => {
+                d.setExtra({ faults: { error: (e && e.message) || String(e) } });
+            });
     }
 
     /* The logbook's list for the Logs tab (summaries read once per recording). */
