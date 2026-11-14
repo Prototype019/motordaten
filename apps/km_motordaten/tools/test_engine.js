@@ -99,5 +99,7 @@ assert.deepStrictEqual(Logbook.list().map((r) => r.name), ['20261102-100000.csv'
 Logbook.removeAll();
 assert.strictEqual(Logbook.list().length, 0);
 
+// every atlas named by its content: a new bake never meets an older one the renderer still keeps
+['label', 'scale', 'num'].forEach((f) => require(`../src/font_${f}.js`).sizes.forEach((z) => assert.ok(/^kmmd-[a-z]+@\d+-[0-9a-f]{8}$/.test(z.key), z.key)));
 console.log('test_engine: ok');
 })().catch((e) => { console.error(e); process.exit(1); });

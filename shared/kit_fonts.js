@@ -10,7 +10,7 @@
  *   num    Barlow Semi Condensed SemiBold: the big values (digits , . - only)
  *
  * The kit's other family names map onto these. Each atlas carries a key of
- * its own (kmmd-<face>@<size>), so the renderer's shared glyph texture never
+ * its own (kmmd-<face>@<size>-<content hash>), so the renderer's shared glyph texture never
  * mixes them up with another app's.
  */
 const zlib = require('zlib');

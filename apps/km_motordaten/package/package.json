@@ -1,6 +1,6 @@
 {
   "name": "km_motordaten",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Motordaten: Temperaturen, Ladedruck, Öldruck und Drehzahl der DME live",
   "private": false,
   "main": "javascript/runner.js",

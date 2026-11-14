@@ -54,9 +54,14 @@ def atlas(family, font_file, size, chars):
     for c in cells:
         if c['w'] and c['h']:
             pen.text((c['x'] - c['left'], c['y'] - c['top']), c['ch'], font=font, fill=255, anchor='ls')
-    return {'size': size, 'ascent': ascent, 'descent': descent, 'atlasW': w, 'atlasH': h, 'key': 'kmmd-%s@%d' % (family, size),
-            'alpha': base64.b64encode(zlib.compress(image.tobytes(), 9)).decode('ascii'),
-            'glyphs': {str(ord(c['ch'])): [c['x'], c['y'], c['w'], c['h'], c['left'], c['top'], c['adv']] for c in cells}}
+    glyphs = {str(ord(c['ch'])): [c['x'], c['y'], c['w'], c['h'], c['left'], c['top'], c['adv']] for c in cells}
+    pixels = image.tobytes()
+    # the renderer keeps an atlas by its key (shared by all apps, across their restarts): a key from the content, so
+    # a new bake is a new atlas and never drawn with an older one's glyph places
+    stamp = zlib.crc32(json.dumps(glyphs, sort_keys=True).encode('utf-8'), zlib.crc32(pixels)) & 0xffffffff
+    return {'size': size, 'ascent': ascent, 'descent': descent, 'atlasW': w, 'atlasH': h,
+            'key': 'kmmd-%s@%d-%08x' % (family, size, stamp),
+            'alpha': base64.b64encode(zlib.compress(pixels, 9)).decode('ascii'), 'glyphs': glyphs}
 
 
 def main():
