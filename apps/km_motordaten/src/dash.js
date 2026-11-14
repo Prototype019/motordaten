@@ -319,8 +319,8 @@ function readiness(rec, v, cfg) {
     if (isNum(oil) && oil > 0) {
         rec.roundRect(x, by, Math.max(bh, w * clamp(oil, 0, OIL_MAX) / OIL_MAX), bh, 8, color);
     }
-    const mx = x + w * readyAt / OIL_MAX;
-    rec.fillRect(mx - 3, by - 12, 6, bh + 24, C.text);
+    // the warning limit marked, as on the other temperatures (no mark where it is ready)
+    rec.fillRect(zx - 2, by - 12, 4, bh + 24, hot ? C.limit : C.text);
     const note = !isNum(oil) ? '' : hot ? 'Öl zu heiß' : ready ? 'Bereit für Volllast' : `Noch ${Math.ceil(readyAt - oil)} °C bis bereit`;
     rec.text(note, x, 552, 34, hot ? C.limit : ready ? C.text : C.cold, { font: 'label' });
 
