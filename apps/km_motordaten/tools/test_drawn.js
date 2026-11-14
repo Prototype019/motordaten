@@ -236,10 +236,13 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
 
     // ready for full load: the temperatures switched on, each at its value
     const def = Limits.defaults();
-    assert.deepStrictEqual(Limits.readiness(def, { oil: 85, coolant: 72, gearbox: 20 }), { on: true, ready: true, missing: [] }, 'gearbox off by default');
+    const r0 = Limits.readiness(def, { oil: 85, coolant: 72, gearbox: 20 });
+    assert.deepStrictEqual([r0.on, r0.ready, r0.missing], [true, true, []], 'gearbox off by default');
+    assert.deepStrictEqual(r0.items.map((i) => [i.short, i.value, i.reached]), [['Öl', 85, true], ['Wasser', 72, true]]);
     const r1 = Limits.readiness(Limits.toggled(def, 'gearboxReadyOn'), { oil: 62, coolant: 72, gearbox: 20 });
     assert.deepStrictEqual(r1.missing.map((m) => [m.short, m.left]), [['Öl', 18], ['Getriebe', 30]]);
     assert.strictEqual(r1.ready, false);
+    assert.deepStrictEqual(r1.items.map((i) => i.reached), [false, true, false], 'each one green or red on the live page');
     const none = Limits.toggled(Limits.toggled(def, 'oilReadyOn'), 'coolantReadyOn');
     assert.strictEqual(Limits.readiness(none, {}).on, false, 'nothing switched on: no badge');
     assert.deepStrictEqual(Limits.reset(Object.assign({}, def, { rpmRed: 7000, oilReady: 95 }), 'ready'), Object.assign({}, def, { rpmRed: 7000 }),

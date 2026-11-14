@@ -33,7 +33,7 @@ const ITEMS = Object.freeze([
 /* The temperatures that can count for "ready": the value's key, its threshold item, its on/off item. */
 const READY = Object.freeze([
     { value: 'oil', at: 'oilReady', on: 'oilReadyOn', label: 'Öltemperatur', short: 'Öl' },
-    { value: 'coolant', at: 'coolantReady', on: 'coolantReadyOn', label: 'Kühlmittel', short: 'Kühlmittel' },
+    { value: 'coolant', at: 'coolantReady', on: 'coolantReadyOn', label: 'Kühlmittel', short: 'Wasser' },
     { value: 'gearbox', at: 'gearboxReady', on: 'gearboxReadyOn', label: 'Getriebeöl', short: 'Getriebe' }
 ]);
 
@@ -107,12 +107,18 @@ function reset(limits, group) {
     return out;
 }
 
-/* Ready for full load: { on: whether any temperature counts, ready, missing: [{ short, left }] } for the values v. */
+/*
+ * Ready for full load for the values v: { on: whether any temperature counts, ready, items: each one switched on
+ * { short, value, reached }, missing: those not reached { short, left } }.
+ */
 function readiness(limits, v) {
-    const counted = READY.filter((r) => limits[r.on]);
-    const missing = counted.filter((r) => !(typeof v[r.value] === 'number' && v[r.value] >= limits[r.at]))
-        .map((r) => ({ short: r.short, left: typeof v[r.value] === 'number' ? Math.ceil(limits[r.at] - v[r.value]) : null }));
-    return { on: counted.length > 0, ready: counted.length > 0 && !missing.length, missing };
+    const items = READY.filter((r) => limits[r.on]).map((r) => {
+        const value = typeof v[r.value] === 'number' ? v[r.value] : null;
+        return { short: r.short, value, reached: value !== null && value >= limits[r.at],
+            left: value !== null ? Math.ceil(limits[r.at] - value) : null };
+    });
+    const missing = items.filter((i) => !i.reached).map((i) => ({ short: i.short, left: i.left }));
+    return { on: items.length > 0, ready: items.length > 0 && !missing.length, items, missing };
 }
 
 module.exports = { ITEMS, READY, defaults, load, save, stepped, toggled, reset, readiness, onStep };

@@ -28,7 +28,7 @@ const W = 2880;
 const H = 764;
 const C = {
     asphalt: '#10161D', line: '#2A3642', text: '#E9EEF2', dim: '#8394A4',
-    cold: '#5FA8D9', ice: '#A9DCFF', limit: '#FF5B4F', redzone: '#FF5B4F59'
+    cold: '#5FA8D9', ice: '#A9DCFF', limit: '#FF5B4F', redzone: '#FF5B4F59', ok: '#4FD18B'
 };
 const PAD = 96;
 const RAIL = 200;             // the tab rail on the left
@@ -350,12 +350,24 @@ function readyBadge(rec, x, y, v, cfg) {
         rec.text('Bereit', x + w / 2, y + h / 2 + 12, 32, C.asphalt, { font: 'label', align: 'center' });
         return;
     }
-    const w = rec.textWidth('Warmfahren', 30, { font: 'label' }) + 56;
+    const w = rec.textWidth('Warmfahren', 28, { font: 'label' }) + 48;
     rec.strokeRoundRect(x, y, w, h, h / 2, 3, C.cold);
-    rec.text('Warmfahren', x + w / 2, y + h / 2 + 11, 30, C.cold, { font: 'label', align: 'center' });
-    // which ones are still cold (their strips show how far): the names only
-    const rest = r.missing.map((m) => m.short).join('  ·  ');
-    rec.text(fit(rec, rest, 28, COL.left.w - w - 24), x + w + 24, y + h / 2 + 10, 28, C.dim, { font: 'label' });
+    rec.text('Warmfahren', x + w / 2, y + h / 2 + 10, 28, C.cold, { font: 'label', align: 'center' });
+    // each temperature switched on with its value: green once reached, red until then
+    let ix = x + w + 22;
+    const end = COL.mid.x - 40;
+    r.items.forEach((it) => {
+        const name = `${it.short} `;
+        const val = it.value === null ? '–' : `${Math.round(it.value)}°`;
+        const nw = rec.textWidth(name, 26, { font: 'label' });
+        const vw = rec.textWidth(val, 26, { font: 'label' });
+        if (ix + nw + vw > end) {
+            return;
+        }
+        rec.text(name, ix, y + h / 2 + 9, 26, C.dim, { font: 'label' });
+        rec.text(val, ix + nw, y + h / 2 + 9, 26, it.reached ? C.ok : C.limit, { font: 'label' });
+        ix += nw + vw + 22;
+    });
 }
 
 function readiness(rec, v, cfg) {
