@@ -38,6 +38,10 @@ const HIDE_SETTLE_MS = 800;
 const DIAL_INVALID = 0xffff;
 const DIAL_MAX_STEP = 24;
 const TRACE_KEEP = 10;
+/* The renderer's connection gone (it restarted): reconnecting this soon, and the list screen only if it stays
+ * gone this long; meanwhile the host state (one empty row) stays and the layer comes back on its own. */
+const RECONNECT_MS = 300;
+const LOST_LIST_MS = 15000;
 
 class Drawn extends EventEmitter {
     /* gpu: the renderer client (a RenderClient for appId unless given, as in the tests). */
@@ -66,8 +70,12 @@ class Drawn extends EventEmitter {
         this.sentAt = 0;
         this.lastFrame = 0;
         this.keepalive = null;
-        this.gpu.on('ready', (screen, info) => this._ready(info));
-        this.gpu.on('close', () => this._setMode(null));
+        this.gpu.on('ready', (screen, info) => {
+            clearTimeout(this.lostTimer);
+            this.lostTimer = null;
+            this._ready(info);
+        });
+        this.gpu.on('close', () => this._lost());
         this.gpu.on('tick', () => {
             if (this.dirty) {
                 this.render();
@@ -91,7 +99,36 @@ class Drawn extends EventEmitter {
         this.gpu.connect();
     }
 
+    /* The renderer's connection closed. A layer screen waits for it (reconnecting at once) and goes to the
+     * list screen only when it stays away; without a layer yet, the list screen at once. */
+    _lost() {
+        this._note('Grafiksystem getrennt');
+        if (this.mode !== 'layer') {
+            this._setMode(null);
+            return;
+        }
+        this.on_ = false;               // the renderer forgot the layer; shown again from the replayed SHOW
+        clearInterval(this.keepalive);
+        this.keepalive = null;
+        setTimeout(() => {
+            if (this.gpu.retry && !this.closing) {
+                clearTimeout(this.gpu.retry);
+                this.gpu.retry = null;
+                this.gpu.connect();
+            }
+        }, RECONNECT_MS);
+        if (!this.lostTimer) {
+            this.lostTimer = setTimeout(() => {
+                this.lostTimer = null;
+                this._note('Grafiksystem weg: Liste');
+                this._setMode(null);
+            }, LOST_LIST_MS);
+        }
+    }
+
     close() {
+        this.closing = true;
+        clearTimeout(this.lostTimer);
         clearInterval(this.keepalive);
         clearTimeout(this.hideTimer);
         this.gpu.removeAllListeners('close');
@@ -109,6 +146,7 @@ class Drawn extends EventEmitter {
             this.gpu.place({ x: a.x, y: a.y, w: a.w, h: a.h, scale, ox, oy });
             this.rec = new Recorder(dash.W, dash.H, { textScale: scale });
             mode = 'layer';
+            this._note('Grafiksystem verbunden');
             this.log.info(`renderer: layer ${a.w}x${a.h} at ${a.x},${a.y}, scale ${scale.toFixed(3)}`);
         } else {
             this.log.info(`renderer: ${info ? 'no layer mode' : 'not there or not mgu-render/1'}; list screen`);
@@ -118,6 +156,9 @@ class Drawn extends EventEmitter {
 
     _setMode(mode) {
         if (mode === this.mode) {
+            // the same renderer again after a drop: the layer back, drawn anew
+            this._update();
+            this.invalidate();
             return;
         }
         this.mode = mode;

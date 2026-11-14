@@ -163,6 +163,27 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     await wait(5);
     assert.strictEqual(g.visible, true, 'shown again at once');
 
+    // the renderer restarts (its connection drops): no list screen, reconnect soon, the layer back when it answers
+    const modesHeard = [];
+    d.on('mode', (m) => modesHeard.push(m));
+    let reconnected = 0;
+    g.retry = setTimeout(() => {}, 3000);
+    g.connect = () => { reconnected++; };
+    g.emit('close');
+    assert.strictEqual(d.mode, 'layer', 'still the layer screen');
+    await wait(400);
+    assert.strictEqual(reconnected, 1, 'reconnected at once, not after 3 s');
+    const claimsBefore = g.calls.filter((c) => c[0] === 'claim').length;
+    const framesBefore = g.frames;
+    g.emit('ready', { w: 2880, h: 960 }, { modes: ['layer'], appArea: { x: 0, y: 76, w: 2880, h: 764 } });
+    await wait(5);
+    g.emit('tick');
+    assert.ok(g.calls.filter((c) => c[0] === 'claim').length > claimsBefore, 'claims again');
+    assert.ok(g.frames > framesBefore, 'drawn again');
+    assert.strictEqual(g.visible, true);
+    assert.deepStrictEqual(modesHeard, [], 'never the list screen');
+    assert.ok(d.trace.some((t) => /getrennt/.test(t)));
+
     // recording: the button's words follow it, and the app hears the new label
     let heard = null;
     d.on('targets', (t) => { heard = t; });
