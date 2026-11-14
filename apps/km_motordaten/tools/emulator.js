@@ -7,6 +7,8 @@
  * touches on the screen open the settings.
  *
  *   node tools/emulator.js [out dir]      (default docs/design/emulator)
+ *   node tools/emulator.js --live [port]  the screen live in a browser (default http://localhost:8787): the drive
+ *                                         in a loop, a click is a touch
  */
 const net = require('net');
 const fs = require('fs');
@@ -15,7 +17,10 @@ const path = require('path');
 const EventEmitter = require('events');
 
 const APP = path.join(__dirname, '..');
-const OUT = path.resolve(process.argv[2] || path.join(APP, '..', '..', 'docs', 'design', 'emulator'));
+const LIVE = process.argv.indexOf('--live') >= 0;
+const PORT = Number(process.argv[process.argv.indexOf('--live') + 1]) || 8787;
+const OUT = path.resolve((!LIVE && process.argv[2]) || path.join(APP, '..', '..', 'docs', 'design', 'emulator'));
+const CYCLE_S = 36;         // the drive's length; live, it starts over
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'km-emu-'));
 const SOCK = path.join(work, 'render.sock');
 process.env.MGU_RENDERD_SOCKET = SOCK;
@@ -136,9 +141,53 @@ function shot(name) {
     console.log(`${name}.png`);
 }
 
+const PHASES = [[9, 'Kalt im Leerlauf'], [18, 'Warmfahren, Teillast'], [28, 'Vollgas im 3. Gang'], [CYCLE_S, 'Klopfregelung nimmt Zylinder 5 zurück']];
+
+/* Live: the last frame as PNG, a page that shows it and turns clicks into touches. */
+function serve(now) {
+    const http = require('http');
+    let png = null;
+    let pngOf = null;
+    const page = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Motordaten Emulator</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0;background:#06090c;color:#8394a4;font:15px -apple-system,system-ui,sans-serif}
+.wrap{max-width:1600px;margin:0 auto;padding:16px}.bezel{background:#000;border-radius:18px;padding:18px 18px 22px;box-shadow:0 0 0 1px #1c242c}
+img{display:block;width:100%;height:auto;border-radius:6px;cursor:pointer;background:#10161d}
+.bar{display:flex;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}b{color:#e9eef2;font-weight:600}</style></head>
+<body><div class="wrap"><div class="bezel"><img id="s" alt="Bildschirm der App" width="2880" height="764"></div>
+<div class="bar"><span>Simulierte Fahrt: <b id="p">…</b></span><span>Klick = Tippen auf den Bildschirm</span></div></div>
+<script>const s=document.getElementById('s'),p=document.getElementById('p');let busy=false;
+async function tick(){if(busy)return;busy=true;try{const r=await fetch('/frame.png?'+Date.now());const b=await r.blob();const u=URL.createObjectURL(b);
+s.onload=()=>URL.revokeObjectURL(u);s.src=u;p.textContent=decodeURIComponent(r.headers.get('x-phase')||'');}catch(e){}busy=false;}
+setInterval(tick,200);tick();
+s.addEventListener('click',(e)=>{const r=s.getBoundingClientRect();fetch('/touch?x='+Math.round((e.clientX-r.left)/r.width*2880)+'&y='+Math.round((e.clientY-r.top)/r.height*764),{method:'POST'});});
+</script></body></html>`;
+    http.createServer((req, res) => {
+        if (req.url.indexOf('/frame.png') === 0) {
+            if (lastFrame && pngOf !== lastFrame) {
+                const cv = new Canvas(2880, 764);
+                play(lastFrame, cv);
+                png = cv.png();
+                pngOf = lastFrame;
+            }
+            const t = now();
+            const phase = (PHASES.find((ph) => t < ph[0]) || PHASES[PHASES.length - 1])[1];
+            res.writeHead(png ? 200 : 503, { 'content-type': 'image/png', 'cache-control': 'no-store', 'x-phase': encodeURIComponent(phase) });
+            res.end(png || '');
+        } else if (req.url.indexOf('/touch') === 0) {
+            const q = new URL(req.url, 'http://x').searchParams;
+            if (client) touch(Number(q.get('x')), Number(q.get('y')));
+            res.end('ok');
+        } else {
+            res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+            res.end(page);
+        }
+    }).listen(PORT, '127.0.0.1', () => console.log(`live: http://localhost:${PORT}`));
+}
+
 function run() {
     const t0 = Date.now();
-    const now = () => (Date.now() - t0) / 1000;
+    const now = () => (LIVE ? ((Date.now() - t0) / 1000) % CYCLE_S : (Date.now() - t0) / 1000);
     const ev = new EventEmitter();
     const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 0, 0].concat(uds)), errorCode: 'NO_ERROR' });
     const tasu = () => ({
@@ -185,6 +234,10 @@ function run() {
         const host = unit.comps.ST_OnlineApps_MotordatenLayer;
         if (host) { host.emit('visible', { visible: true }); host.emit('focus', { focus: true }); }
     }, 2000);
+    if (LIVE) {
+        serve(now);
+        return;
+    }
     const at = (s, fn) => setTimeout(fn, s * 1000);
     at(7.5, () => shot('1-kalt'));
     at(16.5, () => shot('2-warmfahren'));
