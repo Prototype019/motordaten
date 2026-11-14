@@ -998,7 +998,10 @@ class Motordaten extends ListApp {
         // the engine starting: from then on PEAK_AFTER_START_MS without peaks
         const running = isNum(v.rpm) && v.rpm >= ENGINE_RUNNING_RPM;
         if (running && this._running === false) {
+            // a new engine start: new peaks (the app keeps running while the car sleeps between drives)
             this._startedAt = Date.now();
+            this._peak = {};
+            logger.info('engine started: peaks reset');
         }
         if (isNum(v.rpm)) {
             this._running = running;

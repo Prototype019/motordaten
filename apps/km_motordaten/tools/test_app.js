@@ -160,17 +160,19 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     assert.strictEqual(get('Drehzahl'), '900 U/min · max 900');
 
     // the engine starting: its oil pressure flare in the first 5 s is no peak
-    cds.rpm({ actualValueRPMEngineCrankshaft: 0 });
-    await unit.wait(800);
-    unit.press('mdRun');
-    await unit.wait(400);
+    ANSWERS['22 44 36'] = '62 44 36 1B 58';          // 7.0 bar absolute while running: a peak of this drive
+    await unit.wait(1000);
+    assert.ok(/max 6\.0\d$/.test(get('Öldruck')), get('Öldruck'));
+    cds.rpm({ actualValueRPMEngineCrankshaft: 0 });  // the engine off (the app keeps running) ...
+    ANSWERS['22 44 36'] = '62 44 36 03 ED';
+    await unit.wait(1200);
     ANSWERS['22 44 36'] = '62 44 36 23 28';          // 9.0 bar absolute: the start's flare
     cds.rpm({ actualValueRPMEngineCrankshaft: 900 * 4 });
     await unit.wait(1500);
     assert.ok(/^8\.0\d bar/.test(get('Öldruck')) && !/max 8/.test(get('Öldruck')), `flare not a peak: ${get('Öldruck')}`);
     ANSWERS['22 44 36'] = '62 44 36 0F A0';          // 4.0 bar absolute: running
     await unit.wait(4500);
-    assert.ok(/max 3\.0\d$/.test(get('Öldruck')), `peaks again after 5 s: ${get('Öldruck')}`);
+    assert.ok(/max 3\.0\d$/.test(get('Öldruck')), `new peaks from this start, after 5 s: ${get('Öldruck')}`);
     ANSWERS['22 44 36'] = '62 44 36 03 ED';
     unit.press('mdRun');
     await unit.wait(600);

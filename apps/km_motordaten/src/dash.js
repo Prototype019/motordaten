@@ -330,9 +330,6 @@ function rpmBand(rec, v, cfg) {
     if (isNum(bar) && bar > 0) {
         rec.fillRect(x, y, w * clamp(bar, 0, RPM_MAX) / RPM_MAX, h, isNum(v.rpm) && v.rpm >= red ? C.limit : C.text);
     }
-    if (isNum(v.rpmPeak) && v.rpmPeak > 0) {
-        rec.fillRect(x + w * clamp(v.rpmPeak, 0, RPM_MAX) / RPM_MAX - 3, y - 8, 6, h + 16, C.ice);
-    }
     for (let k = 0; k <= 7; k++) {
         rec.text(String(k), x + w * k * 1000 / RPM_MAX, 146, 28, C.dim, { font: 'scale', align: k ? 'center' : 'left' });
     }
@@ -362,10 +359,6 @@ function heatStrip(rec, x, y, w, h, value, r) {
         const mid = (i + 0.5) / STRIP_SEGMENTS;
         const zone = r.limit !== null && (r.low ? mid < at(r.limit) : mid >= at(r.limit));
         rec.roundRect(sx, y, seg, h, 3, i < Math.max(lit, isNum(value) && value > r.lo ? 1 : 0) ? color : zone ? C.redzone : C.line);
-    }
-    if (r.limit !== null) {
-        const lx = x + w * clamp(at(r.limit), 0, 1);
-        rec.fillRect(lx - 2, y - 7, 4, h + 14, over ? C.limit : C.text);
     }
     return over;
 }
@@ -455,8 +448,6 @@ function readiness(rec, v, cfg) {
     if (isNum(oil) && oil > 0) {
         rec.roundRect(x, by, Math.max(bh, w * clamp(oil, 0, OIL_MAX) / OIL_MAX), bh, 8, color);
     }
-    // the warning limit marked, as on the other temperatures (no mark where it is ready)
-    rec.fillRect(zx - 2, by - 12, 4, bh + 24, hot ? C.limit : C.text);
     readyBadge(rec, x, 520, v, cfg);
 
     const cells = [['Kühlmittel', v.coolant, Object.assign({}, HEAT.coolant, { limit: cfg.coolantMax, warm: cfg.coolantReady })],
@@ -482,15 +473,6 @@ function power(rec, v, cfg) {
     const bar = isNum(v.boostBar) ? Math.max(0, v.boostBar) : b;
     if (bar !== null && bar > 0) {
         rec.roundRect(x, ty, Math.max(12, w * clamp(bar, 0, max) / max), th, 6, C.text);
-    }
-    if (isNum(v.boostTarget) && v.boostTarget > 0) {
-        const sx = x + w * clamp(v.boostTarget, 0, max) / max;
-        for (let yy = ty - 14; yy < ty + th + 14; yy += 14) {
-            rec.fillRect(sx - 2, yy, 4, 8, C.dim);
-        }
-    }
-    if (isNum(v.boostPeak) && v.boostPeak > 0) {
-        rec.fillRect(x + w * clamp(v.boostPeak, 0, max) / max - 4, ty - 14, 8, th + 28, C.ice);
     }
     const steps = Math.round(max / 0.5);
     for (let i = 0; i <= steps; i++) {
