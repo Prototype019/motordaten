@@ -862,7 +862,8 @@ class Motordaten extends ListApp {
         };
         // each cylinder's ignition below the earliest one: what the knock control takes back there
         const angles = CYLINDER_DIDS.map((id, i) => m[`ign${i + 1}`]);
-        if (angles.every(isNum)) {
+        // only with the engine running: standing, the DME reports angles that say nothing (cylinder 3 apart)
+        if (angles.every(isNum) && isNum(v.rpm) && v.rpm > 600) {
             const top = Math.max.apply(null, angles);
             angles.forEach((a, i) => { v[`knockCyl${i + 1}`] = top - a; });
             const worst = angles.indexOf(Math.min.apply(null, angles));
