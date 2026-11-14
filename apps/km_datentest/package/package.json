@@ -1,6 +1,6 @@
 {
   "name": "km_datentest",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Daten-Test: welche Fahrzeugsignale und Diagnose-Dienste diese Headunit hat",
   "private": false,
   "main": "javascript/runner.js",

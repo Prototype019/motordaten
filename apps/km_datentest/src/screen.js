@@ -2,7 +2,7 @@
 /**
  * ListApp: an OnlineApp with one iDrive 8 widget screen (tools/gen.js):
  * a status line (label <prefix>Status), a button (<prefix>Run) and a list
- * (<prefix>List, one row per [left, right] pair). The app calls
+ * (<prefix>List, one row per [label, value] pair, shown as "label: value"). The app calls
  * this.show(status, rows); a press on the button calls this.run() (also run
  * once at start). The screen is written only where a cell changed.
  *
@@ -240,9 +240,10 @@ class ListApp extends OnlineApp {
                 });
             return;
         }
+        // iDrive 8 does not show FrequencyText on rows added at runtime: label and value share the row's text
         rows.forEach((r, i) => {
-            this._mdWrite('List', 'PrimaryText', String(r[0]), i);
-            this._mdWrite('List', 'FrequencyText', String(r[1]), i);
+            const value = r[1] === undefined || r[1] === null ? '' : String(r[1]);
+            this._mdWrite('List', 'PrimaryText', value ? `${r[0]}: ${value}` : String(r[0]), i);
         });
     }
 

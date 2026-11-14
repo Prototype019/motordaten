@@ -92,7 +92,9 @@ function install(spec, appJson, proxies) {
         const out = [];
         for (let i = 0; i < n; i++) {
             const c = (cells[name] || {})[i] || {};
-            out.push([c.PrimaryText, c.FrequencyText]);
+            const t = String(c.PrimaryText);
+            const at = t.indexOf(': ');
+            out.push(at < 0 ? [t, c.FrequencyText] : [t.slice(0, at), t.slice(at + 2)]);
         }
         return out;
     };
