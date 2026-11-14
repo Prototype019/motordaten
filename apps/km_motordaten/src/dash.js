@@ -367,14 +367,38 @@ function logsPage(rec, ui, extra) {
     });
 }
 
-/* The curves of a recording's channel group: [field, colour, own scale max or null, decimals, unit]. */
+/* The charts of the log page, by channel group. Each has a left axis and maybe a right one; a curve
+ * belongs to one of them. An axis runs from 0 (or below, for a value that went below) to a round
+ * number at least its floor, so small values stay small instead of filling the chart.
+ *   axes: { left: { unit, d, floor }, right: { ... } }
+ *   curves: [field, colour, axis, legend] */
 const GROUPS = {
-    rpm: [['rpm', C.text, 7700, 0, 'U/min'], ['power', C.cold, null, 0, 'PS']],
-    boost: [['boost', C.text, null, 2, 'bar'], ['boostTarget', C.dim, null, 2, 'bar Soll']],
-    temps: [['oil', C.text, null, 0, '°C Öl'], ['coolant', C.ice, null, 0, '°C Kühlmittel'], ['charge', C.cold, null, 0, '°C Ladeluft'],
-        ['gearbox', C.dim, null, 0, '°C Getriebe']],
-    oil: [['oilPress', C.text, null, 1, 'bar'], ['rpm', C.dim, 7700, 0, 'U/min']]
+    rpm: { axes: { left: { unit: 'U/min', d: 0, floor: 8000, color: C.text }, right: { unit: 'PS', d: 0, floor: 100, color: C.cold } },
+        curves: [['rpm', C.text, 'left', 'Drehzahl'], ['power', C.cold, 'right', 'Leistung']] },
+    boost: { axes: { left: { unit: 'bar', d: 1, floor: 0.5, color: C.text } },
+        curves: [['boost', C.text, 'left', 'Ladedruck'], ['boostTarget', C.dim, 'left', 'Soll']] },
+    temps: { axes: { left: { unit: '°C', d: 0, floor: 100, color: C.text } },
+        curves: [['oil', C.text, 'left', 'Öl'], ['coolant', C.ice, 'left', 'Kühlmittel'], ['charge', C.cold, 'left', 'Ladeluft'],
+            ['gearbox', C.dim, 'left', 'Getriebe']] },
+    oil: { axes: { left: { unit: 'bar', d: 1, floor: 2, color: C.text }, right: { unit: 'U/min', d: 0, floor: 8000, color: C.dim } },
+        curves: [['oilPress', C.text, 'left', 'Öldruck'], ['rpm', C.dim, 'right', 'Drehzahl']] }
 };
+
+/* The smallest round number (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 x 10^n) at least v: its quarters stay round too. */
+function niceUp(v) {
+    if (!(v > 0)) {
+        return 1;
+    }
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) {
+        if (m * p >= v - 1e-9) {
+            return m * p;
+        }
+    }
+    return 10 * p;
+}
+
+const axisText = (v, d) => (d ? de(v, d) : thousands(v));
 
 function logPage(rec, ui, extra) {
     const log = extra && extra.log;
@@ -384,62 +408,81 @@ function logPage(rec, ui, extra) {
         const on = t.id === `chan:${chan}`;
         button(rec, t, ui, { size: 28, primary: on });
     });
-    const box = { x: X0 + 90, y: 268, w: W - PAD - X0 - 90, h: 300 };
+    const group = GROUPS[chan];
+    const box = { x: X0 + 110, y: 300, w: W - PAD - X0 - 110 - (group.axes.right ? 120 : 0), h: 270 };
     rec.roundRect(box.x, box.y, box.w, box.h, 8, '#141C25');
     if (!log || !log.t.length) {
         rec.text('Keine Werte in dieser Aufzeichnung.', box.x + 40, box.y + 80, 34, C.dim, { font: 'label' });
         return;
     }
     const span = Math.max(1, log.t[log.t.length - 1]);
-    const group = GROUPS[chan];
-    const gridMax = (ys, own) => own || ys.reduce((m, y) => (isNum(y) ? Math.max(m, y) : m), 0);
-    // a shared scale for curves of one unit, else each its own
-    const shared = chan === 'boost' || chan === 'temps';
-    let sharedMax = 0;
-    let sharedMin = 0;
-    group.forEach((g) => (log.series[g[0]] || []).forEach((y) => {
-        if (isNum(y)) { sharedMax = Math.max(sharedMax, y); sharedMin = Math.min(sharedMin, y); }
-    }));
-    // grid: four lines, labelled in the first curve's scale; minutes along the time axis
-    const first = group[0];
-    const firstMax = first[2] || (shared ? sharedMax : gridMax(log.series[first[0]] || []));
-    const firstMin = shared ? sharedMin : 0;
+
+    // each axis: 0 (or the lowest value) to a round number covering its curves, at least its floor
+    const scale = {};
+    Object.keys(group.axes).forEach((name) => {
+        const ax = group.axes[name];
+        let hi = 0;
+        let lo = 0;
+        group.curves.filter((c) => c[2] === name).forEach((c) => (log.series[c[0]] || []).forEach((y) => {
+            if (isNum(y)) { hi = Math.max(hi, y); lo = Math.min(lo, y); }
+        }));
+        const top = niceUp(Math.max(hi, ax.floor));
+        const bottom = lo < 0 ? -niceUp(-lo) : 0;
+        scale[name] = { lo: bottom, hi: top };
+    });
+    const yOf = (name, v) => {
+        const sc = scale[name];
+        return box.y + box.h - (box.h) * clamp((v - sc.lo) / (sc.hi - sc.lo), 0, 1);
+    };
+
+    // grid and axis labels: four steps; each axis in its curve's colour, its unit above it
     for (let k = 0; k <= 4; k++) {
-        const gy = box.y + box.h - 12 - (box.h - 24) * k / 4;
+        const gy = box.y + box.h - box.h * k / 4;
         rec.fillRect(box.x, gy, box.w, 1, C.line);
-        const val = firstMin + (firstMax - firstMin) * k / 4;
-        rec.text(first[3] ? de(val, first[3]) : thousands(val), box.x - 16, gy + 10, 26, C.dim, { font: 'scale', align: 'right' });
+        Object.keys(group.axes).forEach((name) => {
+            const ax = group.axes[name];
+            const sc = scale[name];
+            const val = sc.lo + (sc.hi - sc.lo) * k / 4;
+            const right = name === 'right';
+            rec.text(axisText(val, ax.d), right ? box.x + box.w + 16 : box.x - 16, gy + 9, 26, ax.color,
+                { font: 'scale', align: right ? 'left' : 'right' });
+        });
     }
+    Object.keys(group.axes).forEach((name) => {
+        const ax = group.axes[name];
+        const right = name === 'right';
+        rec.text(ax.unit, right ? box.x + box.w + 16 : box.x - 16, box.y - 36, 26, ax.color,
+            { font: 'label', align: right ? 'left' : 'right' });
+    });
     const minute = 60000;
     const every = span > 20 * minute ? 5 * minute : span > 5 * minute ? minute : span > minute ? 15000 : 5000;
     for (let tm = every; tm < span; tm += every) {
         const gx = box.x + box.w * tm / span;
         rec.fillRect(gx, box.y, 1, box.h, C.line);
-        rec.text(duration(tm), gx, box.y + box.h + 34, 26, C.dim, { font: 'scale', align: 'center' });
-    }
-    let lx = box.x;
-    group.forEach((g) => {
-        const ys = log.series[g[0]] || [];
-        let max = g[2];
-        if (!max) {
-            max = shared ? sharedMax : ys.reduce((m, y) => (isNum(y) ? Math.max(m, y) : m), 0);
+        if (box.w * (span - tm) / span > 60) {
+            rec.text(duration(tm), gx, box.y + box.h + 34, 26, C.dim, { font: 'scale', align: 'center' });
         }
-        const min = shared ? sharedMin : 0;
-        const range = Math.max(1e-6, (max || 1) - min);
-        let seg = [];
-        const flush = () => { if (seg.length > 1) rec.polyline(seg, 3, g[1]); seg = []; };
-        ys.forEach((y, i) => {
-            if (!isNum(y)) { flush(); return; }
-            seg.push([box.x + box.w * log.t[i] / span, box.y + box.h - 12 - (box.h - 24) * clamp((y - min) / range, 0, 1)]);
-        });
-        flush();
-        const peak = ys.reduce((m, y) => (isNum(y) && (m === null || y > m) ? y : m), null);
-        const text = `max ${peak === null ? '–' : (g[3] ? de(peak, g[3]) : thousands(peak))} ${g[4]}`;
-        rec.fillRect(lx, 636, 28, 6, g[1]);
-        lx += 40 + rec.text(text, lx + 40, 650, 30, C.text, { font: 'scale' }) + 56;
-    });
+    }
     rec.text('0:00', box.x, box.y + box.h + 34, 26, C.dim, { font: 'scale' });
     rec.text(duration(span), box.x + box.w, box.y + box.h + 34, 26, C.dim, { font: 'scale', align: 'right' });
+
+    // the curves, broken where a value is missing; the legend names each with its peak and unit
+    let lx = X0;
+    group.curves.forEach((c) => {
+        const ys = log.series[c[0]] || [];
+        let seg = [];
+        const flush = () => { if (seg.length > 1) rec.polyline(seg, 3, c[1]); seg = []; };
+        ys.forEach((y, i) => {
+            if (!isNum(y)) { flush(); return; }
+            seg.push([box.x + box.w * log.t[i] / span, yOf(c[2], y)]);
+        });
+        flush();
+        const ax = group.axes[c[2]];
+        const peak = ys.reduce((m, y) => (isNum(y) && (m === null || y > m) ? y : m), null);
+        const text = `${c[3]}  max ${peak === null ? '–' : axisText(peak, ax.d === 0 ? 0 : Math.max(ax.d, 1))} ${ax.unit}`;
+        rec.fillRect(lx, 666, 28, 6, c[1]);
+        lx += 40 + rec.text(text, lx + 40, 680, 28, C.text, { font: 'scale' }) + 56;
+    });
 }
 
 function draw(rec, page, v, cfg, ui, extra) {
