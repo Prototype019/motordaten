@@ -149,26 +149,42 @@ const CHANNELS = [
 
 const FAULT_ROWS = 8;
 
-/* The fault page's grid: every unit a tile, 5 across. */
-const GRID = { cols: 5, x: X0, y: 196, w: W - PAD - X0, rowH: 64, gap: 12 };
-function tileBox(i) {
-    const cw = (GRID.w - GRID.gap * (GRID.cols - 1)) / GRID.cols;
-    return { x: GRID.x + (i % GRID.cols) * (cw + GRID.gap), y: GRID.y + Math.floor(i / GRID.cols) * GRID.rowH, w: cw, h: GRID.rowH - 10 };
+/*
+ * The fault page, sorted: on the left a card for each unit with entries (active ones first, then by how many),
+ * with its first entry's meaning; on the right every other unit as a chip, those still to read or being read,
+ * then the ones without entries, then those that gave none (refused, silent, not read). Units with entries past
+ * the cards show as red chips first. Each unit with entries opens its page.
+ */
+const FAULT_PANEL = { cards: { x: X0, y: 256, w: 1180, h: 112, gap: 14, max: 4 },
+    chips: { x: X0 + 1240, y: 256, w: W - PAD - X0 - 1240, cols: 3, h: 42, gap: 8 } };
+const CHIP_ORDER = { faults: 0, read: 1, wait: 2, ok: 3, refused: 4, none: 5, error: 6 };
+
+function faultLayout(f) {
+    const scan = (f && f.scan) || [];
+    const active = (u) => u.entries.filter((e) => e.state === 'aktiv').length;
+    const faulty = scan.filter((u) => u.state === 'faults')
+        .sort((a, b) => (active(b) - active(a)) || (b.entries.length - a.entries.length) || a.name.localeCompare(b.name, 'de'));
+    const P = FAULT_PANEL.cards;
+    const cards = faulty.slice(0, P.max).map((u, i) => ({ u, box: { x: P.x, y: P.y + i * (P.h + P.gap), w: P.w, h: P.h } }));
+    const rest = faulty.slice(P.max).concat(scan.filter((u) => u.state !== 'faults')
+        .sort((a, b) => (CHIP_ORDER[a.state] - CHIP_ORDER[b.state]) || a.name.localeCompare(b.name, 'de')));
+    const Q = FAULT_PANEL.chips;
+    const cw = (Q.w - Q.gap * (Q.cols - 1)) / Q.cols;
+    const chips = rest.map((u, i) => ({ u, box: { x: Q.x + (i % Q.cols) * (cw + Q.gap), y: Q.y + Math.floor(i / Q.cols) * (Q.h + Q.gap),
+        w: cw, h: Q.h } }));
+    return { faulty, cards, chips };
 }
 
 function faultsTargets(extra) {
     const f = (extra && extra.faults) || {};
     const out = [];
-    // the units with entries open their page
-    (f.scan || []).forEach((u, i) => {
-        if (u.state === 'faults') {
-            out.push(Object.assign({ id: `unit:${u.addr}`, label: u.name }, tileBox(i)));
-        }
-    });
-    out.push({ id: 'faults:read', x: W - PAD - 300, y: 668, w: 300, h: 80, label: 'Neu lesen' });
+    const L2 = faultLayout(f);
+    L2.cards.concat(L2.chips).filter((c) => c.u.state === 'faults')
+        .forEach((c) => out.push(Object.assign({ id: `unit:${c.u.addr}`, label: c.u.name }, c.box)));
+    out.push({ id: 'faults:read', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Neu lesen' });
     if (f.entries && f.entries.length && !f.reading) {
         const confirm = !!f.confirmClear;
-        out.push({ id: confirm ? 'faults:clear!' : 'faults:clear', x: W - PAD - 300 - 24 - 360, y: 668, w: 360, h: 80,
+        out.push({ id: confirm ? 'faults:clear!' : 'faults:clear', x: W - PAD - 300 - 24 - 380, y: 64, w: 380, h: 84,
             label: confirm ? 'Wirklich löschen' : 'Fehler löschen', danger: confirm });
     }
     return out;
@@ -626,36 +642,90 @@ function faultsPage(rec, ui, extra) {
     }
     rec.text(note, X0, 166, 30, f.error || f.warn || f.units === 0 ? C.limit : C.dim, { font: 'label' });
 
-    scan.forEach((u, i) => {
-        const b = tileBox(i);
-        const look = u.state === 'read' && u.try > 1 ? { color: C.ice, text: `liest … (${u.try}.)` } : TILE[u.state] || TILE.wait;
-        const id = `unit:${u.addr}`;
-        if (ui && ui.pressed === id) {
-            rec.roundRect(b.x, b.y, b.w, b.h, 10, C.line);
-        } else {
-            rec.roundRect(b.x, b.y, b.w, b.h, 10, '#141C25');
-        }
+    const lay = faultLayout(f);
+    const P = FAULT_PANEL.cards;
+    const Q = FAULT_PANEL.chips;
+    const frame = (b, id, radius) => {
+        rec.roundRect(b.x, b.y, b.w, b.h, radius, ui && ui.pressed === id ? C.line : '#151D26');
         if (ui && ui.focus === id) {
-            rec.strokeRoundRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8, 12, 4, C.ice);
+            rec.strokeRoundRect(b.x - 5, b.y - 5, b.w + 10, b.h + 10, radius + 4, 4, C.ice);
         }
-        rec.roundRect(b.x, b.y, 8, b.h, 4, look.color);
-        let words = look.text === null ? `${u.entries.length} Fehler` : look.text;
+    };
+
+    // left: the units with entries, or how it stands without any
+    rec.text(lay.faulty.length ? `Mit Fehlern  ${lay.faulty.length}` : 'Mit Fehlern', P.x, P.y - 16, 26, lay.faulty.length ? C.limit : C.dim,
+        { font: 'label' });
+    if (!lay.faulty.length) {
+        const done = !f.reading && f.units > 0;
+        const b = { x: P.x, y: P.y, w: P.w, h: 2 * P.h + P.gap };
+        rec.roundRect(b.x, b.y, b.w, b.h, 18, '#151D26');
+        if (f.reading) {
+            // how far the reading is: units read of all, as a bar
+            const n = (f.scan || []).filter((u) => u.state !== 'wait' && u.state !== 'read').length;
+            const of = (f.scan || []).length || 1;
+            rec.text('Liest die Steuergeräte', b.x + 40, b.y + 74, 40, C.text, { font: 'label' });
+            rec.text(`${n} von ${of}`, b.x + b.w - 40, b.y + 74, 40, C.ice, { font: 'label', align: 'right' });
+            rec.roundRect(b.x + 40, b.y + 120, b.w - 80, 18, 9, C.line);
+            rec.roundRect(b.x + 40, b.y + 120, Math.max(18, (b.w - 80) * n / of), 18, 9, C.ice);
+            rec.text('Nur lesend. Steuergeräte mit Fehlern erscheinen hier.', b.x + 40, b.y + 192, 26, C.dim, { font: 'label' });
+        } else {
+            rec.roundRect(b.x + 40, b.y + b.h / 2 - 22, 44, 44, 22, done ? C.ok : C.line);
+            rec.text(done ? 'Keine Fehler gespeichert' : 'Noch nicht gelesen', b.x + 112, b.y + b.h / 2 + 14, 44,
+                done ? C.text : C.dim, { font: 'label' });
+        }
+    }
+    lay.cards.forEach(({ u, box }) => {
+        const id = `unit:${u.addr}`;
+        frame(box, id, 16);
+        const act = u.entries.filter((e) => e.state === 'aktiv').length;
+        rec.roundRect(box.x, box.y, 10, box.h, 5, act ? C.limit : C.ice);
+        const first = u.entries[0] || {};
+        const pill = act ? `${act} aktiv` : first.state || '';
+        const count = `${u.entries.length} ${u.entries.length === 1 ? 'Fehler' : 'Fehler'}`;
+        const pw = rec.textWidth(pill, 26, { font: 'label' }) + 36;
+        rec.text(fit(rec, u.name, 36, box.w - pw - 300), box.x + 34, box.y + 50, 36, C.text, { font: 'label' });
+        const pr = box.x + box.w - 52;      // the pill's right edge, left of the chevron
+        rec.text(count, pr - pw - 20, box.y + 48, 30, act ? C.limit : C.ice, { font: 'label', align: 'right' });
+        if (pill) {
+            rec.strokeRoundRect(pr - pw, box.y + 20, pw, 42, 21, 3, act ? C.limit : C.ice);
+            rec.text(pill, pr - pw / 2, box.y + 50, 26, act ? C.limit : C.ice, { font: 'label', align: 'center' });
+        }
+        const meaning = typeof first.text === 'string' ? first.text : `Code ${first.code || ''}`;
+        rec.text(fit(rec, meaning + (u.entries.length > 1 ? `  (+${u.entries.length - 1})` : ''), 26, box.w - 100), box.x + 34, box.y + 92, 26,
+            C.dim, { font: 'label' });
+        // a chevron: it opens
+        const cx = box.x + box.w - 24;
+        rec.polyline([[cx - 8, box.y + box.h / 2 - 14], [cx + 4, box.y + box.h / 2], [cx - 8, box.y + box.h / 2 + 14]], 4, C.dim);
+    });
+    if (lay.faulty.length > P.max) {
+        rec.text(`+ ${lay.faulty.length - P.max} weitere rechts`, P.x, P.y + P.max * (P.h + P.gap) + 6, 26, C.dim, { font: 'label' });
+    }
+
+    // right: every other unit as a chip, the dot saying how it stands
+    const ok = lay.chips.filter((c) => c.u.state === 'ok').length;
+    rec.text(`Steuergeräte  ${ok} ohne Fehler`, Q.x, Q.y - 16, 26, C.dim, { font: 'label' });
+    lay.chips.forEach(({ u, box }) => {
+        const id = `unit:${u.addr}`;
+        const look = u.state === 'read' && u.try > 1 ? { color: C.ice, text: `liest … (${u.try}.)` } : TILE[u.state] || TILE.wait;
+        frame(box, id, 10);
+        const dot = u.state === 'ok' ? C.ok : u.state === 'faults' ? C.limit : u.state === 'read' ? C.ice : '#3A4652';
+        rec.roundRect(box.x + 16, box.y + box.h / 2 - 7, 14, 14, 7, dot);
+        let words = u.state === 'ok' ? '' : u.state === 'faults' ? `${u.entries.length} Fehler` : look.text;
         if (u.state === 'refused' && typeof u.nrc === 'number') {
             words = `abgelehnt ${hexByte(u.nrc)}`;
         }
-        const ww = words ? rec.textWidth(words, 26, { font: 'label' }) : 0;
-        rec.clip(b.x, b.y, b.w - ww - 28, b.h);
-        rec.text(u.name, b.x + 22, b.y + 36, 28, u.state === 'none' || u.state === 'wait' ? C.dim : C.text, { font: 'label' });
-        rec.noclip();
+        const ww = words ? rec.textWidth(words, 22, { font: 'label' }) + 12 : 0;
+        rec.text(fit(rec, u.name, 26, box.w - 54 - ww - 12), box.x + 42, box.y + box.h / 2 + 9, 26,
+            u.state === 'ok' || u.state === 'faults' || u.state === 'read' ? C.text : C.dim, { font: 'label' });
         if (words) {
-            rec.text(words, b.x + b.w - 14, b.y + 36, 26, u.state === 'faults' ? C.limit : u.state === 'ok' ? C.text : C.dim,
+            rec.text(words, box.x + box.w - 12, box.y + box.h / 2 + 8, 22, u.state === 'faults' ? C.limit : u.state === 'read' ? C.ice : C.dim,
                 { font: 'label', align: 'right' });
         }
     });
     faultsTargets(extra).filter((t) => t.id.indexOf('faults:') === 0).forEach((t) => button(rec, t, ui));
     if (f.confirmClear) {
-        rec.text('Löscht die Einträge der roten Steuergeräte (nicht die Headunit). Nur bei Motor aus und Zündung an.',
-            X0, 718, 28, C.dim, { font: 'label' });
+        rec.text('Löscht die Einträge der Steuergeräte mit Fehlern (nicht die Headunit). Nur bei Motor aus und Zündung an.',
+            X0, 166 + 40, 26, C.limit, { font: 'label' });
     }
 }
 
