@@ -31,6 +31,10 @@ const Limits = require('./limits.js');
 const Logbook = require('./logbook.js');
 const Faults = require('./faults.js');
 const clock = require('./clock.js');
+const { DtcTexts } = require('./dtctext.js');
+
+const TEXTS_FIRST_MS = 20000;      // the fault texts: looked for this long after the start ...
+const TEXTS_EVERY_MS = 300000;     // ... and again this often while some are missing (only with internet)
 const IF_KOMBI = 'de.bmw.infotainment.KombiIF';
 const FAULT_MASK = 0x0D;     // failing now, pending, confirmed
 const FAULT_WAIT_MS = 2000;  // a unit's answer to its fault memory read
@@ -81,6 +85,7 @@ class Motordaten extends ListApp {
         this._started = false;
         this._drawn = null;
         this._limits = Limits.load();
+        this._texts = new DtcTexts(logger);
         this._recording = null;     // a Logbook.Recording while recording
         this._summaries = new Map(); // recording name -> its summary (files do not change once written)
         this._logs = [];
@@ -103,6 +108,7 @@ class Motordaten extends ListApp {
     stop() {
         this._stopped = true;
         clearInterval(this._timer);
+        clearTimeout(this._textsTimer);
         if (this._recording) {
             this._stopRecording();
         }
@@ -248,6 +254,8 @@ class Motordaten extends ListApp {
                 const note = this._afterClear ? `${this._afterClear}${entries.length ? `Noch ${entries.length} Einträge.` : 'Keine Einträge mehr.'}` : null;
                 this._afterClear = null;
                 d.setExtra({ faults: { scan, units: read, refused: refused.length, nrcs, probe, entries, at: clock.wall(), note } });
+                this._annotateFaults();
+                this._syncTexts(Array.from(new Set(entries.map((e) => e.ecu))));
             }, (e) => {
                 this._tasu.useTester(tester);
                 d.setExtra({ faults: { scan, error: (e && e.message) || String(e) } });
@@ -302,6 +310,33 @@ class Motordaten extends ListApp {
             return 'Löschen nur bei Motor aus. Motor abstellen, Zündung an lassen.';
         }
         return null;
+    }
+
+    /* The fault texts on the entries shown, and how many units' tables are here. */
+    _annotateFaults() {
+        const d = this._drawn;
+        const f = d && d.extra.faults;
+        if (!f || !f.scan) {
+            return;
+        }
+        f.scan.forEach((u) => u.entries.forEach((e) => { e.text = this._texts.text(e.ecu, e.code); }));
+        const c = this._texts.count();
+        d.setExtra({ faults: Object.assign({}, f, { texts: c }) });
+    }
+
+    /* Loads the fault texts not here yet when the Store has internet (the units with faults first). */
+    _syncTexts(first) {
+        clearTimeout(this._textsTimer);
+        this._textsTimer = null;
+        return this._texts.sync(first).then((n) => {
+            if (n) {
+                this._annotateFaults();
+            }
+        }, (e) => logger.warn(`fault texts: ${e && e.message}`)).then(() => {
+            if (!this._stopped && !this._texts.complete()) {
+                this._textsTimer = setTimeout(() => this._syncTexts(), TEXTS_EVERY_MS);
+            }
+        });
     }
 
     /* Clears the units that have entries, one after the other (never the head unit), then reads again. */
@@ -414,6 +449,7 @@ class Motordaten extends ListApp {
         }
         this._drawn = new Drawn(this.getAppId(), logger);
         this._drawn.setLimits(this._limits);
+        this._textsTimer = setTimeout(() => this._syncTexts(), TEXTS_FIRST_MS);
         this._drawn.on('mode', (mode) => this.useEntryState(mode === 'layer' ? LAYER : LIST));
         this._drawn.on('action', (id) => this._action(id));
         this._drawn.on('targets', (targets) => this._proxiesFor(targets));

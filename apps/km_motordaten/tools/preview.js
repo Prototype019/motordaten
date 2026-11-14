@@ -78,7 +78,12 @@ const done = scanUpTo(99);
 EXTRA.faults = { faults: { scan: done, units: 28, entries: done[done.findIndex((u) => u.addr === 0x5D)].entries, at: new Date(Date.UTC(2026, 10, 14, 11, 2)) } };
 EXTRA.faultsread = { faults: { reading: true, scan: scanUpTo(14), progress: 15 } };
 EXTRA.faultsclear = { faults: Object.assign({}, EXTRA.faults.faults, { confirmClear: true }) };
-EXTRA.faultunit = Object.assign({ unit: 0x5D }, EXTRA.faults);
+/* the unit page with made-up fault texts (the real ones come from the car's own download, not the repo) */
+const camera = { addr: 0x5D, name: Faults.unitName(0x5D), state: 'faults', entries: [
+    { ecu: 0x5D, code: '800ABF', status: 0x2F, state: 'aktiv', text: 'Beispieltext: Kamerasicht eingeschränkt, Scheibe vor der Kamera prüfen' },
+    { ecu: 0x5D, code: '800AC4', status: 0x28, state: 'gespeichert', text: null },
+    { ecu: 0x5D, code: '800AD0', status: 0x08, state: 'gespeichert' }] };
+EXTRA.faultunit = { unit: 0x5D, faults: Object.assign({}, EXTRA.faults.faults, { scan: [camera], texts: { have: 25, of: 26 } }) };
 SCENES.faultsclear = {};
 SCENES.faultsread = {};
 SCENES.faultunit = {};

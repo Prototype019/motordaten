@@ -95,6 +95,34 @@ const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 
     // the pages have a proxy button for every target
     ['logs', 'faults'].forEach((p) => assert.ok(dash.targets(p, { logs: new Array(20).fill({ start: new Date(), peak: {} }) }).length <= spec.PROXIES));
 
+    // fault texts: the FORTTEXTE table of a documentation page, kept in the data folder
+    const { DtcTexts, TableReader } = require('../src/dtctext.js');
+    const page = '# X\n### FARTTEXTE\n| 0x01 | nein |\n### FORTTEXTE\n\nDimensions: 2\n\n| ORT | ORTTEXT |\n| --- | --- |\n' +
+        '| 0x021200 | Energiesparmode aktiv | 0 |\n| 0x80ABF | Kamera: Sicht eingeschränkt – Café | 1 |\n### NEXT\n| 0x999999 | nein |\n';
+    const r = new TableReader();
+    page.match(/[\s\S]{1,7}/g).forEach((c) => r.feed(c));
+    assert.deepStrictEqual(r.end(), { '021200': 'Energiesparmode aktiv', '080ABF': 'Kamera: Sicht eingeschränkt ? Cafe' });
+    const dir = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'kmtx-'));
+    const tx = new DtcTexts(log, dir);
+    assert.strictEqual(tx.text(0x12, '021200'), undefined, 'no table yet');
+    assert.strictEqual(tx.text(0x78, '000001'), null, 'climate: not documented');
+    assert.strictEqual(await tx.sync([0x12]), 0, 'no internet: nothing');
+    const docs = [];
+    assert.strictEqual(await tx.sync([0x40], (doc) => { docs.push(doc); return Promise.resolve(doc === 'BDC_G05' ? { '024008': 'Codierung' } : {}); }), 1);
+    assert.strictEqual(docs[0], 'BDC_G05', 'the units with faults first');
+    assert.strictEqual(docs.length, 26);
+    const again = new DtcTexts(log, dir);
+    assert.strictEqual(again.text(0x40, '24008'), 'Codierung', 'kept without internet');
+    assert.strictEqual(again.text(0x40, '000001'), null);
+    assert.deepStrictEqual(again.count(), { have: 1, of: 26 });
+
+    // the unit page with a text, without one, and not loaded yet
+    const unitScan = [{ addr: 0x40, name: 'Karosserie (BDC)', state: 'faults', entries: [
+        { ecu: 0x40, code: '024008', status: 9, state: 'gespeichert', text: 'Codierung: '.repeat(30) },
+        { ecu: 0x40, code: '024009', status: 9, state: 'gespeichert', text: null },
+        { ecu: 0x40, code: '02400A', status: 9, state: 'aktiv' }] }];
+    dash.draw(new (require('../src/kit_record.js').Recorder)(dash.W, dash.H), 'faultunit', {}, {}, null, { unit: 0x40, faults: { scan: unitScan, texts: { have: 1, of: 26 } } });
+
     console.log(`test_faults: ok, ${f.units} units`);
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

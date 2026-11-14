@@ -452,20 +452,43 @@ function faultsPage(rec, ui, extra) {
 }
 
 /* One unit's entries. */
+/* s cut to width w with an ellipsis. */
+function fit(rec, s, size, w) {
+    if (rec.textWidth(s, size, { font: 'label' }) <= w) {
+        return s;
+    }
+    let lo = 0;
+    let hi = s.length;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (rec.textWidth(s.slice(0, mid).trimRight() + '…', size, { font: 'label' }) <= w) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return s.slice(0, lo).trimRight() + '…';
+}
+
 function faultUnitPage(rec, ui, extra) {
     const f = (extra && extra.faults) || {};
     const u = (f.scan || []).find((x) => x.addr === (extra && extra.unit));
     rec.text(u ? u.name : 'Steuergerät', X0, 120, 56, C.text, { font: 'label' });
-    rec.text(u ? `Adresse 0x${u.addr.toString(16).toUpperCase().padStart(2, '0')} · ${u.entries.length} ${u.entries.length === 1 ? 'Eintrag' : 'Einträge'}` : '',
+    const c = f.texts;
+    const texts = c && c.have < c.of ? ` · Fehlertexte ${c.have} von ${c.of} Steuergeräten geladen, der Rest kommt mit Internet` : '';
+    rec.text(u ? `Adresse 0x${u.addr.toString(16).toUpperCase().padStart(2, '0')} · ${u.entries.length} ${u.entries.length === 1 ? 'Eintrag' : 'Einträge'}${texts}` : '',
         X0, 166, 30, C.dim, { font: 'label' });
     ((u && u.entries) || []).slice(0, FAULT_ROWS).forEach((e, i) => {
         const col = LOG_COLS[i < 4 ? 0 : 1];
         const y = 196 + (i % 4) * 112;
         rec.fillRect(col.x, y + 104, col.w, 2, C.line);
         rec.text(`Code ${e.code}`, col.x + 8, y + 48, 36, C.text, { font: 'scale' });
-        rec.text(`Status 0x${e.status.toString(16).toUpperCase().padStart(2, '0')}`, col.x + 8, y + 88, 28, C.dim, { font: 'scale' });
         const color = STATE_COLOR[e.state] || C.dim;
         const w = rec.textWidth(e.state, 30, { font: 'label' }) + 40;
+        // what it means: the unit's fault text (loaded once with internet), else why there is none
+        const meaning = typeof e.text === 'string' ? e.text : e.text === null ? 'Kein Text zu diesem Code bekannt' :
+            'Text noch nicht geladen – kommt, sobald der Store Internet hat';
+        rec.text(fit(rec, meaning, 28, col.w - 16), col.x + 8, y + 88, 28, typeof e.text === 'string' ? C.text : C.dim, { font: 'label' });
         rec.strokeRoundRect(col.x + col.w - w - 8, y + 26, w, 52, 26, 3, color);
         rec.text(e.state, col.x + col.w - w / 2 - 8, y + 62, 30, color, { font: 'label', align: 'center' });
     });
