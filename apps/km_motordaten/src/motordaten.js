@@ -30,6 +30,18 @@ const { Drawn } = require('./drawn.js');
 const Limits = require('./limits.js');
 const Logbook = require('./logbook.js');
 const Usb = require('./usb.js');
+const Diag = require('./diag.js');
+
+/* An error nobody caught: noted (diag.log) and the app goes on, the screen staying up instead of the
+ * manager restarting the app. */
+process.on('uncaughtException', (e) => {
+    logger.error(`uncaught: ${e && e.stack}`);
+    Diag.note(`Fehler abgefangen: ${String(e && e.stack).split('\n').slice(0, 4).join(' | ')}`);
+});
+process.on('unhandledRejection', (e) => {
+    logger.warn(`unhandled rejection: ${e && e.message}`);
+    Diag.note(`Promise abgelehnt: ${e && e.message}`);
+});
 const Faults = require('./faults.js');
 const clock = require('./clock.js');
 const { DtcTexts } = require('./dtctext.js');
@@ -75,6 +87,8 @@ const CYCLE_MS = 90;           // at least this long per round
 const MAX_CYCLE_MS = 1000;     // the longest pause a busy gateway gets
 const SLOW_EVERY = 12;         // the slow values every this many rounds
 const REOPEN_MS = 10000;       // a failed gateway is tried again after this long (while shown)
+const LIVE_TIMEOUT_MS = 700;   // a live read waits this long for its answer (it comes in ~30 ms): a lost one costs little
+const GAP_NOTE_MS = 1500;      // no values from the DME this long: noted (diag.log)
 const HOLD_MS = 4000;          // a value missing an answer keeps its last one this long (the gateway drops some)
 const RPM_FRESH_MS = 400;      // the DME's engine speed counts this long; the car's signal after it
 
@@ -140,6 +154,7 @@ class Motordaten extends ListApp {
     stop() {
         this._stopped = true;
         clearInterval(this._timer);
+        clearInterval(this._ticker);
         clearTimeout(this._textsTimer);
         if (this._recording) {
             this._stopRecording();
@@ -463,7 +478,10 @@ class Motordaten extends ListApp {
         d.setExtra({ confirmDeleteAll: false, usb: { text: 'Speichere auf USB …' } });
         Usb.exportLogs(Logbook.dir(), names, {
             progress: (n, of) => d.setExtra({ usb: { text: `Speichere auf USB … ${n} von ${of}` } })
-        }).then((r) => {
+        }).then((r) => new Promise((resolve) => Diag.flush(resolve))
+            // the app's notebook beside them (what went wrong, for a look on the computer)
+            .then(() => Usb.exportLogs(Diag.dir(), Diag.files()).catch(() => null))
+            .then(() => r)).then((r) => {
             logger.info(`usb: ${r.count} recordings onto ${r.stick}`);
             d.setExtra({ usb: { text: `${r.count} ${r.count === 1 ? 'Aufzeichnung' : 'Aufzeichnungen'} auf „${r.stick}“ im Ordner ${Usb.FOLDER} gespeichert. Der Stick kann raus.` } });
         }, (e) => {
@@ -634,9 +652,13 @@ class Motordaten extends ListApp {
             return;
         }
         this._polling = true;
+        // the screen and the recording go on at their own pace, whatever a round waits for
+        clearInterval(this._ticker);
+        this._ticker = setInterval(() => { this._render(); this._sample(); }, 100);
         const next = () => {
             if (this._stopped || !(this.isVisible() || this._recording)) {
                 this._polling = false;
+                clearInterval(this._ticker);
                 return;
             }
             const started = Date.now();
@@ -671,14 +693,19 @@ class Motordaten extends ListApp {
         const busyBefore = this._tasu.busy;
         const rec = !!this._recording;
         const round = this._round;
+        let fast = 0;
+        // a round whose FAST got nothing ends there: the next one asks FAST again at once instead of
+        // waiting out more requests behind it
+        const more = (fn) => () => (fast ? fn() : undefined);
         return this._read(FAST)
-            .then(() => (rec && round % 2 === 1 ? this._read(ENGINE) : undefined))
-            .then(() => (rec && round % ENGINE2_EVERY === 3 ? this._read(ENGINE2) : undefined))
-            .then(() => (slow ? this._read(SLOW)
-                .then(() => this._tasu.request(0x22, [0x60, 0x00], undefined, EGS))
+            .then((n) => { fast = n; this._gap(n); })
+            .then(more(() => (rec && round % 2 === 1 ? this._read(ENGINE) : undefined)))
+            .then(more(() => (rec && round % ENGINE2_EVERY === 3 ? this._read(ENGINE2) : undefined)))
+            .then(more(() => (slow ? this._read(SLOW)
+                .then(() => this._tasu.request(0x22, [0x60, 0x00], LIVE_TIMEOUT_MS, EGS))
                 .then((u) => this._keep('gearbox', D.didNumber(D.didById(0x6000), u)), () => this._keep('gearbox', null))
-                .then(() => this._tasu.request(0x01, [0x42]))
-                .then((u) => this._keep('voltage', D.obdNumber(D.pidById(0x42), u)), () => this._keep('voltage', null)) : undefined))
+                .then(() => this._tasu.request(0x01, [0x42], LIVE_TIMEOUT_MS))
+                .then((u) => this._keep('voltage', D.obdNumber(D.pidById(0x42), u)), () => this._keep('voltage', null)) : undefined)))
             .then(() => {
                 this._pace(this._tasu.busy > busyBefore);
                 this._checkTester();
@@ -689,14 +716,39 @@ class Motordaten extends ListApp {
     _read(list) {
         const dids = list.map((kv) => D.didById(kv[1]));
         const data = [].concat(...list.map((kv) => [kv[1] >> 8, kv[1] & 0xFF]));
-        return this._tasu.request(0x22, data)
+        return this._tasu.request(0x22, data, LIVE_TIMEOUT_MS)
             .then((u) => {
                 const got = D.didNumbers(dids, u) || {};
                 list.forEach((kv) => this._keep(kv[0], got[kv[1]]));
                 if (u && u[0] === 0x7F) {
                     this._gatewayError = `DME: ${D.NRC[u[2]] || D.hex(u[2])}`;
+                    Diag.note(`DME lehnt ab (${list.map((kv) => kv[0]).join(',')}): ${this._gatewayError}`);
                 }
-            }, (e) => { list.forEach((kv) => this._keep(kv[0], null)); this._gatewayError = e.message; });
+                return list.filter((kv) => isNum(got[kv[1]])).length;
+            }, (e) => {
+                list.forEach((kv) => this._keep(kv[0], null));
+                this._gatewayError = e.message;
+                Diag.note(`Anfrage ${list[0][0]}…: ${e.message}`);
+                return 0;
+            });
+    }
+
+    /* A gap in the DME's answers: noted when it starts and how long it lasted. */
+    _gap(n) {
+        const now = Date.now();
+        if (n) {
+            if (this._gapFrom && now - this._gapFrom >= GAP_NOTE_MS) {
+                Diag.note(`DME wieder da nach ${((now - this._gapFrom) / 1000).toFixed(1)} s (Pause ${this._cycle} ms)`);
+            }
+            this._gapFrom = 0;
+            this._gapNoted = false;
+        } else {
+            this._gapFrom = this._gapFrom || now;
+            if (!this._gapNoted && now - this._gapFrom >= GAP_NOTE_MS) {
+                this._gapNoted = true;
+                Diag.note(`DME antwortet nicht seit ${((now - this._gapFrom) / 1000).toFixed(1)} s: ${this._gatewayError || '-'}`);
+            }
+        }
     }
 
     /* A busy gateway gets twice the pause, a round without one brings it back down. */
@@ -718,12 +770,16 @@ class Motordaten extends ListApp {
     /* Two rounds without a single answer: ask as the next tester address (the DME may answer only some). */
     _checkTester() {
         const any = FAST.some((kv) => isNum(this._dme[kv[0]]));
+        if (any) {
+            this._answered = true;          // this tester works: kept through any gap that follows
+        }
         this._emptyRounds = any ? 0 : this._emptyRounds + 1;
-        if (this._emptyRounds >= 2) {
+        if (this._emptyRounds >= 2 && !this._answered) {
             this._emptyRounds = 0;
             this._testerIdx = (this._testerIdx + 1) % TESTERS.length;
             this._tasu.useTester(TESTERS[this._testerIdx]);
             logger.info(`no answers: tester ${TESTERS[this._testerIdx].toString(16)}`);
+            Diag.note(`keine Antwort: Tester ${TESTERS[this._testerIdx].toString(16)}`);
         }
     }
 
@@ -808,6 +864,7 @@ class Motordaten extends ListApp {
     }
 }
 
+Diag.note(`Start ${(() => { try { return require('../package.json').version; } catch (e) { return '?'; } })()}`);
 const app = new Motordaten();
 app.start().catch((err) => {
     /* Stays resident so the manager can stop or restart it. */

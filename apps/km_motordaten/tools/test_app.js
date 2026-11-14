@@ -23,6 +23,8 @@ const ANSWERS = {
     '22 58 91': '62 58 91 00 07', '22 58 2F': '62 58 2F 17 E2'
 };
 let asked = 0;
+let silent = false;
+const testers = new Set();
 const keys = [];
 
 function tasuProxy() {
@@ -32,6 +34,10 @@ function tasuProxy() {
         sendTasuResponse: { subscribe: (cb) => { events.on('r', cb); return Promise.resolve(); } },
         sendTasuRequest: (p) => {
             asked++;
+            if (silent) {
+                testers.add(p.sourceAddress);
+                return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });     // the gateway drops it
+            }
             const req = Array.from(p.udsData);
             const key = [p.serviceID].concat(req).map((x) => D.hex(x)).join(' ');
             keys.push(key);
@@ -111,6 +117,17 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     assert.ok(/^0 Nm/.test(get('Drehmoment')), get('Drehmoment'));
     assert.ok(/^0 PS/.test(get('Leistung')), get('Leistung'));
     ANSWERS['22 58 91'] = '62 58 91 00 07';
+
+    // the DME silent for 3 s while driving: the tester that worked stays, the values are back at once after
+    silent = true;
+    await unit.wait(3000);
+    silent = false;
+    assert.deepStrictEqual(Array.from(testers), [0xF4], 'no switching away from the tester that answered');
+    const t0 = Date.now();
+    while (get('Öltemperatur') !== '29 °C' && Date.now() - t0 < 3000) {
+        await unit.wait(50);
+    }
+    assert.ok(Date.now() - t0 < 1200, `values back after ${Date.now() - t0} ms`);
 
     // the button resets the peaks
     unit.press('mdRun');

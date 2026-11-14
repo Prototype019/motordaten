@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "id": "km_motordaten",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "tree": "package",
   "internet": true,
   "modules": ["src/motordaten.js", "src/screen.js", "src/tasu.js", "src/decode.js", "src/dash.js",
     "src/kit_record.js", "src/kit_canvas.js", "src/kit_fonts.js", "src/font_label.js", "src/font_scale.js", "src/font_num.js",
-    "src/mgu_render_client.js", "src/drawn.js", "src/limits.js", "src/logbook.js", "src/faults.js", "src/clock.js", "src/dtctext.js", "src/usb.js"],
+    "src/mgu_render_client.js", "src/drawn.js", "src/limits.js", "src/logbook.js", "src/faults.js", "src/clock.js", "src/dtctext.js", "src/usb.js", "src/diag.js"],
   "sdk": [
     "oap-sdk/src/core/OnlineApp.js",
     "oap-sdk/src/logging/logging",
