@@ -163,12 +163,7 @@ class Motordaten extends ListApp {
                 this._showLogs();
             }
             d.setPage(page);
-        } else if (id === 'seg:logs') {
-            this._showLogs();
-            d.setPage('logs');
-        } else if (id === 'seg:faults') {
-            d.setPage('faults');
-            if (!d.extra.faults) {
+            if (page === 'faults' && !d.extra.faults) {
                 this._readFaults();
             }
         } else if (id === 'faults:read') {

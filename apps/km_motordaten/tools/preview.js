@@ -48,6 +48,8 @@ const SCENES = {
 const out = path.join(__dirname, '..', '..', '..', 'docs', 'design', 'preview');
 fs.mkdirSync(out, { recursive: true });
 SCENES.settings = {};
+SCENES.warnings = { rpm: 6900, rpmPeak: 7050, oil: 128, coolant: 118, intake: 31, charge: 64, boost: 1.62, boostTarget: 1.9, boostPeak: 2.02,
+    oilPress: 0.8, oilPressPeak: 5.9, voltage: 14.1, gearbox: 125, exhaust: 950, torque: 470, power: 455, torquePeak: 560, powerPeak: 520 };
 const logName = sampleLog();
 const summary = Logbook.summary(logName);
 const EXTRA = {
@@ -89,6 +91,7 @@ Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
     const page = name === 'settings' ? 'settings' : name === 'logs' ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
     const cfg = name === 'settings' ? Object.assign(Limits.defaults(), { rpmRed: 6800, oilReady: 80 }) : Limits.defaults();
+    if (name === 'warnings') cfg.oilMax = 125;
     dash.draw(rec, page, SCENES[name], cfg, { focus: name === 'pull' ? 'reset' : name === 'settings' ? 'inc:oilReady' : null },
         EXTRA[name] || {});
     const cv = new Canvas(dash.W, dash.H);

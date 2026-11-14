@@ -14,6 +14,7 @@ const path = require('path');
 const ITEMS = Object.freeze([
     { key: 'rpmRed', label: 'Drehzahl rot ab', unit: 'U/min', def: 6400, min: 4000, max: 7600, step: 100, d: 0 },
     { key: 'oilReady', label: 'Öl bereit ab', unit: '°C', def: 70, min: 50, max: 100, step: 5, d: 0 },
+    { key: 'oilMax', label: 'Öltemperatur-Warnung ab', unit: '°C', def: 130, min: 110, max: 150, step: 5, d: 0 },
     { key: 'boostMax', label: 'Ladedruck-Skala bis', unit: 'bar', def: 2.5, min: 1.5, max: 3.5, step: 0.5, d: 1 },
     { key: 'oilPressMin', label: 'Öldruck-Warnung unter', unit: 'bar', def: 1.0, min: 0.5, max: 2.5, step: 0.1, d: 1 },
     { key: 'coolantMax', label: 'Kühlmittel-Warnung ab', unit: '°C', def: 115, min: 100, max: 125, step: 1, d: 0 },

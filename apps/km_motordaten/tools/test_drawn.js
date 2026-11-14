@@ -18,6 +18,7 @@ const spec = require('../spec.js');
 
 const log = { info() {}, warn() {}, error() {} };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const SETTLE = 850;
 
 function fakeGpu() {
     const g = new EventEmitter();
@@ -64,6 +65,8 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     assert.strictEqual(d.bars.rpm, 6000, 'arrived');
 
     d.hostFocus(false);
+    assert.strictEqual(g.visible, true, 'a moment unfocused: still shown');
+    await wait(SETTLE);
     assert.strictEqual(g.visible, false, 'a popup over it hides the layer');
     d.hostFocus(true);
     assert.strictEqual(g.visible, true);
@@ -71,11 +74,13 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     // back from another app: the HMI says hidden and unfocused, then only visible again
     d.hostFocus(false);
     d.hostVisible(false);
+    await wait(SETTLE);
     assert.strictEqual(g.visible, false);
     d.hostVisible(true);
     assert.strictEqual(g.visible, true, 'visible again counts as focused');
     // a proxy getting the focus means the state has it
     d.hostFocus(false);
+    await wait(SETTLE);
     assert.strictEqual(g.visible, false);
     d.proxyFocus(0, true);
     assert.strictEqual(g.visible, true, 'a focused proxy shows the layer');
@@ -97,10 +102,10 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
 
     // the controller: proxy i is target i; the tabs come first
     const main = dash.targets('main', d.extra).map((t) => t.id);
-    assert.deepStrictEqual(main, ['tab:main', 'tab:logs', 'tab:settings', 'record', 'reset']);
-    d.proxyFocus(2, true);
+    assert.deepStrictEqual(main, ['tab:main', 'tab:logs', 'tab:faults', 'tab:settings', 'record', 'reset']);
+    d.proxyFocus(3, true);
     assert.strictEqual(d.ui.focus, 'tab:settings');
-    d.proxyPress(2);
+    d.proxyPress(3);
     assert.deepStrictEqual(actions, ['reset', 'tab:settings']);
     // a tab by touch too
     const logsTab = dash.targets('main', d.extra)[1];
@@ -128,7 +133,16 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.proxyPress(dash.targets('settings', d.extra).findIndex((t) => t.id === 'defaults'));
     assert.strictEqual(actions.pop(), 'defaults');
 
+    // a page change makes the HMI report hidden and unfocused for a moment: the layer stays
     d.hostVisible(false);
+    d.hostFocus(false);
+    await wait(100);
+    d.hostVisible(true);
+    await wait(SETTLE);
+    assert.strictEqual(g.visible, true, 'a blink of the host state does not show the list');
+
+    d.hostVisible(false);
+    await wait(SETTLE);
     assert.strictEqual(g.visible, false);
     assert.deepStrictEqual(g.calls.filter((c) => c[0] === 'claim').pop()[1], []);
 
@@ -219,7 +233,6 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     real.hostVisible(true);
     assert.ok(sent.indexOf(4) >= 0, 'ATLAS sent');
     assert.ok(sent.indexOf(4) < sent.lastIndexOf(7), 'before the FRAME');
-    real.hostVisible(false);
     real.close();
 
     [d, other].forEach((x) => clearInterval(x.keepalive));

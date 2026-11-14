@@ -8,12 +8,12 @@
  *   readiness (oil temperature band, then coolant, intake and charge air),
  *   power (boost with its target and peak, power and torque), health (oil pressure with its
  *   peak; transmission oil, exhaust and supply voltage; the buttons).
- * A tab rail on the left on every page: Live, Logs, Grenzwerte.
+ * A tab rail on the left on every page: Live, Logs, Fehler, Grenzwerte.
  * Page 'settings': the limits (src/limits.js), each with - and +, and
  *   Standard.
  * Page 'logs': the recordings (src/logbook.js) with date, duration, peaks.
  * Page 'log': one recording's curves by channel group, Löschen (twice), Zurück.
- * Page 'faults' (in the Logs tab, beside the recordings): every unit's fault memory, read only.
+ * Page 'faults' (tab Fehler): every unit's fault memory, read live one by one; 'faultunit' one unit's entries.
  *
  * draw(rec, page, v, cfg, ui, extra) records one frame into a kit_record Recorder
  * (or a kit_canvas Canvas): v the values (null: none; rpmBar / boostBar the
@@ -74,8 +74,9 @@ function mainTargets(extra) {
 const TABS = [
     { id: 'tab:main', page: 'main', label: 'Live' },
     { id: 'tab:logs', page: 'logs', label: 'Logs' },
+    { id: 'tab:faults', page: 'faults', label: 'Fehler' },
     { id: 'tab:settings', page: 'settings', label: 'Grenzwerte' }
-].map((t, i) => Object.assign(t, { x: 0, y: 24 + i * 176, w: RAIL, h: 160 }));
+].map((t, i) => Object.assign(t, { x: 0, y: 16 + i * 184, w: RAIL, h: 168 }));
 
 const ROW_H = 120;
 const SET_TOP = 196;
@@ -91,7 +92,7 @@ function settingsTargets() {
         out.push({ id: `dec:${it.key}`, x: right - 2 * BTN - 24, y: y + 6, w: BTN, h: BTN, label: '−' });
         out.push({ id: `inc:${it.key}`, x: right - BTN, y: y + 6, w: BTN, h: BTN, label: '+' });
     });
-    out.push({ id: 'defaults', x: SET_COLS[1].x + SET_COLS[1].w - 300, y: 650, w: 300, h: 92, label: 'Standard' });
+    out.push({ id: 'defaults', x: SET_COLS[1].x + SET_COLS[1].w - 300, y: 64, w: 300, h: 84, label: 'Standard' });
     return out;
 }
 const SETTINGS_TARGETS = settingsTargets();
@@ -113,9 +114,6 @@ const CHANNELS = [
     { id: 'oil', label: 'Öldruck' }
 ];
 
-/* The Logs tab's two views, switched at its top right. */
-const SEGMENTS = [{ id: 'seg:logs', page: 'logs', label: 'Aufzeichnungen' }, { id: 'seg:faults', page: 'faults', label: 'Fehlerspeicher' }]
-    .map((t, i) => Object.assign(t, { x: W - PAD - (2 - i) * 340 + 16, y: 64, w: 324, h: 76 }));
 const FAULT_ROWS = 8;
 
 /* The fault page's grid: every unit a tile, 5 across. */
@@ -127,7 +125,7 @@ function tileBox(i) {
 
 function faultsTargets(extra) {
     const f = (extra && extra.faults) || {};
-    const out = SEGMENTS.slice();
+    const out = [];
     // the units with entries open their page
     (f.scan || []).forEach((u, i) => {
         if (u.state === 'faults') {
@@ -153,7 +151,7 @@ function logsTargets(extra) {
         const col = LOG_COLS[i < 4 ? 0 : 1];
         return { id: `open:${i}`, x: col.x, y: 196 + (i % 4) * 112, w: col.w, h: 100, label: dateText(r.start) };
     });
-    return SEGMENTS.concat(out);
+    return out;
 }
 
 function logTargets(extra) {
@@ -186,7 +184,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'log' || page === 'faults' || page === 'faultunit' ? 'logs' : page;
+    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) {
@@ -263,7 +261,8 @@ function readiness(rec, v, cfg) {
     const oil = v.oil;
     const ready = isNum(oil) && oil >= readyAt;
     const t = isNum(oil) ? clamp((oil - 20) / (readyAt - 20), 0, 1) : 0;
-    const color = !isNum(oil) ? C.dim : ready ? C.text : mix(C.cold, C.text, t * 0.6);
+    const hot = isNum(oil) && oil >= cfg.oilMax;
+    const color = !isNum(oil) ? C.dim : hot ? C.limit : ready ? C.text : mix(C.cold, C.text, t * 0.6);
     valueUnit(rec, isNum(oil) ? String(Math.round(oil)) : '–', '°C', x, 420, 160, color, 36, 'left');
 
     const by = 448;
@@ -275,8 +274,8 @@ function readiness(rec, v, cfg) {
     const mx = x + w * readyAt / OIL_MAX;
     rec.fillRect(mx - 3, by - 12, 6, bh + 24, C.text);
     rec.text(String(readyAt), mx, by - 20, 26, C.dim, { font: 'scale', align: 'center' });
-    const note = !isNum(oil) ? '' : ready ? 'Bereit für Volllast' : `Noch ${Math.ceil(readyAt - oil)} °C bis bereit`;
-    rec.text(note, x, 552, 34, ready ? C.text : C.cold, { font: 'label' });
+    const note = !isNum(oil) ? '' : hot ? 'Öl zu heiß' : ready ? 'Bereit für Volllast' : `Noch ${Math.ceil(readyAt - oil)} °C bis bereit`;
+    rec.text(note, x, 552, 34, hot ? C.limit : ready ? C.text : C.cold, { font: 'label' });
 
     const cells = [['Kühlmittel', v.coolant, cfg.coolantMax], ['Ansaugluft', v.intake, null], ['Ladeluft', v.charge, null]];
     cells.forEach((c, i) => {
@@ -374,10 +373,6 @@ function settings(rec, cfg, ui) {
 }
 
 
-function segments(rec, page, ui) {
-    SEGMENTS.forEach((t) => button(rec, t, ui, { size: 28, primary: t.page === page }));
-}
-
 const hexByte = (n) => `0x${n.toString(16).toUpperCase().padStart(2, '0')}`;
 /* A refusal's code with its meaning (ISO 14229). */
 const NRC_WORDS = { 0x11: 'Dienst nicht unterstützt', 0x12: 'nicht unterstützt', 0x13: 'falsche Länge', 0x22: 'Bedingungen nicht erfüllt',
@@ -399,7 +394,6 @@ function faultsPage(rec, ui, extra) {
     const f = (extra && extra.faults) || {};
     const scan = f.scan || [];
     rec.text('Fehlerspeicher', X0, 120, 56, C.text, { font: 'label' });
-    segments(rec, 'faults', ui);
     let note;
     if (f.clearing) {
         note = 'Lösche … bitte Zündung an lassen.';
@@ -482,7 +476,6 @@ function logsPage(rec, ui, extra) {
     rec.text('Aufzeichnungen', X0, 120, 56, C.text, { font: 'label' });
     rec.text(logs.length ? `${logs.length} gespeichert, die neueste zuerst. Es bleiben die letzten 20.` :
         'Noch keine Aufzeichnung. Starte eine mit Aufnehmen im Reiter Live.', X0, 166, 30, C.dim, { font: 'label' });
-    segments(rec, 'logs', ui);
     logsTargets(extra).filter((t) => t.id.indexOf('open:') === 0).forEach((t, i) => {
         const r = logs[i];
         if (ui && ui.focus === t.id) {

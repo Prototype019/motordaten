@@ -30,6 +30,10 @@ const CLOSED_RESHOW_MS = 700;
 const PRESS_SHOW_MS = 150;
 const GLIDE_MS = 90;
 const WHOLE = Object.freeze({ x: 0, y: 0, w: dash.W, h: dash.H });
+/* A hide the HMI asks for (state hidden or unfocused) waits this long: it reports both for a moment
+ * while it re-lays out the state (a page change, the controller moving), and the layer gone for that
+ * moment shows the proxy list under it. Showing is at once. */
+const HIDE_SETTLE_MS = 800;
 
 class Drawn extends EventEmitter {
     /* gpu: the renderer client (a RenderClient for appId unless given, as in the tests). */
@@ -76,6 +80,7 @@ class Drawn extends EventEmitter {
 
     close() {
         clearInterval(this.keepalive);
+        clearTimeout(this.hideTimer);
         this.gpu.removeAllListeners('close');
         this.gpu.close();
     }
@@ -202,6 +207,23 @@ class Drawn extends EventEmitter {
 
     _update() {
         const on = this._shouldShow();
+        if (on) {
+            clearTimeout(this.hideTimer);
+            this.hideTimer = null;
+        } else if (this.on_ && this.mode === 'layer' && !this.closedHide) {
+            // hidden or unfocused: only if it stays so
+            if (!this.hideTimer) {
+                this.hideTimer = setTimeout(() => {
+                    this.hideTimer = null;
+                    this._apply(this._shouldShow());
+                }, HIDE_SETTLE_MS);
+            }
+            return;
+        }
+        this._apply(on);
+    }
+
+    _apply(on) {
         if (on === this.on_) {
             return;
         }
