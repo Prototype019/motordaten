@@ -1,9 +1,11 @@
 'use strict';
 /**
  * The recordings onto a USB stick: every CSV of the logbook into the folder Motordaten on the first stick
- * mounted (the head unit mounts a stick at /media/<label>, as the MGU Store's updater reads it: GPL-3.0,
- * native/mgu-updater/js/sources.js mountPoints). Copied one file after the other without blocking the
- * screen, each written to the stick before the next (fsync), so the stick can come out when it says done.
+ * mounted (the head unit mounts a stick directly under /media). Copied one file after the other without
+ * blocking the screen, each written to the stick before the next (fsync), so the stick can come out when the
+ * page says done.
+ *
+ * Copyright (c) 2026 Prototype019. All rights reserved (LICENSE).
  */
 
 const fs = require('fs');
@@ -11,27 +13,28 @@ const path = require('path');
 
 const FOLDER = 'Motordaten';
 
-/* /proc/mounts escapes space, tab, newline and backslash as \ooo. */
-const unescapeMount = (s) => s.replace(/\\([0-7]{3})/g, (m, o) => String.fromCharCode(parseInt(o, 8)));
-
-/* The sticks mounted now: mount points directly under root. */
+/* The mount points directly under root (default /media) in the mount table (default /proc/mounts), whose
+ * second field writes a space, tab, newline or backslash as a backslash and three octal digits. */
 function sticks(mountsFile, root) {
-    const top = (root || '/media').replace(/\/+$/, '');
-    let text = '';
+    const parent = path.resolve(root || '/media');
+    let table;
     try {
-        text = fs.readFileSync(mountsFile || '/proc/mounts', 'utf8');
+        table = fs.readFileSync(mountsFile || '/proc/mounts', 'utf8');
     } catch (e) {
         return [];
     }
-    const out = [];
-    text.split('\n').forEach((line) => {
-        const f = line.split(' ');
-        const mp = f.length >= 3 ? unescapeMount(f[1]) : '';
-        if (mp && path.dirname(mp) === top && out.indexOf(mp) < 0) {
-            out.push(mp);
+    const found = new Set();
+    for (const line of table.split('\n')) {
+        const field = line.split(' ')[1];
+        if (!field) {
+            continue;
         }
-    });
-    return out.sort();
+        const where = field.replace(/\\(\d{3})/g, (all, oct) => String.fromCharCode(parseInt(oct, 8)));
+        if (path.dirname(where) === parent) {
+            found.add(where);
+        }
+    }
+    return Array.from(found).sort();
 }
 
 const call = (fn, ...args) => new Promise((resolve, reject) => fn(...args, (err, v) => (err ? reject(err) : resolve(v))));

@@ -1,6 +1,7 @@
 'use strict';
 /**
- * Copied from robertnisipeanu/mgu-store, only this line added (MIT, Copyright (c) 2026 cauliflowermossgrape: shared/LICENSE-kit.txt).
+ * MIT, Copyright (c) 2026 cauliflowermossgrape (idrive7-apps) and IterioDev (mgu-renderd), as distributed in
+ * robertnisipeanu/mgu-store; only this line added. Licence: shared/LICENSE-kit.txt (not under this repository's LICENSE).
  * record.js - the drawing surface apps draw on: same methods as canvas.js, but every call is
  * recorded as a compact command (32-bit words, see kit/renderd/src/proto.h) instead of being
  * rasterised in JavaScript.

@@ -1,6 +1,6 @@
 'use strict';
 /**
- * The unit's build check (the MGU Store's tools/oap_link.js link(), GPL-3.0): every require in the
+ * The unit's build check (as the MGU Store's builder applies it on the unit): every require in the
  * app's modules must name one of them ('./x.js' as listed in mgu-app.json), an sdk name of
  * mgu-app.json, or a Node builtin; anything else and the unit refuses the package ("nothing changed").
  *

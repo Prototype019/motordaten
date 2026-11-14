@@ -897,10 +897,10 @@ class Motordaten extends ListApp {
         if (this._layerState && (!this._drawn || this._drawn.mode !== null)) {
             // the drawn screen (or the renderer not answered yet): the list state stays empty under it
             this.show('', []);
-            this._mdShow('Run', false);
+            this.showButton(false);
             return;
         }
-        this._mdShow('Run', true);
+        this.showButton(true);
         this.show(status, [
             ['Drehzahl', withPeak(v.rpm, v.rpmPeak, 'U/min', 0)],
             ['Öltemperatur', fmt(v.oil, '°C', 0)],

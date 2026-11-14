@@ -1,6 +1,7 @@
 'use strict';
 /**
- * Copied from robertnisipeanu/mgu-store, only this line added (MIT, Copyright (c) 2026 cauliflowermossgrape: shared/LICENSE-kit.txt).
+ * MIT, Copyright (c) 2026 cauliflowermossgrape (idrive7-apps) and IterioDev (mgu-renderd), as distributed in
+ * robertnisipeanu/mgu-store; only this line added. Licence: shared/LICENSE-kit.txt (not under this repository's LICENSE).
  * canvas.js - tiny anti-aliased RGBA canvas that encodes to PNG.
  *
  * Pure JavaScript (node 8 on the head unit has no native canvas). Apps draw

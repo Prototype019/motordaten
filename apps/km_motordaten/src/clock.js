@@ -1,45 +1,51 @@
 'use strict';
 /**
- * The car's clock. The head unit's system time is UTC; the time the HMI
- * shows is the instrument cluster's display time (KombiIF
- * statusShowTimeDate), in the time zone and summer time set in the car.
- * Its offset from UTC is taken from that, in quarter hours, the way the
- * MGU Store does (store_view.js setClusterTime, GPL-3.0).
+ * The car's wall clock. The head unit runs on UTC; the time the car shows comes from the instrument
+ * cluster (KombiIF statusShowTimeDate: displayHour, displayMinute, displaySecond, and a status that is odd
+ * while the shown time is valid; 15 means not filled in). Time zones differ from UTC by whole quarter hours,
+ * so the offset is the shown time minus UTC, rounded to 15 minutes and brought into -12 h .. +12 h.
  *
- * wall(ms) is a Date whose UTC fields read the car's wall clock: show and
- * name times with getUTCHours() etc. Before the cluster tells, the offset
- * is 0 (UTC).
+ * wall(ms) is a Date whose UTC fields read the car's wall clock (getUTCHours() etc.). Until the cluster has
+ * told, the offset is 0.
+ *
+ * Copyright (c) 2026 Prototype019. All rights reserved (LICENSE).
  */
 
-const DAY_MS = 86400000;
-const QUARTER_MS = 900000;
-const CLUSTER_UNFILLED = 15;
+const MINUTES_PER_DAY = 24 * 60;
+const STATUS_NOT_FILLED = 15;
 
-let offsetMin = 0;
-let known = false;
+let offsetMinutes = 0;
+let haveOffset = false;
 
-/* The cluster's display time: the offset from it. Returns whether it changed. */
+const minutesOfDay = (h, m, s) => h * 60 + m + s / 60;
+
+/* The cluster's shown time against the system's UTC (now: ms, the system time by default). True when the
+ * offset is new or changed. */
 function setCluster(show, now) {
-    const status = show && show.statusDisplayClockTimeDate;
-    if (status === CLUSTER_UNFILLED || typeof status !== 'number' || status % 2 !== 1 ||
-        !(show.displayHour < 24) || !(show.displayMinute < 60)) {
+    if (!show) {
         return false;
     }
-    const sec = show.displaySecond < 60 ? show.displaySecond : 0;
-    const t = now === undefined ? Date.now() : now;
-    const diff = ((((show.displayHour * 60 + show.displayMinute) * 60 + sec) * 1000 - t) % DAY_MS + DAY_MS) % DAY_MS;
-    let offset = (Math.round(diff / QUARTER_MS) * 15) % 1440;
-    if (offset > 720) {
-        offset -= 1440;            // west of UTC
+    const status = show.statusDisplayClockTimeDate;
+    const valid = typeof status === 'number' && status !== STATUS_NOT_FILLED && status % 2 === 1 &&
+        show.displayHour >= 0 && show.displayHour < 24 && show.displayMinute >= 0 && show.displayMinute < 60;
+    if (!valid) {
+        return false;
     }
-    const changed = offset !== offsetMin || !known;
-    offsetMin = offset;
-    known = true;
+    const utc = new Date(now === undefined ? Date.now() : now);
+    const shown = minutesOfDay(show.displayHour, show.displayMinute, show.displaySecond < 60 ? show.displaySecond : 0);
+    const system = minutesOfDay(utc.getUTCHours(), utc.getUTCMinutes(), utc.getUTCSeconds() + utc.getUTCMilliseconds() / 1000);
+    let diff = Math.round((shown - system) / 15) * 15;
+    // the day boundary: an hour behind at 00:30 shown is 23:30 the day before, not 23 hours ahead
+    while (diff > MINUTES_PER_DAY / 2) diff -= MINUTES_PER_DAY;
+    while (diff <= -MINUTES_PER_DAY / 2) diff += MINUTES_PER_DAY;
+    const changed = !haveOffset || diff !== offsetMinutes;
+    offsetMinutes = diff;
+    haveOffset = true;
     return changed;
 }
 
 function wall(ms) {
-    return new Date((ms === undefined ? Date.now() : ms) + offsetMin * 60000);
+    return new Date((ms === undefined ? Date.now() : ms) + offsetMinutes * 60000);
 }
 
-module.exports = { setCluster, wall, offset: () => offsetMin, known: () => known };
+module.exports = { setCluster, wall, offset: () => offsetMinutes, known: () => haveOffset };

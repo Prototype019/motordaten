@@ -1,6 +1,7 @@
 'use strict';
 /**
- * Copied from robertnisipeanu/mgu-store, only this line added (MIT, Copyright (c) 2026 cauliflowermossgrape: shared/LICENSE-kit.txt).
+ * MIT, Copyright (c) 2026 cauliflowermossgrape (idrive7-apps) and IterioDev (mgu-renderd), as distributed in
+ * robertnisipeanu/mgu-store; only this line added. Licence: shared/LICENSE-kit.txt (not under this repository's LICENSE).
  * mgu_render_client.js - an app's connection to mgu-render (PROTOCOL.md), the native dialect
  * (mgu-render/1). Node 8; needs only net, fs and events.
  *

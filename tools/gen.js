@@ -11,7 +11,7 @@
  *   node tools/gen.js            every app
  *   node tools/gen.js <id>       one app
  *
- * iDrive 8 widgets as the MGU Store uses them: LT_State_Wide_List states,
+ * iDrive 8 widgets: LT_State_Wide_List states,
  * LT_ScrollLabel labels, LT_Button_MediaEntry_1Row buttons and rows
  * (PrimaryText left, FrequencyText right); a list is one row component whose
  * row count the app sets at runtime. No state has a ParentState (Hmi8 refuses
@@ -105,7 +105,7 @@ function packageJson(app, spec) {
             userLoginRequired: false, backgroundPriority: 150, someipManifest: 'manifest.json' },
         files: ['config', 'rhmiData', 'package.json', 'npm-shrinkwrap.json', 'permissions.json', 'javascript', 'manifest.json'],
         dependencies: { 'oap-sdk': '24.10.2' }, engines: { node: '>=8.7.0' }, author: 'owner',
-        license: 'GPL-3.0-or-later', mguLocalOnly: true, mguHmi: ['ID8'] };
+        license: 'SEE LICENSE IN LICENSE', mguLocalOnly: true, mguHmi: ['ID8'] };
 }
 
 function manifest(spec) {

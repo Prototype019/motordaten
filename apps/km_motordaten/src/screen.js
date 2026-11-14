@@ -1,289 +1,294 @@
 'use strict';
 /**
- * ListApp: an OnlineApp with one iDrive 8 widget screen (tools/gen.js):
- * a status line (label <prefix>Status), a button (<prefix>Run) and a list
- * (<prefix>List, one row per [label, value] pair, shown as "label: value"). The app calls
- * this.show(status, rows); a press on the button calls this.run() (also run
- * once at start). The screen is written only where a cell changed.
+ * ListApp - the frame of a Motordaten head-unit app: one widget screen (a status line <prefix>Status, a
+ * button <prefix>Run, a list <prefix>List whose rows read "label: value"), its tile, and telling the
+ * platform when the app is in front.
  *
- * It reports the app active and visible to MainApp while its screen is in
- * front, as the MGU Store does (registerActive / registerHmiVisible).
+ * A subclass implements run() (the button; once at start), may implement stop(), bind(rhmi) and
+ * visibilityChanged(visible), and calls show(status, rows), showButton(on), useEntryState(name).
  *
- * Copied into each app's src/ by tools/gen.js; edit shared/screen.js.
+ * Copyright (c) 2026 Prototype019. All rights reserved (LICENSE). Copied into each app's src/ by tools/gen.js;
+ * edit shared/screen.js.
  */
 const OnlineApp = require('oap-sdk/src/core/OnlineApp.js');
 const logging = require('oap-sdk/src/logging/logging');
 
 const logger = logging.getSDKLogger();
-const PRESS_DEDUPE_MS = 400;  // the HMI reports a press as an action and as a userEvent
-const FOREGROUND_REASONS = ['ENTRY_POINT', 'LUM', 'BOOKMARK', 'START_WIDGET', 'TRIGGER_HMI', 'SPEECH_COMMAND'];
+
+/* The start reasons (OnlineApp startReason / visibility data) that mean the user opened the app. */
+const OPENED_BY_USER = new Set(['ENTRY_POINT', 'LUM', 'BOOKMARK', 'START_WIDGET', 'TRIGGER_HMI', 'SPEECH_COMMAND']);
+/* One press arrives twice (as the button's action and as a user event): the second within this is dropped. */
+const DOUBLE_PRESS_MS = 400;
+
+const warn = (what) => (err) => logger.warn(`${what}: ${err && err.message}`);
 
 class ListApp extends OnlineApp {
+    /* screen: { root: the widget state's name, prefix: its components' prefix } */
     constructor(screen) {
         super();
-        this._mdScreen = screen;          // { root: state name, prefix: component prefix }
-        this._mdStatus = '';
-        this._mdRows = [];
-        this._mdComponents = {};
-        this._mdWritten = {};
-        this._mdSizing = false;
-        this._mdLastPress = 0;
-        this._mdVisible = false;
-        this._mdReady = false;
-        this._mdShutdownPromise = null;
-        this.on('initialized', () => {
-            this._appInitialized().catch((err) => logger.error(`init failed: ${err && err.message}`));
-        });
-        this.on('shutdown', (reason) => this._handleShutdown(reason));
-        this.on('error', (err) => logger.warn(`OnlineApp error: ${err && err.message}`));
-        this.on('entryPointExecute', (uuid) => this._mdOpen(uuid));
+        this._frame = {
+            screen,
+            parts: {},              // Status, Run, List: the components
+            shown: new Map(),       // what the HMI has: "<part>|<row>|<cell>" or "<part>|visible" -> value
+            status: '',
+            rows: [],
+            resizing: false,
+            front: false,           // the app is in front
+            started: false,         // the platform has been told the app is up
+            ending: null,
+            pressedAt: 0,
+            tile: null,             // the entry point's uuid
+            entry: null             // the state the tile opens
+        };
+        this.on('initialized', () => this._start().catch(warn('start')));
+        this.on('shutdown', (reason) => this._end(reason));
+        this.on('error', warn('OnlineApp'));
+        this.on('entryPointExecute', (uuid) => this._openTile(uuid));
     }
 
-    /* Subclasses: the work behind the button (also run once at start). */
+    /* ---- for the subclass ---- */
+
     run() {}
-
-    /* Subclasses: called once before the process ends. */
     stop() {}
-
-    /* Subclasses: more of the description to bind (states, components), before the tile is registered. */
     bind() {}
-
-    /* The tile opens state name from now on; shown now, it moves there. */
-    useEntryState(name) {
-        const state = this.rhmiApplication && this.rhmiApplication.getByName(name);
-        if (!state || !this._mdEntryUuid || this._mdEntryState === name) {
-            return;
-        }
-        const was = this._mdEntryState;
-        this._mdEntryState = name;
-        logger.info(`entry state ${name}`);
-        Promise.resolve()
-            .then(() => this.rhmiApplication.mapEntryState(this._mdEntryUuid, state))
-            .then(() => (this._mdVisible ? this.rhmiApplication.openState(name) : undefined))
-            .then(() => (this._mdVisible && was ? this.rhmiApplication.closeState(was) : undefined))
-            .catch((err) => logger.warn(`entry state ${name}: ${err && err.message}`));
-    }
-
-    /* The state the tile opens. */
-    entryState() {
-        return this._mdEntryState;
-    }
-
-    /* Subclasses: the screen came to the front (true) or left it (false). */
     visibilityChanged() {}
 
     isVisible() {
-        return this._mdVisible;
+        return this._frame.front;
     }
 
+    entryState() {
+        return this._frame.entry;
+    }
+
+    /* The status line and the list's rows ([label, value]); rows left out keep theirs. */
     show(status, rows) {
-        this._mdStatus = status;
+        this._frame.status = status;
         if (rows) {
-            this._mdRows = rows;
+            this._frame.rows = rows;
         }
-        this._mdRender();
+        this._paint();
     }
 
-    _appInitialized() {
-        logger.info(`${this.getAppId()} starting`);
-        if (!this.rhmiApplication) {
-            return this.initialized();
-        }
+    /* The button shown or hidden. */
+    showButton(on) {
+        this._setVisible('Run', on);
+    }
+
+    /* The tile opens state name from now on; the app in front moves there now. */
+    useEntryState(name) {
+        const f = this._frame;
         const rhmi = this.rhmiApplication;
-        const p = this._mdScreen.prefix;
-        this._mdRoot = rhmi.getByName(this._mdScreen.root);
-        if (!this._mdRoot) {
-            return Promise.reject(new Error(`uiDescription has no ${this._mdScreen.root}`));
+        const state = rhmi && rhmi.getByName(name);
+        if (!state || !f.tile || f.entry === name) {
+            return;
         }
-        ['Status', 'Run', 'List'].forEach((n) => {
-            this._mdComponents[n] = rhmi.getByName(p + n);
-            if (!this._mdComponents[n]) {
-                logger.warn(`component ${p}${n} missing`);
-            }
-        });
-        const run = this._mdComponents.Run;
-        if (run) {
-            run.on('action', () => this._mdPress());
-            let id = null;
-            try { id = Number(run.getId()); } catch (e) { id = null; }
-            rhmi.on('userEvent', (ev) => {
-                if (id !== null && ev && ev.eventType === 'ACTION' && Number(ev.sourceId) === id) {
-                    this._mdPress();
+        const before = f.entry;
+        f.entry = name;
+        logger.info(`entry state ${name}`);
+        Promise.resolve(rhmi.mapEntryState(f.tile, state))
+            .then(() => {
+                if (!f.front) {
+                    return undefined;
                 }
-            });
+                return Promise.resolve(rhmi.openState(name)).then(() => (before ? rhmi.closeState(before) : undefined));
+            })
+            .catch(warn(`entry state ${name}`));
+    }
+
+    /* ---- start, tile, front ---- */
+
+    _start() {
+        const f = this._frame;
+        const rhmi = this.rhmiApplication;
+        logger.info(`${this.getAppId()} starting`);
+        if (!rhmi) {
+            return Promise.resolve(this.initialized());
         }
-        rhmi.on('restoreHmi', () => {
-            this._mdWritten = {};
-            this._mdRender();
-        });
+        const root = rhmi.getByName(f.screen.root);
+        if (!root) {
+            return Promise.reject(new Error(`no state ${f.screen.root} in the description`));
+        }
+        for (const part of ['Status', 'Run', 'List']) {
+            f.parts[part] = rhmi.getByName(f.screen.prefix + part) || null;
+            if (!f.parts[part]) {
+                logger.warn(`no component ${f.screen.prefix}${part}`);
+            }
+        }
+        this._listenForPresses(rhmi);
+        // the HMI restarted: it has nothing of ours any more
+        rhmi.on('restoreHmi', () => { f.shown.clear(); this._paint(); });
+        // the HMI's application stack: ours on top (ROOT_APP) while the app is in front
         rhmi.on('applicationStackChanged', (stack) => {
-            const keys = stack && typeof stack === 'object' ? Object.keys(stack) : [];
-            if (keys.length) {
-                this._mdSetVisible(Object.prototype.hasOwnProperty.call(stack, 'ROOT_APP'));
+            if (stack && typeof stack === 'object' && Object.keys(stack).length) {
+                this._front('ROOT_APP' in stack);
             }
         });
         this.bind(rhmi);
-        const foreground = this._mdStartedForeground();
-        return this._mdRegisterEntryPoint()
+        const reason = (this.getVisibilityData && (this.getVisibilityData() || {}).reason) || this.startReason;
+        const openedByUser = OPENED_BY_USER.has(reason);
+        return this._registerTile(rhmi, root)
             .then(() => this.initialized())
             .then(() => {
-                this._mdReady = true;
-                this._mdRender();
-                if (foreground || this._mdVisible) {
-                    // shown before the reports could go out: report it now
-                    this._mdVisible = false;
-                    this._mdSetVisible(true);
+                f.started = true;
+                this._paint();
+                if (openedByUser || f.front) {
+                    // in front before the platform could be told: tell it now
+                    f.front = false;
+                    this._front(true);
                 }
                 const last = this.getLastExecutedEntryPointUuid && this.getLastExecutedEntryPointUuid();
                 if (last) {
-                    this._mdOpen(last);
+                    this._openTile(last);
                 }
                 setImmediate(() => this.run());
             });
     }
 
-    _mdStartedForeground() {
-        const data = this.getVisibilityData && this.getVisibilityData();
-        const reason = (data && data.reason) || this.startReason;
-        return FOREGROUND_REASONS.indexOf(reason) >= 0;
-    }
-
-    _mdRegisterEntryPoint() {
-        const descriptions = (this.appDescription && this.appDescription.application.entryPoints) || [];
-        const ours = this.getEntryPoints().find(
-            (ep) => descriptions.some((d) => d.uuid === ep.getDescription().uuid));
-        if (!ours) {
-            return Promise.reject(new Error('no entry point handed over by the manager'));
-        }
-        const d = ours.getDescription();
-        this._mdEntryUuid = d.uuid;
-        this._mdEntryState = this._mdScreen.root;
-        return ours.init()
-            .then(() => this.rhmiApplication.mapEntryState(d.uuid, this._mdRoot))
-            .then(() => ours.setAvailability('ENABLED'))
-            .then(() => logger.info(`entry point ${d.name} ENABLED`));
-    }
-
-    _mdOpen(uuid) {
-        if (this._mdShutdownPromise || !this.rhmiApplication || !uuid) {
-            return Promise.resolve();
-        }
-        this._mdWritten = {};
-        this._mdRender();
-        this._mdSetVisible(true);
-        return Promise.resolve(this.rhmiApplication.openEntryState(uuid))
-            .catch((err) => logger.warn(`openEntryState failed: ${err && err.message}`));
-    }
-
-    /* Tells MainApp the app is (no longer) in front. */
-    _mdSetVisible(visible) {
-        if (this._mdShutdownPromise || this._mdVisible === visible) {
+    _listenForPresses(rhmi) {
+        const button = this._frame.parts.Run;
+        if (!button) {
             return;
         }
-        this._mdVisible = visible;
-        if (visible) {
-            this._mdWritten = {};
-            this._mdRender();
-        }
-        try { this.visibilityChanged(visible); } catch (e) { logger.warn(`visibilityChanged: ${e && e.message}`); }
-        if (!this._mdReady) {
-            return;
-        }
-        const call = (name) => {
-            if (typeof this[name] !== 'function') {
-                return;
+        let id = null;
+        try {
+            id = Number(button.getId());
+        } catch (e) { /* no id: the action alone */ }
+        button.on('action', () => this._pressed());
+        rhmi.on('userEvent', (ev) => {
+            if (id !== null && ev && ev.eventType === 'ACTION' && Number(ev.sourceId) === id) {
+                this._pressed();
             }
-            Promise.resolve()
-                .then(() => this[name]())
-                .catch((err) => logger.warn(`${name} failed: ${err && err.message}`));
-        };
-        (visible ? ['registerActive', 'registerHmiVisible'] : ['unregisterHmiVisible', 'registerInactive']).forEach(call);
-    }
-
-    _mdPress() {
-        const now = Date.now();
-        if (now - this._mdLastPress < PRESS_DEDUPE_MS) {
-            return;
-        }
-        this._mdLastPress = now;
-        this.run();
-    }
-
-    /* ---- screen ---- */
-
-    _mdRender() {
-        this._mdLabel(this._mdStatus);
-        this._mdList(this._mdRows);
-    }
-
-    _mdWrite(name, cell, value, row) {
-        const comp = this._mdComponents[name];
-        const key = `${name}.${row}.${cell}`;
-        if (!comp || this._mdWritten[key] === value) {
-            return;
-        }
-        this._mdWritten[key] = value;
-        Promise.resolve()
-            .then(() => comp.setValue(row, cell, value, 'Text'))
-            .catch((err) => logger.warn(`write ${key} failed: ${err && err.message}`));
-    }
-
-    _mdShow(name, on) {
-        const comp = this._mdComponents[name];
-        const key = `${name}.visible`;
-        if (!comp || this._mdWritten[key] === on) {
-            return;
-        }
-        this._mdWritten[key] = on;
-        Promise.resolve()
-            .then(() => comp.setProperty('Visible', on ? 1 : 0, 'UInt'))
-            .catch((err) => logger.warn(`visibility ${name} failed: ${err && err.message}`));
-    }
-
-    _mdLabel(text) {
-        this._mdWrite('Status', 'Text', text, 0);
-        this._mdShow('Status', !!text);
-    }
-
-    /* The row count is set first; cells written past it would grow the list
-     * under a count still being set, so they wait for it. Apps set their
-     * rows once (with placeholders) and fill them, so the count rarely changes. */
-    _mdList(rows) {
-        const comp = this._mdComponents.List;
-        this._mdShow('List', rows.length > 0);
-        if (!comp || this._mdSizing) {
-            return;
-        }
-        if (this._mdWritten['List.rows'] !== rows.length) {
-            Object.keys(this._mdWritten).filter((k) => k.indexOf('List.') === 0).forEach((k) => delete this._mdWritten[k]);
-            this._mdWritten['List.rows'] = rows.length;
-            this._mdSizing = true;
-            Promise.resolve()
-                .then(() => comp.setRowCount(rows.length))
-                .catch((err) => logger.warn(`row count failed: ${err && err.message}`))
-                .then(() => {
-                    this._mdSizing = false;
-                    this._mdRender();
-                });
-            return;
-        }
-        // iDrive 8 does not show FrequencyText on rows added at runtime: label and value share the row's text
-        rows.forEach((r, i) => {
-            const value = r[1] === undefined || r[1] === null ? '' : String(r[1]);
-            this._mdWrite('List', 'PrimaryText', value ? `${r[0]}: ${value}` : String(r[0]), i);
         });
     }
 
-    _handleShutdown(reason) {
-        if (this._mdShutdownPromise) {
-            return this._mdShutdownPromise;
+    _pressed() {
+        const now = Date.now();
+        if (now - this._frame.pressedAt >= DOUBLE_PRESS_MS) {
+            this._frame.pressedAt = now;
+            this.run();
         }
-        logger.info(`${this.getAppId()} shutting down (${reason})`);
-        try { this.stop(); } catch (e) { /* ending anyway */ }
-        this._mdShutdownPromise = Promise.resolve()
-            .then(() => this.destroyBundles().catch(() => undefined))
-            .then(() => process.exit(0));
-        return this._mdShutdownPromise;
+    }
+
+    /* Our tile (the entry point the manager handed over that our description names), opening the root state. */
+    _registerTile(rhmi, root) {
+        const f = this._frame;
+        const ours = new Set(((this.appDescription && this.appDescription.application.entryPoints) || []).map((d) => d.uuid));
+        const tile = this.getEntryPoints().find((ep) => ours.has(ep.getDescription().uuid));
+        if (!tile) {
+            return Promise.reject(new Error('the manager handed over none of our entry points'));
+        }
+        const desc = tile.getDescription();
+        f.tile = desc.uuid;
+        f.entry = f.screen.root;
+        return Promise.resolve(tile.init())
+            .then(() => rhmi.mapEntryState(desc.uuid, root))
+            .then(() => tile.setAvailability('ENABLED'))
+            .then(() => logger.info(`tile ${desc.name} enabled`));
+    }
+
+    _openTile(uuid) {
+        if (this._frame.ending || !this.rhmiApplication || !uuid) {
+            return Promise.resolve();
+        }
+        this._frame.shown.clear();
+        this._paint();
+        this._front(true);
+        return Promise.resolve(this.rhmiApplication.openEntryState(uuid)).catch(warn('open entry state'));
+    }
+
+    /* The app came to the front or left it: the subclass hears it, the platform is told (once started). */
+    _front(front) {
+        const f = this._frame;
+        if (f.ending || f.front === front) {
+            return;
+        }
+        f.front = front;
+        if (front) {
+            f.shown.clear();
+            this._paint();
+        }
+        try {
+            this.visibilityChanged(front);
+        } catch (e) {
+            logger.warn(`visibilityChanged: ${e && e.message}`);
+        }
+        if (!f.started) {
+            return;
+        }
+        const tell = front ? ['registerActive', 'registerHmiVisible'] : ['unregisterHmiVisible', 'registerInactive'];
+        tell.filter((m) => typeof this[m] === 'function')
+            .forEach((m) => Promise.resolve().then(() => this[m]()).catch(warn(m)));
+    }
+
+    _end(reason) {
+        const f = this._frame;
+        if (!f.ending) {
+            logger.info(`${this.getAppId()} ending (${reason})`);
+            try {
+                this.stop();
+            } catch (e) { /* ending anyway */ }
+            f.ending = Promise.resolve()
+                .then(() => this.destroyBundles().catch(() => undefined))
+                .then(() => process.exit(0));
+        }
+        return f.ending;
+    }
+
+    /* ---- the widgets: only what changed goes to the HMI ---- */
+
+    _paint() {
+        const f = this._frame;
+        this._setText('Status', 0, 'Text', f.status);
+        this._setVisible('Status', !!f.status);
+        this._paintRows(f.rows);
+    }
+
+    _setText(part, row, cell, value) {
+        const f = this._frame;
+        const comp = f.parts[part];
+        const key = `${part}|${row}|${cell}`;
+        if (comp && f.shown.get(key) !== value) {
+            f.shown.set(key, value);
+            Promise.resolve().then(() => comp.setValue(row, cell, value, 'Text')).catch(warn(`write ${key}`));
+        }
+    }
+
+    _setVisible(part, on) {
+        const f = this._frame;
+        const comp = f.parts[part];
+        const key = `${part}|visible`;
+        if (comp && f.shown.get(key) !== on) {
+            f.shown.set(key, on);
+            Promise.resolve().then(() => comp.setProperty('Visible', on ? 1 : 0, 'UInt')).catch(warn(`visibility ${part}`));
+        }
+    }
+
+    /* A new number of rows first (the cells wait for it), then each row's text. iDrive 8 shows no second
+     * column on rows added at runtime, so label and value share the row's PrimaryText. */
+    _paintRows(rows) {
+        const f = this._frame;
+        const list = f.parts.List;
+        this._setVisible('List', rows.length > 0);
+        if (!list || f.resizing) {
+            return;
+        }
+        if (f.shown.get('List|count') !== rows.length) {
+            for (const key of Array.from(f.shown.keys())) {
+                if (key.indexOf('List|') === 0) {
+                    f.shown.delete(key);
+                }
+            }
+            f.shown.set('List|count', rows.length);
+            f.resizing = true;
+            Promise.resolve().then(() => list.setRowCount(rows.length)).catch(warn('row count'))
+                .then(() => { f.resizing = false; this._paint(); });
+            return;
+        }
+        rows.forEach(([label, value], i) => {
+            const v = value === undefined || value === null ? '' : String(value);
+            this._setText('List', i, 'PrimaryText', v ? `${label}: ${v}` : String(label));
+        });
     }
 }
 

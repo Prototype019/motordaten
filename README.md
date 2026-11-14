@@ -5,7 +5,7 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 
 | App | Was sie tut |
 |---|---|
-| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche (über `mgu-render`, sonst Liste). Live aus DME und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10 Runden pro Sekunde: Drehzahl, Leistung, Drehmoment, Ladedruck mit Soll, Öldruck, Öl-, Kühlmittel-, Ansaug-, Ladeluft-, Getriebeöl- und Abgastemperatur, Bordnetz. Spitzenwerte mit Reset. Reiter Live, Logs (Aufzeichnungen mit Diagrammen; Fehlerspeicher aller Steuergeräte, nur lesend) und Grenzwerte. |
+| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche über `mgu-render`. Live aus Motor und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10-mal pro Sekunde: Drehzahl, Ladedruck mit Soll, Leistung aus der gemessenen Luftmasse und Drehmoment, Öldruck, Öl-, Kühlmittel-, Ansaugluft-, Getriebeöl- und Abgastemperatur mit Temperaturbalken, Klopfregelung mit Zylinder, Bordnetz. Bereit-Anzeige für Volllast. Aufzeichnungen mit Diagrammen (auch Lambda, Raildruck, Klopfen je Zylinder) und USB-Export, Fehlerspeicher aller Steuergeräte mit Klartext, alle Grenzwerte einstellbar. |
 
 Jede App zeigt oben eine Statuszeile, worauf sie wartet oder was fehlschlug.
 
@@ -34,6 +34,7 @@ nach der anderen, mindestens 25 ms Abstand.
 node tools/gen.js                              # alle apps/*/package/ aus apps/*/spec.js
 node tools/make_icon.js <id> [r,g,b]           # Kachel-Icon
 (cd apps/<id> && node tools/test_app.js)       # App auf einer simulierten Headunit
+node apps/km_motordaten/tools/emulator.js --live   # die echte App im Browser, mit simulierter Fahrt
 ```
 
 `shared/` (Listen-Bildschirm, Diagnose-Link, Werte-Tabellen) kopiert `tools/gen.js` in die Apps.
@@ -44,7 +45,12 @@ dieses Repository.
 
 ## Lizenz
 
-GPL-3.0-or-later. Aufbau und Paketformat folgen der Store-App aus
-[mgu-store](https://github.com/robertnisipeanu/mgu-store) (GPL-3.0).
-Diagnose-Transport, Signal- und Werte-Umrechnungen (DME8FF_R-Tabelle,
-SGBD-Index) folgen [idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps) (MIT).
+Copyright (c) 2026 Prototype019. Alle Rechte vorbehalten: installieren und im
+eigenen Auto benutzen ja, kopieren, ändern oder weitergeben nein (siehe
+[LICENSE](LICENSE)). Ausgenommen sind die Grafik-Bausteine
+`shared/kit_record.js`, `kit_canvas.js` und `mgu_render_client.js` (MIT,
+cauliflowermossgrape / IterioDev, `shared/LICENSE-kit.txt`) und die Schrift
+Barlow (SIL OFL 1.1, `shared/OFL-Barlow.txt`). Die Kennungen und Umrechnungen
+der Motorsteuerung stammen aus der DME8FF_R-Tabelle und dem SGBD-Index von
+[idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps) (MIT) und
+eigenen ENET-Messungen (`docs/g87-s58.md`).
