@@ -487,13 +487,9 @@ function settingsMenu(rec, cfg, ui) {
         const focus = ui && ui.focus === m.id;
         rec.roundRect(m.x, m.y, m.w, m.h, 24, ui && ui.pressed === m.id ? C.line : '#151D26');
         rec.strokeRoundRect(m.x, m.y, m.w, m.h, 24, focus ? 5 : 2, focus ? C.ice : C.line);
-        rec.text(m.label, m.x + 56, m.y + 104, 52, C.text, { font: 'label' });
-        rec.text(m.text, m.x + 56, m.y + 160, 30, C.dim, { font: 'label' });
-        // the ready card names what counts now; the limits card nothing (resetting is on its page)
-        if (m.page === 'ready') {
-            const on = L.READY.filter((r) => cfg[r.on]);
-            rec.text(on.length ? on.map((r) => `${r.short} ${cfg[r.at]}°`).join('   ') : 'Aus', m.x + 56, m.y + m.h - 52, 34, C.ice, { font: 'label' });
-        }
+        // title and what it holds, centred on the card's height
+        rec.text(m.label, m.x + 56, m.y + m.h / 2 - 8, 52, C.text, { font: 'label' });
+        rec.text(m.text, m.x + 56, m.y + m.h / 2 + 52, 30, C.dim, { font: 'label' });
         const cx = m.x + m.w - 72;
         const cy = m.y + m.h / 2;
         rec.polyline([[cx - 18, cy - 30], [cx + 12, cy], [cx - 18, cy + 30]], 6, C.dim);
