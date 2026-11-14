@@ -33,7 +33,7 @@ function sampleLog() {
             lambda: pull ? Math.max(0.82, 1 - boost * 0.09) : 1 + 0.01 * Math.sin(s), lambdaTarget: pull ? Math.max(0.8, 1 - boost * 0.1) : 1,
             rail: pull ? 200 + boost * 75 : 60, railTarget: pull ? 200 + boost * 76 : 60, fuelLow: pull ? 5.6 : 5.9,
             knock: pull && (s - 300) % 10 > 7 ? 1.5 : 0, ignition: pull ? 8 - boost * 3 : 12, pedal: pull ? 100 : 4,
-            load: pull ? 60 + boost * 40 : 18, oilLevel: 0.8,
+            load: pull ? 60 + boost * 40 : 18,
             // cylinder 3 taken back a little at the top of each pull
             knockCyl1: 0, knockCyl2: pull ? 0.3 : 0, knockCyl3: pull && (s - 300) % 10 > 6 ? 2.5 : 0, knockCyl4: 0, knockCyl5: pull ? 0.4 : 0,
             knockCyl6: 0 }, t0 + t);
@@ -44,8 +44,8 @@ function sampleLog() {
 
 const SCENES = {
     cold: { rpm: 1180, rpmPeak: 1218, oil: 24, coolant: 37, intake: 8, charge: 12, boost: 0, boostTarget: 0, boostPeak: 0,
-        oilPress: 5.6, oilPressPeak: 5.6, voltage: 14.4, gearbox: 22, exhaust: 338, torque: 4, power: 0.4, knock: 0, oilLevel: 0.9 },
-    pull: { knock: 2.6, knockCyl: 3, oilLevel: 0.8, rpm: 6650, rpmPeak: 6950, oil: 104, coolant: 92, intake: 16, charge: 38, boost: 1.94, boostTarget: 1.98, boostPeak: 2.04,
+        oilPress: 5.6, oilPressPeak: 5.6, voltage: 14.4, gearbox: 22, exhaust: 338, torque: 4, power: 0.4, knock: 0 },
+    pull: { knock: 2.6, knockCyl: 3, rpm: 6650, rpmPeak: 6950, oil: 104, coolant: 92, intake: 16, charge: 38, boost: 1.94, boostTarget: 1.98, boostPeak: 2.04,
         oilPress: 4.9, oilPressPeak: 5.9, voltage: 14.2, gearbox: 86, exhaust: 912, torque: 548, power: 506,
         torquePeak: 560, powerPeak: 512 },
     nodme: { rpm: 860, rpmPeak: 860, oil: null, coolant: null, intake: null, charge: null, boost: null, boostTarget: null,
@@ -59,7 +59,7 @@ SCENES.settings = {};
 SCENES.warming = Object.assign({}, SCENES.cold, { rpm: 2400, rpmPeak: 3100, oil: 86, coolant: 64, gearbox: 41, exhaust: 520 });
 SCENES.limits = {};
 SCENES.ready = {};
-SCENES.warnings = { knock: 4.5, knockCyl: 5, oilLevel: 0.2, rpm: 6900, rpmPeak: 7050, oil: 128, coolant: 118, intake: 31, charge: 64, boost: 1.62, boostTarget: 1.9, boostPeak: 2.02,
+SCENES.warnings = { knock: 4.5, knockCyl: 5, rpm: 6900, rpmPeak: 7050, oil: 128, coolant: 118, intake: 31, charge: 64, boost: 1.62, boostTarget: 1.9, boostPeak: 2.02,
     oilPress: 0.8, oilPressPeak: 5.9, voltage: 14.1, gearbox: 125, exhaust: 950, torque: 470, power: 455, torquePeak: 560, powerPeak: 520 };
 const logName = sampleLog();
 const summary = Logbook.summary(logName);

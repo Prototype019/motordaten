@@ -120,7 +120,7 @@ const ENGINE2_EVERY = 6;
 
 /* One DME request every SLOW_EVERY rounds: slow to change. */
 const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F], ['oil', 0x4402], ['coolant', 0x4300],
-    ['charge', 0x59D4], ['oilLevel', 0x5811]];
+    ['charge', 0x59D4]];
 const PS_PER_KW = 1.35962;
 /*
  * Power from the air the engine burns, not from the DME's torque: a tune (MHD) keeps reporting about the stock
@@ -851,7 +851,7 @@ class Motordaten extends ListApp {
             // only while recording (ENGINE): for the logs
             lambda: m.lambda, lambdaTarget: m.lambdaTarget, rail: m.rail, railTarget: m.railTarget,
             fuelLow: above(m.fuelLowAbs), knock: m.knock, ignition: m.ignition, pedal: m.pedal, load: m.load,
-            airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp, oilLevel: m.oilLevel
+            airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp
         };
         // each cylinder's ignition below the earliest one: what the knock control takes back there
         const angles = CYLINDER_DIDS.map((id, i) => m[`ign${i + 1}`]);

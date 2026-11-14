@@ -89,7 +89,7 @@ const BACK_SET = { id: 'settings:back', x: W - PAD - 300, y: 64, w: 300, h: 84, 
 
 /* The settings menu: one card per sub-page. */
 const MENU = [
-    { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann jeder Wert rot wird: Drehzahl, Temperaturen, Drücke, Klopfen, Ölstand, Bordnetz' },
+    { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann jeder Wert rot wird: Drehzahl, Temperaturen, Drücke, Klopfen, Bordnetz' },
     { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen, bis die Live-Seite „Bereit“ zeigt' }
 ].map((m, i) => Object.assign(m, { x: X0 + i * 1288, y: 220, w: 1236, h: 300 }));
 
@@ -469,15 +469,12 @@ function health(rec, v, cfg, ui, extra) {
     });
     heatStrip(rec, x, 516, 184, 16, v.exhaust, Object.assign({ limit: cfg.exhaustMax }, HEAT.exhaust));
 
-    // the knock control (its retard, red from the limit, with the cylinder it takes back most) and the oil level
+    // the knock control: its retard, red from the limit, with the cylinder it takes back most
     const knocking = isNum(v.knock) && v.knock >= cfg.knockMax;
     // the label names the cylinder taken back most while it takes back
     const cyl = v.knockCyl && isNum(v.knock) && v.knock > 0 ? `  Zyl. ${v.knockCyl}` : '';
     rec.text(`Klopfen${cyl}`, x, 574, 28, knocking ? C.limit : C.dim, { font: 'label' });
     valueUnit(rec, isNum(v.knock) ? de(Math.max(0, v.knock), 1) : '–', '°', x, 626, 44, knocking ? C.limit : C.text, 26, 'left');
-    const oilLow = isNum(v.oilLevel) && v.oilLevel < cfg.oilLevelMin;
-    rec.text('Ölstand', x + 216, 574, 28, oilLow ? C.limit : C.dim, { font: 'label' });
-    valueUnit(rec, isNum(v.oilLevel) ? de(v.oilLevel, 1) : '–', 'l über Min.', x + 216, 626, 44, oilLow ? C.limit : C.text, 24, 'left');
     mainTargets(extra).forEach((t) => button(rec, t, ui, { size: 28 }));
 }
 

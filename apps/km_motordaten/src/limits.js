@@ -24,7 +24,6 @@ const ITEMS = Object.freeze([
     { key: 'intakeMax', label: 'Ansaugluft-Warnung ab', unit: '°C', def: 50, min: 30, max: 80, step: 5, d: 0 },
     { key: 'exhaustMax', label: 'Abgas-Warnung ab', unit: '°C', def: 900, min: 600, max: 1000, step: 25, d: 0 },
     { key: 'knockMax', label: 'Klopf-Warnung ab', unit: '°', def: 3, min: 1, max: 8, step: 0.5, d: 1 },
-    { key: 'oilLevelMin', label: 'Ölstand-Warnung unter', unit: 'l', def: 0.3, min: 0, max: 1, step: 0.1, d: 1 },
     { key: 'voltageMin', label: 'Bordnetz-Warnung unter', unit: 'V', def: 12.5, min: 11, max: 14, step: 0.1, d: 1 },
     // ready for full load: each temperature on or off, and the one it has to reach
     { key: 'oilReadyOn', group: 'ready', def: 1, min: 0, max: 1, step: 1, d: 0, toggle: true },
