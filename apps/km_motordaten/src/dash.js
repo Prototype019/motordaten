@@ -227,7 +227,7 @@ function health(rec, v, cfg, ui) {
 
 function settings(rec, cfg, ui) {
     rec.text('Grenzwerte', PAD, 120, 56, C.text, { font: 'label' });
-    rec.text('Ab diesen Werten färbt sich die Anzeige rot; das Ölband wird bei „Öl bereit ab“ weiß.', PAD, 166, 30, C.dim,
+    rec.text('Ab diesen Werten färbt sich die Anzeige rot. Das Ölband wird weiß, sobald das Öl bereit ist.', PAD, 166, 30, C.dim,
         { font: 'label' });
     L.ITEMS.forEach((it, i) => {
         const col = SET_COLS[i < 4 ? 0 : 1];
