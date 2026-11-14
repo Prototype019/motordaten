@@ -30,8 +30,20 @@ function tasuProxy() {
         sendTasuResponse: { subscribe: (cb) => { events.on('r', cb); return Promise.resolve(); } },
         sendTasuRequest: (p) => {
             asked++;
-            const key = [p.serviceID].concat(Array.from(p.udsData)).map((x) => D.hex(x)).join(' ');
-            const a = ANSWERS[key];
+            const req = Array.from(p.udsData);
+            const key = [p.serviceID].concat(req).map((x) => D.hex(x)).join(' ');
+            let a = ANSWERS[key];
+            if (p.serviceID === 0x22 && req.length > 2) {
+                // several identifiers: the DME answers those it has, one after the other, in one reply
+                let body = [];
+                for (let i = 0; i < req.length; i += 2) {
+                    const one = ANSWERS[`22 ${D.hex(req[i])} ${D.hex(req[i + 1])}`];
+                    if (one) {
+                        body = body.concat(bytes(one).slice(1));
+                    }
+                }
+                a = body.length ? ['62'].concat(body.map((x) => D.hex(x))).join(' ') : undefined;
+            }
             if (a) {
                 setTimeout(() => events.emit('r', frame(0x12, bytes(a))), 2);
             }

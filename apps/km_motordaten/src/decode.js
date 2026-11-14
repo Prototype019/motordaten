@@ -89,6 +89,26 @@ function obdNumber(pid, uds) {
 }
 
 const didById = (id) => DIDS.find((d) => d.id === id);
+const SIZE = { u8: 1, u16: 2, s16: 2 };
+
+/* A reply to one 22 request for several identifiers (62 id1 data1 id2 data2 ...): { id: value or null },
+ * or null when it is not a positive reply to them. Each identifier's data is as long as its type. */
+function didNumbers(dids, uds) {
+    if (!uds || uds[0] !== 0x62) {
+        return null;
+    }
+    const out = {};
+    let i = 1;
+    for (const did of dids) {
+        if (uds[i] !== (did.id >> 8) || uds[i + 1] !== (did.id & 0xFF)) {
+            return Object.keys(out).length ? out : null;
+        }
+        const n = SIZE[did.t];
+        out[did.id] = didNumber(did, [0x62].concat(uds.slice(i, i + 2 + n)));
+        i += 2 + n;
+    }
+    return out;
+}
 const pidById = (id) => OBD.find((p) => p.pid === id);
 
 /* A 22 reply for did: "<value>", "nein: <nrc>", or null when it is not ours. */
@@ -141,5 +161,5 @@ function dmeType(uds) {
     return { index, type: DME_INDEX[index] || null };
 }
 
-module.exports = { DIDS, OBD, DME_INDEX, NRC, hex, hexBytes, didValue, obdValue, didNumber, obdNumber, didById, pidById,
+module.exports = { DIDS, OBD, DME_INDEX, NRC, hex, hexBytes, didValue, obdValue, didNumber, didNumbers, obdNumber, didById, pidById,
     supported, dmeType };

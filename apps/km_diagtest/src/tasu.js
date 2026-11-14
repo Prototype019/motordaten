@@ -15,7 +15,7 @@
  *            DME that echoes this request (or refuses this service) counts;
  *            transport errors of other requests are not ours.
  *
- * Only ReadDataByIdentifier (22, one 2-byte identifier) and OBD-II 01 / 09
+ * Only ReadDataByIdentifier (22, up to 8 identifiers of 2 bytes) and OBD-II 01 / 09
  * (one PID) to the DME pass request(); everything else is refused here,
  * before anything reaches the car. One request at a time, at least GAP_MS
  * apart. Proxy building, init and every call run from a fresh setImmediate
@@ -38,10 +38,12 @@ const CALL_MS = 8000;
 const PENDING_MS = 10000;
 const HARD_MS = 30000;
 const BUSY_RETRIES = 4;
-const BUSY_MS = 100;
+const BUSY_MS = 200;
 
 /* Service -> length of its request data. Nothing else is sent. */
-const ALLOWED = Object.freeze({ 0x22: 2, 0x01: 1, 0x09: 1 });
+/* Service -> the lengths its request data may have. 22 takes up to 8 identifiers of 2 bytes in one
+ * request (the DME answers them in one reply, docs/g87-s58.md). Nothing else is sent. */
+const ALLOWED = Object.freeze({ 0x22: Object.freeze([2, 4, 6, 8, 10, 12, 14, 16]), 0x01: Object.freeze([1]), 0x09: Object.freeze([1]) });
 
 function toBytes(b) {
     if (!b) {
@@ -80,7 +82,7 @@ const isByte = (x) => Number.isInteger(x) && x >= 0 && x <= 0xFF;
 /* Only the reads ALLOWED names, with whole bytes: a copy of the data, or an error. */
 function checkRead(sid, data) {
     if (!Number.isInteger(sid) || !Object.prototype.hasOwnProperty.call(ALLOWED, sid) ||
-        !Array.isArray(data) || data.length !== ALLOWED[sid] || !data.every(isByte)) {
+        !Array.isArray(data) || ALLOWED[sid].indexOf(data.length) < 0 || !data.every(isByte)) {
         throw new Error(`nur lesen: Dienst ${sid} nicht erlaubt`);
     }
     return data.slice();
@@ -232,7 +234,9 @@ class Tasu extends EventEmitter {
                     timer = setTimeout(() => finish(null), PENDING_MS);
                     return;
                 }
-                const ours = (u[0] === sid + 0x40 && data.every((b, i) => u[i + 1] === b)) || (u[0] === 0x7F && u[1] === sid);
+                // the reply echoes the first identifier (22) or the PID (01 / 09); the rest follow their data
+                const echo = data.slice(0, sid === 0x22 ? 2 : 1);
+                const ours = (u[0] === sid + 0x40 && echo.every((b, i) => u[i + 1] === b)) || (u[0] === 0x7F && u[1] === sid);
                 if (ours) {
                     finish(u);
                 }

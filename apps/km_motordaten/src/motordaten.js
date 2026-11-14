@@ -27,7 +27,7 @@ const isTrue = (raw) => raw === true || raw === 'true' || raw === 1 || raw === '
 const RPM_INVALID = 65535;
 const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
-const CYCLE_MS = 150;          // at least this long per round of questions
+const CYCLE_MS = 250;          // at least this long per round (one request for all identifiers)
 const SLOW_EVERY = 20;         // ambient pressure and voltage every this many rounds
 const REOPEN_MS = 10000;       // a failed gateway is tried again after this long (while shown)
 const HOLD_MS = 4000;          // a value missing an answer keeps its last one this long (the gateway drops some)
@@ -162,7 +162,7 @@ class Motordaten extends ListApp {
         next();
     }
 
-    /* One round: opens the gateway if needed, then asks FAST (and SLOW every SLOW_EVERY rounds). */
+    /* One round: opens the gateway if needed, then asks FAST (and SLOW every SLOW_EVERY rounds) in one request. */
     _ask() {
         if (this._gateway !== 'open') {
             if (this._gateway === 'failed' && Date.now() - this._lastOpen < REOPEN_MS) {
@@ -176,10 +176,18 @@ class Motordaten extends ListApp {
         // ambient pressure every round until known: boost and oil pressure are shown above it
         const slow = this._round % SLOW_EVERY === 0 || !isNum(this._dme.ambient);
         this._round++;
+        // all identifiers in one request (up to 8): one answer, one load on the gateway
         const ask = FAST.concat(slow ? SLOW : []);
-        return ask.reduce((p, kv) => p.then(() => this._tasu.request(0x22, [kv[1] >> 8, kv[1] & 0xFF])
-            .then((u) => this._keep(kv[0], D.didNumber(D.didById(kv[1]), u)),
-                (e) => { this._keep(kv[0], null); this._gatewayError = e.message; })), Promise.resolve())
+        const dids = ask.map((kv) => D.didById(kv[1]));
+        const data = [].concat(...ask.map((kv) => [kv[1] >> 8, kv[1] & 0xFF]));
+        return this._tasu.request(0x22, data)
+            .then((u) => {
+                const got = D.didNumbers(dids, u) || {};
+                ask.forEach((kv) => this._keep(kv[0], got[kv[1]]));
+                if (u && u[0] === 0x7F) {
+                    this._gatewayError = `DME: ${D.NRC[u[2]] || D.hex(u[2])}`;
+                }
+            }, (e) => { ask.forEach((kv) => this._keep(kv[0], null)); this._gatewayError = e.message; })
             .then(() => (slow ? this._tasu.request(0x01, [0x42])
                 .then((u) => { this._dme.voltage = D.obdNumber(D.pidById(0x42), u); }, () => undefined) : undefined))
             .then(() => this._checkTester());
