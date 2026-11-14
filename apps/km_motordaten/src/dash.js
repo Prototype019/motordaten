@@ -34,7 +34,7 @@ const PAD = 96;
 const RAIL = 200;             // the tab rail on the left
 const X0 = RAIL + 60;          // where page content starts
 const RPM_MAX = 7700;
-const OIL_MAX = 130;
+const OIL_MAX = 150;
 const OIL_PRESS_RPM = 1500;    // the oil pressure warning counts above this engine speed
 const COL = { left: { x: X0, w: 600 }, mid: { x: 980, w: 1076 }, right: { x: 2176, w: 608 } };
 
@@ -264,6 +264,39 @@ function rpmBand(rec, v, cfg) {
     }
 }
 
+/*
+ * A temperature as a strip of segments under its value, in the screen's heat language: lit segments blue
+ * while cold, white once warm, all red at its limit; the stretch from the limit up is a dim red zone, as on
+ * the engine speed's band, with a tick at the limit. r: { lo, hi, warm, limit } (limit null: none).
+ */
+const STRIP_SEGMENTS = 12;
+function heatStrip(rec, x, y, w, h, value, r) {
+    const gap = 5;
+    const seg = (w - gap * (STRIP_SEGMENTS - 1)) / STRIP_SEGMENTS;
+    const at = (t) => (t - r.lo) / (r.hi - r.lo);
+    const lit = isNum(value) ? Math.round(clamp(at(value), 0, 1) * STRIP_SEGMENTS) : 0;
+    const over = isNum(value) && r.limit !== null && value >= r.limit;
+    const color = !isNum(value) ? C.dim : over ? C.limit : isNum(r.warm) && value < r.warm ? C.cold : C.text;
+    for (let i = 0; i < STRIP_SEGMENTS; i++) {
+        const sx = x + i * (seg + gap);
+        const zone = r.limit !== null && (i + 0.5) / STRIP_SEGMENTS >= at(r.limit);
+        rec.roundRect(sx, y, seg, h, 3, i < Math.max(lit, isNum(value) && value > r.lo ? 1 : 0) ? color : zone ? C.redzone : C.line);
+    }
+    if (r.limit !== null) {
+        const lx = x + w * clamp(at(r.limit), 0, 1);
+        rec.fillRect(lx - 2, y - 7, 4, h + 14, over ? C.limit : C.text);
+    }
+    return over;
+}
+
+/* The temperatures' strips: their scales and where they turn warm. */
+const HEAT = {
+    coolant: { lo: 0, hi: 130, warm: 70 },
+    intake: { lo: -10, hi: 70, warm: null, limit: 50 },
+    gearbox: { lo: 0, hi: 140, warm: 60 },
+    exhaust: { lo: 0, hi: 1000, warm: 300 }
+};
+
 function readiness(rec, v, cfg) {
     const { x, w } = COL.left;
     const readyAt = cfg.oilReady;
@@ -278,21 +311,27 @@ function readiness(rec, v, cfg) {
     const by = 448;
     const bh = 52;
     rec.roundRect(x, by, w, bh, 8, C.line);
+    // from the warning limit up: the red zone, as on the engine speed's band
+    const zx = x + w * clamp(cfg.oilMax, 0, OIL_MAX) / OIL_MAX;
+    if (zx < x + w) {
+        rec.roundRect(zx, by, x + w - zx, bh, 8, C.redzone);
+    }
     if (isNum(oil) && oil > 0) {
         rec.roundRect(x, by, Math.max(bh, w * clamp(oil, 0, OIL_MAX) / OIL_MAX), bh, 8, color);
     }
     const mx = x + w * readyAt / OIL_MAX;
     rec.fillRect(mx - 3, by - 12, 6, bh + 24, C.text);
-    rec.text(String(readyAt), mx, by - 20, 26, C.dim, { font: 'scale', align: 'center' });
     const note = !isNum(oil) ? '' : hot ? 'Öl zu heiß' : ready ? 'Bereit für Volllast' : `Noch ${Math.ceil(readyAt - oil)} °C bis bereit`;
     rec.text(note, x, 552, 34, hot ? C.limit : ready ? C.text : C.cold, { font: 'label' });
 
-    const cells = [['Kühlmittel', v.coolant, cfg.coolantMax], ['Ansaugluft', v.intake, null], ['Getriebeöl', v.gearbox, cfg.gearboxMax]];
+    const cells = [['Kühlmittel', v.coolant, Object.assign({ limit: cfg.coolantMax }, HEAT.coolant)],
+        ['Ansaugluft', v.intake, HEAT.intake], ['Getriebeöl', v.gearbox, Object.assign({ limit: cfg.gearboxMax }, HEAT.gearbox)]];
     cells.forEach((c, i) => {
         const cx = x + i * 236;
-        const hot = isNum(c[1]) && c[2] !== null && c[1] >= c[2];
-        rec.text(c[0], cx, 630, 28, C.dim, { font: 'label' });
-        valueUnit(rec, isNum(c[1]) ? String(Math.round(c[1])) : '–', '°C', cx, 702, 54, hot ? C.limit : C.text, 26, 'left');
+        const hot = isNum(c[1]) && c[2].limit !== null && c[1] >= c[2].limit;
+        rec.text(c[0], cx, 622, 28, hot ? C.limit : C.dim, { font: 'label' });
+        valueUnit(rec, isNum(c[1]) ? String(Math.round(c[1])) : '–', '°C', cx, 690, 54, hot ? C.limit : C.text, 26, 'left');
+        heatStrip(rec, cx, 712, 200, 20, c[1], c[2]);
     });
 }
 
@@ -354,9 +393,10 @@ function health(rec, v, cfg, ui, extra) {
     ];
     cells.forEach((c, i) => {
         const cx = x + i * 216;
-        rec.text(c[0], cx, 452, 28, C.dim, { font: 'label' });
+        rec.text(c[0], cx, 452, 28, c[3] ? C.limit : C.dim, { font: 'label' });
         valueUnit(rec, c[1], c[2], cx, 516, 54, c[3] ? C.limit : C.text, 26, 'left');
     });
+    heatStrip(rec, x, 538, 184, 20, v.exhaust, Object.assign({ limit: cfg.exhaustMax }, HEAT.exhaust));
     mainTargets(extra).forEach((t) => button(rec, t, ui, { size: 28 }));
 }
 
