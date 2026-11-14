@@ -10,14 +10,15 @@
  * "Erneut testen" runs it again.
  */
 const { ListApp, logger } = require('./screen.js');
-const { Tasu } = require('./tasu.js');
+const { Tasu, TESTERS } = require('./tasu.js');
 const D = require('./decode.js');
 
 const STEPS = [{ key: 'open', label: 'Diagnose-Dienst' }, { key: 'type', label: 'DME-Typ (SGBD)' },
     { key: 'obd', label: 'OBD unterstützt' }]
     .concat(D.DIDS.map((did) => ({ key: 'did', did, label: `BMW ${D.hex(did.id, 4)} ${did.name}` })))
     .concat(D.OBD.map((pid) => ({ key: 'pid', pid, label: `OBD ${D.hex(pid.pid)} ${pid.name}` })))
-    .concat([{ key: 'raw', label: 'Rohdaten 1. Antwort' }]);
+    .concat([{ key: 'verdict', label: 'Gateway-Antwort' }, { key: 'events', label: 'Antwort-Ereignisse' },
+        { key: 'raw', label: 'Rohdaten 1. Antwort' }]);
 
 class Diagtest extends ListApp {
     constructor() {
@@ -64,13 +65,13 @@ class Diagtest extends ListApp {
     _step(s, i) {
         switch (s.key) {
         case 'type':
-            return this._read(i, 0x22, [0xF1, 0x50], (u) => {
-                const t = D.dmeType(u);
-                if (!t) {
-                    return u[0] === 0x7F ? `nein: ${D.NRC[u[2]] || D.hex(u[2])}` : null;
-                }
-                return `${t.index} = ${t.type || 'unbekannt'}`;
-            });
+            return this._dmeType(i);
+        case 'verdict':
+            this._put(i, this._tasu.lastVerdict || 'keine');
+            return Promise.resolve();
+        case 'events':
+            this._put(i, `${this._tasu.events}${this._tasu.firstEvent ? ` · ${this._tasu.firstEvent}` : ''}`);
+            return Promise.resolve();
         case 'obd':
             return this._obdSupport(i);
         case 'did':
@@ -83,6 +84,33 @@ class Diagtest extends ListApp {
         default:
             return Promise.resolve();
         }
+    }
+
+    /* The DME's type, asked as each tester address in turn until one gets an answer; that one is kept. */
+    _dmeType(i) {
+        const decode = (u) => {
+            const t = D.dmeType(u);
+            if (!t) {
+                return u[0] === 0x7F ? `nein: ${D.NRC[u[2]] || D.hex(u[2])}` : null;
+            }
+            return `${t.index} = ${t.type || 'unbekannt'}`;
+        };
+        const tried = [];
+        const next = (k) => {
+            if (k >= TESTERS.length) {
+                this._tasu.useTester(TESTERS[0]);
+                this._put(i, `keine Antwort (Tester ${tried.join(', ')})`);
+                return Promise.resolve();
+            }
+            const addr = TESTERS[k];
+            this._tasu.useTester(addr);
+            tried.push(D.hex(addr));
+            this._show(`Frage: DME-Typ als Tester ${D.hex(addr)} …`);
+            return this._tasu.request(0x22, [0xF1, 0x50])
+                .then((u) => (u ? this._put(i, `${decode(u) || D.hexBytes(u.slice(0, 8))} (Tester ${D.hex(addr)})`) : next(k + 1)),
+                    (e) => { this._put(i, `FEHLER: ${e.message}`); });
+        };
+        return next(0);
     }
 
     _read(i, sid, data, decode) {

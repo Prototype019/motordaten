@@ -17,7 +17,7 @@
  */
 const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 const { ListApp, logger } = require('./screen.js');
-const { Tasu } = require('./tasu.js');
+const { Tasu, TESTERS } = require('./tasu.js');
 const D = require('./decode.js');
 const { Drawn } = require('./drawn.js');
 
@@ -53,6 +53,8 @@ class Motordaten extends ListApp {
         this._lastOpen = 0;
         this._polling = false;
         this._round = 0;
+        this._emptyRounds = 0;
+        this._testerIdx = 0;
         this._stopped = false;
         this._subscribed = false;
         this._drawn = null;
@@ -176,7 +178,20 @@ class Motordaten extends ListApp {
             .then((u) => { this._dme[kv[0]] = D.didNumber(D.didById(kv[1]), u); },
                 (e) => { this._dme[kv[0]] = null; this._gatewayError = e.message; })), Promise.resolve())
             .then(() => (slow ? this._tasu.request(0x01, [0x42])
-                .then((u) => { this._dme.voltage = D.obdNumber(D.pidById(0x42), u); }, () => undefined) : undefined));
+                .then((u) => { this._dme.voltage = D.obdNumber(D.pidById(0x42), u); }, () => undefined) : undefined))
+            .then(() => this._checkTester());
+    }
+
+    /* Two rounds without a single answer: ask as the next tester address (the DME may answer only some). */
+    _checkTester() {
+        const any = FAST.some((kv) => isNum(this._dme[kv[0]]));
+        this._emptyRounds = any ? 0 : this._emptyRounds + 1;
+        if (this._emptyRounds >= 2) {
+            this._emptyRounds = 0;
+            this._testerIdx = (this._testerIdx + 1) % TESTERS.length;
+            this._tasu.useTester(TESTERS[this._testerIdx]);
+            logger.info(`no answers: tester ${TESTERS[this._testerIdx].toString(16)}`);
+        }
     }
 
     /* ---- screen ---- */

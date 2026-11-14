@@ -72,7 +72,9 @@ require('../src/diagtest.js');
     const rows = unit.rows('dgList');
     const get = (l) => (rows.find((r) => r[0] === l) || [])[1];
     assert.strictEqual(get('Diagnose-Dienst'), 'offen');
-    assert.strictEqual(get('DME-Typ (SGBD)'), '0F2422 = DME8FF_R');
+    assert.strictEqual(get('DME-Typ (SGBD)'), '0F2422 = DME8FF_R (Tester F2)');
+    assert.ok(/^NO_ERROR /.test(get('Gateway-Antwort')), get('Gateway-Antwort'));
+    assert.ok(/^\d+ · 1 Arg: \{udsResponse,errorCode\}$/.test(get('Antwort-Ereignisse')), get('Antwort-Ereignisse'));
     assert.ok(/^\d+ PIDs, davon: 05 0F 0B 0C 04 11$/.test(get('OBD unterstützt')), get('OBD unterstützt'));
     assert.strictEqual(get('BMW 4402 Öl nach Filter'), '98 °C');
     assert.strictEqual(get('BMW 580F Ansaugluft'), '35 °C');
@@ -122,6 +124,23 @@ require('../src/diagtest.js');
     assert.deepStrictEqual(r2, [0x62, 0x58, 0x0F, 111]);
     assert.strictEqual(calls, 3);
     assert.strictEqual(t2.busy, 2);
+
+    // a DME that answers only tester F4: the probe finds it and keeps it
+    const t3 = new Tasu({ info() {}, warn() {}, error() {} });
+    const seen = [];
+    t3._setProxy({ sendTasuRequest: (p) => {
+        seen.push(p.sourceAddress);
+        if (p.sourceAddress === 0xF4) {
+            setTimeout(() => t3._onResponse(frame(0x12, [0x62, 0xF1, 0x50, 0x0F, 0x26, 0xE8])), 2);
+        }
+        return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });
+    } });
+    t3.useTester(0xF2);
+    assert.strictEqual(await t3.request(0x22, [0xF1, 0x50], 80), null);
+    t3.useTester(0xF4);
+    assert.deepStrictEqual(await t3.request(0x22, [0xF1, 0x50], 80), [0x62, 0xF1, 0x50, 0x0F, 0x26, 0xE8]);
+    assert.deepStrictEqual(seen, [0xF2, 0xF4]);
+    assert.throws(() => t3.useTester(0x10), /not allowed/);
 
     // decoding edge cases
     assert.deepStrictEqual(D.supported(0x20, [0x41, 0x20, 0x80, 0, 0, 0x01]), [0x21, 0x40]);

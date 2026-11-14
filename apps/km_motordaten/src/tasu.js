@@ -28,6 +28,8 @@ const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 const IFACE = 'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu';
 const INSTANCE = 'SystemFunctionsInternalTasuInst1';
 const TESTER = 0xF2;
+/* Tester addresses a request may come from (the head unit's own is 0xF2; ENET testers use 0xF4, 0xF1). */
+const TESTERS = Object.freeze([0xF2, 0xF4, 0xF1]);
 const DME = 0x12;
 const GAP_MS = 25;
 const OPEN_MS = 15000;
@@ -94,6 +96,10 @@ class Tasu extends EventEmitter {
         super();
         this.log = log;
         this.firstFrame = null;     // hex of the first frame, to see its shape on screen
+        this.events = 0;            // reply events of any kind
+        this.firstEvent = null;     // the first event's shape: argument count, type, keys
+        this.lastVerdict = null;    // what the last sendTasuRequest returned, as text
+        this.tester = TESTER;
         this.dmeFrames = 0;         // frames from the DME
         this.busy = 0;              // busy verdicts retried
         let proxy = null;
@@ -109,6 +115,7 @@ class Tasu extends EventEmitter {
         if (this._proxy()) {
             return Promise.resolve();
         }
+        const self = this;
         let p;
         return timeout(tick(() => someipBuilders.buildTypedProxy(IFACE, INSTANCE))
             .then((proxy) => { p = proxy; return tick(() => p.init()); })
@@ -120,9 +127,33 @@ class Tasu extends EventEmitter {
                 if (typeof p.sendTasuRequest !== 'function') {
                     throw new Error('Methode sendTasuRequest fehlt');
                 }
-                return tick(() => p.sendTasuResponse.subscribe((v) => this._onResponse(v)));
+                return tick(() => p.sendTasuResponse.subscribe(function () {
+                    self._noteEvent(Array.prototype.slice.call(arguments));
+                    self._onResponse(arguments[0]);
+                }));
             }), OPEN_MS, 'Diagnose-Dienst')
             .then(() => { this._setProxy(p); });
+    }
+
+    /* What a reply event looks like, for the screen: how many arguments, their types and keys. */
+    _noteEvent(args) {
+        this.events++;
+        if (this.firstEvent) {
+            return;
+        }
+        const shape = (a) => {
+            if (a === null || a === undefined) {
+                return String(a);
+            }
+            if (Buffer.isBuffer(a) || a instanceof Uint8Array) {
+                return `bytes(${a.length})`;
+            }
+            if (Array.isArray(a)) {
+                return `array(${a.length})`;
+            }
+            return typeof a === 'object' ? `{${Object.keys(a).slice(0, 6).join(',')}}` : `${typeof a}:${String(a).slice(0, 12)}`;
+        };
+        this.firstEvent = `${args.length} Arg: ${args.map(shape).join(' ')}`;
     }
 
     _onResponse(v) {
@@ -163,11 +194,14 @@ class Tasu extends EventEmitter {
 
     _send(sid, data) {
         const proxy = this._proxy();
-        const params = { sourceAddress: TESTER, targetAddress: DME, serviceID: sid, subroutineID: 0,
+        const params = { sourceAddress: this.tester, targetAddress: DME, serviceID: sid, subroutineID: 0,
             udsDataLength: data.length, udsData: Buffer.from(data), deadlockTime: 0 };
         const attempt = (n) => timeout(tick(() => proxy.sendTasuRequest(params)), CALL_MS, 'sendTasuRequest')
             .then((r) => {
                 const verdict = verdictOf(r);
+                let raw;
+                try { raw = JSON.stringify(r); } catch (e) { raw = String(r); }
+                this.lastVerdict = `${verdict} ${raw === undefined ? '' : raw.slice(0, 60)}`;
                 if (/TEMPORARILY_NOT_ACCEPTED|BUSY/i.test(verdict) && n < BUSY_RETRIES) {
                     this.busy++;
                     return sleep(BUSY_MS * (n + 1)).then(() => attempt(n + 1));
@@ -233,4 +267,12 @@ class Tasu extends EventEmitter {
     }
 }
 
-module.exports = { Tasu, ALLOWED, DME, IFACE, INSTANCE, checkRead };
+/* Asks from another tester address (one of TESTERS). */
+Tasu.prototype.useTester = function (addr) {
+    if (TESTERS.indexOf(addr) < 0) {
+        throw new Error(`tester ${addr} not allowed`);
+    }
+    this.tester = addr;
+};
+
+module.exports = { Tasu, ALLOWED, DME, IFACE, INSTANCE, TESTERS, checkRead };
