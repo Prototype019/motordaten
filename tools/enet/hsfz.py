@@ -5,7 +5,9 @@ ALLOWED = {0x22: 2, 0x01: 1, 0x09: 1}
 
 class Link:
     def __init__(self):
-        self.s = socket.create_connection((GW, PORT), timeout=8, source_address=('169.254.12.27', 0))
+        # the Mac's own link-local address toward the car (it changes when the adapter is plugged in again)
+        u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); u.connect((GW, 6811)); local = u.getsockname()[0]; u.close()
+        self.s = socket.create_connection((GW, PORT), timeout=8, source_address=(local, 0))
         self.buf = b''
     def _recv_frame(self, timeout):
         self.s.settimeout(timeout)

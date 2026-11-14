@@ -118,8 +118,8 @@ const KNOCK = [['knock', 0x554C]].concat(CYLINDER_DIDS.map((id, i) => [`ign${i +
 const ENGINE2 = [['throttle', 0x4600], ['fuelFlow', 0x4521], ['fuelTemp', 0x4AD5]];
 const ENGINE2_EVERY = 6;
 
-/* The battery, with the slow ones: the charge (a valid one is 0-100 %) and the battery sensor. */
-const BATTERY = [['battSoc', 0x56F0], ['battCurrent', 0x5852], ['battVoltage', 0x5853], ['battTemp', 0x5854]];
+/* The battery, with the slow ones: its charge (a valid one is 0-100 %). */
+const BATTERY = [['battSoc', 0x5425]];
 
 /* One DME request every SLOW_EVERY rounds: slow to change. */
 const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F], ['oil', 0x4402], ['coolant', 0x4300],
