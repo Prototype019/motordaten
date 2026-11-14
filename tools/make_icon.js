@@ -2,12 +2,12 @@
 /**
  * Draws an app's tile icon (140 x 140, transparent) as
  * apps/<id>/package/rhmiData/variantGroups/Common/images/<icon of its spec.js>:
- * the Drehzahlbogen - a 270° arc open at the bottom with round ends, its
- * last stretch red (the red zone), a needle and a hub. Shapes are drawn as
- * distance fields, so every edge is anti-aliased. The needle's colour tells
- * the apps apart (Motordaten: ice blue).
+ * the Thermo-Puls - a thermometer (outlined tube, filled bulb and column)
+ * between two signal pulses, ice blue on the left and red on the right.
+ * Shapes are drawn as distance fields, so every edge is anti-aliased. The
+ * bulb's colour tells the apps apart (Motordaten: steel blue).
  *
- *   node tools/make_icon.js <id> [needle colour as r,g,b]
+ *   node tools/make_icon.js <id> [bulb colour as r,g,b]
  */
 const fs = require('fs');
 const path = require('path');
@@ -22,17 +22,9 @@ const OUT = path.join(APP, 'package', 'rhmiData', 'variantGroups', 'Common', 'im
 
 const S = 140;
 const WHITE = [233, 238, 242];
+const ICE = [169, 220, 255];
 const RED = [255, 91, 79];
-const NEEDLE = process.argv[3] ? process.argv[3].split(',').map(Number) : [169, 220, 255];
-
-const C = { x: 70, y: 70 };
-const R = 52;                  // arc radius
-const ARC_W = 12;              // arc stroke
-const DEG = Math.PI / 180;
-// angles in the screen's sense (0 = right, clockwise): the arc runs from 135° over the top to 45°
-const ARC_FROM = 135 * DEG;
-const ARC_SPAN = 270 * DEG;
-const RED_FROM = (360 + 16.3) * DEG;   // the red zone: its last 28.7°
+const BULB = process.argv[3] ? process.argv[3].split(',').map(Number) : [95, 168, 217];
 
 const px = new Float32Array(S * S * 4);
 
@@ -48,42 +40,48 @@ function blend(i, c, a) {
     px[i + 3] = oa;
 }
 
-/* Distance from (x, y) to the arc from a0 over span (round ends at both). */
-function arcDist(x, y, a0, span) {
-    const dx = x - C.x;
-    const dy = y - C.y;
-    let a = Math.atan2(dy, dx);
-    let rel = (a - a0) % (2 * Math.PI);
-    if (rel < 0) {
-        rel += 2 * Math.PI;
-    }
-    if (rel <= span) {
-        return Math.abs(Math.hypot(dx, dy) - R);
-    }
-    const end = (t) => Math.hypot(x - (C.x + R * Math.cos(t)), y - (C.y + R * Math.sin(t)));
-    a = a0 + span;
-    return Math.min(end(a0), end(a));
+/* Signed distance to a rounded box (x, y, w, h, radius): negative inside. */
+function boxDist(px0, py0, b) {
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    const qx = Math.abs(px0 - cx) - (b.w / 2 - b.r);
+    const qy = Math.abs(py0 - cy) - (b.h / 2 - b.r);
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - b.r;
 }
 
-/* Distance from (x, y) to the segment p-q. */
+/* Distance to a segment and to a polyline. */
 function segDist(x, y, p, q) {
     const vx = q[0] - p[0];
     const vy = q[1] - p[1];
     const t = Math.max(0, Math.min(1, ((x - p[0]) * vx + (y - p[1]) * vy) / (vx * vx + vy * vy)));
     return Math.hypot(x - (p[0] + t * vx), y - (p[1] + t * vy));
 }
+function lineDist(x, y, pts) {
+    let d = Infinity;
+    for (let k = 1; k < pts.length; k++) {
+        d = Math.min(d, segDist(x, y, pts[k - 1], pts[k]));
+    }
+    return d;
+}
 
-const cover = (d, halfWidth) => Math.max(0, Math.min(1, halfWidth - d + 0.5));
+const fill = (d) => Math.max(0, Math.min(1, 0.5 - d));            // inside a shape (d signed)
+const stroke = (d, w) => Math.max(0, Math.min(1, w / 2 - Math.abs(d) + 0.5));
+
+const TUBE = { x: 56, y: 18, w: 28, h: 76, r: 14 };
+const COLUMN = { x: 66, y: 46, w: 8, h: 52, r: 4 };
+const LEFT = [[10, 104], [30, 104], [38, 86], [46, 118], [54, 104]];
+const RIGHT = [[88, 104], [102, 104], [110, 90], [118, 114], [130, 104]];
 
 for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
         const i = (y * S + x) * 4;
         const cx = x + 0.5;
         const cy = y + 0.5;
-        blend(i, WHITE, cover(arcDist(cx, cy, ARC_FROM, RED_FROM - ARC_FROM), ARC_W / 2));
-        blend(i, RED, cover(arcDist(cx, cy, RED_FROM, ARC_FROM + ARC_SPAN - RED_FROM), ARC_W / 2));
-        blend(i, NEEDLE, cover(segDist(cx, cy, [70, 70], [104, 46]), 4.5));
-        blend(i, WHITE, cover(Math.hypot(cx - C.x, cy - C.y), 10));
+        blend(i, WHITE, stroke(boxDist(cx, cy, TUBE), 9));
+        blend(i, BULB, fill(boxDist(cx, cy, COLUMN)));
+        blend(i, BULB, fill(Math.hypot(cx - 70, cy - 104) - 20));
+        blend(i, ICE, stroke(lineDist(cx, cy, LEFT), 7));
+        blend(i, RED, stroke(lineDist(cx, cy, RIGHT), 7));
     }
 }
 
