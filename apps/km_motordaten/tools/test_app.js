@@ -92,7 +92,7 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     assert.strictEqual(get('Öltemperatur'), '29 °C');
     assert.strictEqual(get('Kühlmittel'), '42 °C');
     assert.strictEqual(get('Ansaugluft'), '8 °C');
-    assert.strictEqual(get('Ladeluft'), '7 °C');
+    assert.strictEqual(get('Ladeluft'), undefined, 'charge air only in the recordings');
     assert.strictEqual(get('Ladedruck'), '-0.00 bar · max -0.00');
     assert.strictEqual(get('Öldruck'), '0.03 bar · max 0.03');
     assert.strictEqual(get('Bordspannung'), '13.8 V');

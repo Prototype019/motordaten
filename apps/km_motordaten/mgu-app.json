@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "km_motordaten",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "tree": "package",
   "internet": true,
   "modules": ["src/motordaten.js", "src/screen.js", "src/tasu.js", "src/decode.js", "src/dash.js",

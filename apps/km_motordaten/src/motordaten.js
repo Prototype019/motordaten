@@ -7,7 +7,7 @@
  * (src/tasu.js; identifiers of src/decode.js; docs/g87-s58.md):
  * - every round, one request to the DME for up to 8 identifiers (FAST):
  *   engine speed, torque at the clutch, boost and its target, oil pressure,
- *   oil and coolant temperature, charge air;
+ *   oil and coolant temperature, charge air (recorded only, not shown live);
  * - every SLOW_EVERY rounds (and each round until known): the DME's intake
  *   air, ambient pressure and exhaust temperature after the catalyst, the
  *   gearbox's (EGS) transmission oil, the supply voltage (OBD 42).
@@ -851,7 +851,6 @@ class Motordaten extends ListApp {
             ['Öltemperatur', fmt(v.oil, '°C', 0)],
             ['Kühlmittel', fmt(v.coolant, '°C', 0)],
             ['Ansaugluft', fmt(v.intake, '°C', 0)],
-            ['Ladeluft', fmt(v.charge, '°C', 0)],
             ['Ladedruck', withPeak(v.boost, v.boostPeak, 'bar', 2)],
             ['Ladedruck Soll', fmt(v.boostTarget, 'bar', 2)],
             ['Öldruck', withPeak(v.oilPress, v.oilPressPeak, 'bar', 2)],

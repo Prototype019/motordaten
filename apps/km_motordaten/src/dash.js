@@ -5,7 +5,7 @@
  *
  * Page 'main':
  *   engine speed band across the top, the number and its peak at the right;
- *   readiness (oil temperature band, then coolant, intake and charge air),
+ *   readiness (oil temperature band, then coolant and intake air),
  *   power (boost with its target and peak, power and torque), health (oil pressure with its
  *   peak; transmission oil, exhaust and supply voltage; the buttons).
  * A tab rail on the left on every page: Live, Logs, Fehler, Grenzwerte.
@@ -287,7 +287,7 @@ function readiness(rec, v, cfg) {
     const note = !isNum(oil) ? '' : hot ? 'Öl zu heiß' : ready ? 'Bereit für Volllast' : `Noch ${Math.ceil(readyAt - oil)} °C bis bereit`;
     rec.text(note, x, 552, 34, hot ? C.limit : ready ? C.text : C.cold, { font: 'label' });
 
-    const cells = [['Kühlmittel', v.coolant, cfg.coolantMax], ['Ansaugluft', v.intake, null], ['Ladeluft', v.charge, null]];
+    const cells = [['Kühlmittel', v.coolant, cfg.coolantMax], ['Ansaugluft', v.intake, null]];
     cells.forEach((c, i) => {
         const cx = x + i * 236;
         const hot = isNum(c[1]) && c[2] !== null && c[1] >= c[2];
