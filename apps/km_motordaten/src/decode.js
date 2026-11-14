@@ -48,6 +48,11 @@ const DIDS = [
     { id: 0x4600, name: 'Drosselklappe', t: 's16', k: 0.0078125, o: 0, u: '%', d: 0 },
     { id: 0x4521, name: 'Kraftstoffmasse', t: 'u16', k: 0.1, o: 0, u: 'kg/h', d: 1 },
     { id: 0x4AD5, name: 'Kraftstofftemperatur', t: 'u8', k: 0.75, o: -48, u: '°C', d: 0 },
+    // the battery: the charge the energy management reckons, and the battery sensor (IBS) at the terminal
+    { id: 0x56F0, name: 'Batterie Ladezustand', t: 's8', k: 1, o: 0, u: '%', d: 0 },
+    { id: 0x5852, name: 'Batteriestrom', t: 'u16', k: 0.02, o: -200, u: 'A', d: 1 },
+    { id: 0x5853, name: 'Batteriespannung', t: 'u16', k: 0.001, o: 0, u: 'V', d: 2 },
+    { id: 0x5854, name: 'Batterietemperatur', t: 'u8', k: 0.75, o: -48, u: '°C', d: 0 },
     // the ignition angle of each cylinder (the knock control takes it back per cylinder; the DME reports only the
     // mean of that, 0x554C): cylinders 1-6, 0x4A4B is not one of them
     { id: 0x4A49, name: 'Zündwinkel Zyl. 1', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 },

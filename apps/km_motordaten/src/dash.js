@@ -143,7 +143,8 @@ const CHANNELS = [
     { id: 'mix', label: 'Lambda & Klopfen' },
     { id: 'fuel', label: 'Kraftstoff' },
     { id: 'load', label: 'Last & Zündung' },
-    { id: 'knock', label: 'Klopfen je Zyl.' }
+    { id: 'knock', label: 'Klopfen je Zyl.' },
+    { id: 'battery', label: 'Batterie' }
 ];
 
 const FAULT_ROWS = 8;
@@ -194,7 +195,8 @@ function logsTargets(extra) {
 }
 
 function logTargets(extra) {
-    const out = CHANNELS.map((c, i) => ({ id: `chan:${c.id}`, x: X0 + i * 315, y: 150, w: 299, h: 72, label: c.label }));
+    const step = Math.floor((W - PAD - X0 + 14) / CHANNELS.length);
+    const out = CHANNELS.map((c, i) => ({ id: `chan:${c.id}`, x: X0 + i * step, y: 150, w: step - 14, h: 72, label: c.label }));
     const confirm = extra && extra.confirmDelete;
     out.push({ id: confirm ? 'delete!' : 'delete', x: W - PAD - 300 - 24 - (confirm ? 360 : 300), y: 660,
         w: confirm ? 360 : 300, h: BH, label: confirm ? 'Wirklich löschen' : 'Löschen', danger: confirm });
@@ -314,11 +316,13 @@ function heatStrip(rec, x, y, w, h, value, r) {
     const seg = (w - gap * (STRIP_SEGMENTS - 1)) / STRIP_SEGMENTS;
     const at = (t) => (t - r.lo) / (r.hi - r.lo);
     const lit = isNum(value) ? Math.round(clamp(at(value), 0, 1) * STRIP_SEGMENTS) : 0;
-    const over = isNum(value) && r.limit !== null && value >= r.limit;
+    // r.low: the limit is a floor (red below it, the red zone under it), as for the battery
+    const over = isNum(value) && r.limit !== null && (r.low ? value < r.limit : value >= r.limit);
     const color = !isNum(value) ? C.dim : over ? C.limit : isNum(r.warm) && value < r.warm ? C.cold : C.text;
     for (let i = 0; i < STRIP_SEGMENTS; i++) {
         const sx = x + i * (seg + gap);
-        const zone = r.limit !== null && (i + 0.5) / STRIP_SEGMENTS >= at(r.limit);
+        const mid = (i + 0.5) / STRIP_SEGMENTS;
+        const zone = r.limit !== null && (r.low ? mid < at(r.limit) : mid >= at(r.limit));
         rec.roundRect(sx, y, seg, h, 3, i < Math.max(lit, isNum(value) && value > r.lo ? 1 : 0) ? color : zone ? C.redzone : C.line);
     }
     if (r.limit !== null) {
@@ -326,6 +330,26 @@ function heatStrip(rec, x, y, w, h, value, r) {
         rec.fillRect(lx - 2, y - 7, 4, h + 14, over ? C.limit : C.text);
     }
     return over;
+}
+
+/*
+ * The battery's cell: its charge in % while the DME reckons one, red under the limit; else the voltage (the
+ * battery sensor's, else the OBD one), red under its limit. Its note: the voltage beside a charge, and the
+ * current (charging +, discharging -) once it is more than a trickle.
+ */
+function battery(v, cfg) {
+    const volts = isNum(v.battVoltage) ? v.battVoltage : v.voltage;
+    const amps = isNum(v.battCurrent) && Math.abs(v.battCurrent) >= 1 ?
+        (v.battCurrent > 0 ? `lädt ${Math.round(v.battCurrent)} A` : `entlädt ${Math.round(-v.battCurrent)} A`) : '';
+    if (isNum(v.battSoc)) {
+        const cell = ['Batterie', String(Math.round(v.battSoc)), '%', v.battSoc < cfg.batteryMin];
+        cell.soc = true;
+        cell.note = [isNum(volts) ? `${de(volts, 1)} V` : '', amps].filter(Boolean).join(' · ');
+        return cell;
+    }
+    const cell = ['Bordnetz', isNum(volts) ? de(volts, 1) : '–', 'V', isNum(volts) && volts < cfg.voltageMin];
+    cell.note = amps;
+    return cell;
 }
 
 /* The temperatures' strips: their scales and where they turn warm. */
@@ -460,7 +484,7 @@ function health(rec, v, cfg, ui, extra) {
     }
     const cells = [
         ['Abgas', isNum(v.exhaust) ? String(Math.round(v.exhaust)) : '–', '°C', isNum(v.exhaust) && v.exhaust >= cfg.exhaustMax],
-        ['Bordnetz', isNum(v.voltage) ? de(v.voltage, 1) : '–', 'V', isNum(v.voltage) && v.voltage < cfg.voltageMin]
+        battery(v, cfg)
     ];
     cells.forEach((c, i) => {
         const cx = x + i * 216;
@@ -468,6 +492,14 @@ function health(rec, v, cfg, ui, extra) {
         valueUnit(rec, c[1], c[2], cx, 498, 50, c[3] ? C.limit : C.text, 26, 'left');
     });
     heatStrip(rec, x, 516, 184, 16, v.exhaust, Object.assign({ limit: cfg.exhaustMax }, HEAT.exhaust));
+    // the battery: its charge as a strip (red under its limit) and, under it, voltage and what flows
+    const b = cells[1];
+    if (b.soc) {
+        heatStrip(rec, x + 216, 516, 184, 16, v.battSoc, { lo: 0, hi: 100, warm: null, limit: cfg.batteryMin, low: true });
+    }
+    if (b.note) {
+        rec.text(b.note, x + 216, b.soc ? 566 : 540, 24, C.dim, { font: 'label' });
+    }
 
     // the knock control: its retard, red from the limit, with the cylinder it takes back most
     const knocking = isNum(v.knock) && v.knock >= cfg.knockMax;
@@ -732,7 +764,10 @@ const GROUPS = {
     knock: { axes: { left: { unit: 'Grad', d: 1, floor: 4, color: C.text } },
         curves: [['knockCyl1', C.text, 'left', 'Zyl. 1'], ['knockCyl2', C.ice, 'left', '2'], ['knockCyl3', C.cold, 'left', '3'],
             ['knockCyl4', C.ok, 'left', '4'], ['knockCyl5', '#E8B04B', 'left', '5'], ['knockCyl6', C.limit, 'left', '6'],
-            ['knock', C.dim, 'left', 'Mittel']] }
+            ['knock', C.dim, 'left', 'Mittel']] },
+    // the battery: its charge, and what flows (charging above 0, discharging below)
+    battery: { axes: { left: { unit: '%', d: 0, floor: 100, color: C.text }, right: { unit: 'A', d: 0, floor: 40, color: C.ice } },
+        curves: [['battSoc', C.text, 'left', 'Ladezustand', 'min'], ['battCurrent', C.ice, 'right', 'Strom']] }
 };
 
 /* The smallest round number (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 x 10^n) at least v: its quarters stay round too. */
@@ -764,7 +799,7 @@ function logPage(rec, ui, extra) {
     rec.text(log ? `${dateText(log.start)} · ${duration(log.duration)}` : 'Aufzeichnung', X0, 110, 48, C.text, { font: 'label' });
     logTargets(extra).forEach((t) => {
         const on = t.id === `chan:${chan}`;
-        button(rec, t, ui, { size: 28, primary: on });
+        button(rec, t, ui, { size: 26, primary: on });
     });
     const group = GROUPS[chan];
     const box = { x: X0 + 110, y: 300, w: W - PAD - X0 - 110 - (group.axes.right ? 120 : 0), h: 270 };

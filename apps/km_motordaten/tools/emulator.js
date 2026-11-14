@@ -83,6 +83,10 @@ function valueOf(id, t) {
     case 0x4A49: case 0x4A4A: case 0x4A4C: case 0x4A4D: case 0x4A4E: case 0x4A4F:
         return s.angles[[0x4A49, 0x4A4A, 0x4A4C, 0x4A4D, 0x4A4E, 0x4A4F].indexOf(id)];
     case 0x6000: return s.gearbox;
+    case 0x56F0: return t < 9 ? 78 : 80;
+    case 0x5852: return t < 9 ? 24 : t < 28 ? 6 : 2;
+    case 0x5853: return s.voltage;
+    case 0x5854: return 21;
     default: return null;
     }
 }

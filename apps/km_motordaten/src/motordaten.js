@@ -118,6 +118,9 @@ const KNOCK = [['knock', 0x554C]].concat(CYLINDER_DIDS.map((id, i) => [`ign${i +
 const ENGINE2 = [['throttle', 0x4600], ['fuelFlow', 0x4521], ['fuelTemp', 0x4AD5]];
 const ENGINE2_EVERY = 6;
 
+/* The battery, with the slow ones: the charge (a valid one is 0-100 %) and the battery sensor. */
+const BATTERY = [['battSoc', 0x56F0], ['battCurrent', 0x5852], ['battVoltage', 0x5853], ['battTemp', 0x5854]];
+
 /* One DME request every SLOW_EVERY rounds: slow to change. */
 const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F], ['oil', 0x4402], ['coolant', 0x4300],
     ['charge', 0x59D4]];
@@ -739,6 +742,7 @@ class Motordaten extends ListApp {
             .then(more(() => (round % 2 === 0 ? this._read(KNOCK) : undefined)))
             .then(more(() => (rec && round % 2 === 1 ? this._read(ENGINE) : undefined)))
             .then(more(() => (rec && round % ENGINE2_EVERY === 3 ? this._read(ENGINE2) : undefined)))
+            .then(more(() => (slow ? this._read(BATTERY) : undefined)))
             .then(more(() => (slow ? this._read(SLOW)
                 .then(() => this._tasu.request(0x22, [0x60, 0x00], LIVE_TIMEOUT_MS, EGS))
                 .then((u) => this._keep('gearbox', D.didNumber(D.didById(0x6000), u)), () => this._keep('gearbox', null))
@@ -851,7 +855,10 @@ class Motordaten extends ListApp {
             // only while recording (ENGINE): for the logs
             lambda: m.lambda, lambdaTarget: m.lambdaTarget, rail: m.rail, railTarget: m.railTarget,
             fuelLow: above(m.fuelLowAbs), knock: m.knock, ignition: m.ignition, pedal: m.pedal, load: m.load,
-            airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp
+            airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp,
+            // the battery: its charge only when it reads as one (0-100 %), its sensor's voltage before the OBD one
+            battSoc: isNum(m.battSoc) && m.battSoc >= 0 && m.battSoc <= 100 ? m.battSoc : null,
+            battCurrent: m.battCurrent, battTemp: m.battTemp, battVoltage: isNum(m.battVoltage) && m.battVoltage > 5 ? m.battVoltage : null
         };
         // each cylinder's ignition below the earliest one: what the knock control takes back there
         const angles = CYLINDER_DIDS.map((id, i) => m[`ign${i + 1}`]);
