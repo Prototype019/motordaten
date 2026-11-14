@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Motordaten Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap">
+<style>
+/* Mockup of the in-car screen (2880 x 960, the iDrive 8 app area), scaled to the window.
+   Tokens map 1:1 to the renderer's theme later. */
+:root {
+  --asphalt: #10161D;   /* screen */
+  --line: #2A3642;      /* tracks, separators */
+  --text: #E9EEF2;
+  --dim: #8394A4;
+  --cold: #5FA8D9;      /* oil not ready */
+  --ice: #A9DCFF;       /* peaks */
+  --limit: #FF5B4F;     /* only at real limits */
+  --num: 'Barlow Semi Condensed', sans-serif;
+  --txt: 'Barlow', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; background: #05080B; }
+body { overflow: hidden; font-family: var(--txt); color: var(--text); }
+
+.screen {
+  width: 2880px; height: 960px; background: var(--asphalt);
+  position: absolute; left: 50%; top: 50%; transform-origin: center;
+  padding: 48px 96px 72px;
+  display: grid; grid-template-rows: 172px 1fr; row-gap: 56px;
+}
+
+/* ---- engine speed: the full-width band ---- */
+.rpm { display: grid; grid-template-columns: 1fr 520px; column-gap: 64px; align-items: end; }
+.rpm-track { position: relative; height: 56px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.rpm-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--text); }
+.rpm-redzone { position: absolute; inset: 0 0 0 auto; width: calc(100% * 1300 / 7700); background: rgba(255,91,79,.35); }
+.rpm-peak { position: absolute; top: -10px; bottom: -10px; width: 6px; background: var(--ice); }
+.rpm-scale { display: flex; justify-content: space-between; margin-top: 18px; font: 500 34px var(--num); color: var(--dim); }
+.rpm-read { text-align: right; }
+.big { font: 600 156px/0.82 var(--num); font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+.unit { font: 500 40px var(--txt); color: var(--dim); margin-left: 12px; }
+.peak { font: 500 38px var(--num); color: var(--ice); margin-top: 18px; }
+
+/* ---- the three jobs ---- */
+.jobs { display: grid; grid-template-columns: 820px 1fr 640px; column-gap: 120px; }
+.job h2 { font: 500 42px var(--txt); color: var(--dim); margin-bottom: 18px; }
+
+/* readiness: the oil band */
+.oil-value { display: flex; align-items: baseline; }
+.oil-value .big { font-size: 200px; }
+.oil-band { margin-top: 28px; height: 64px; border-radius: 8px; background: var(--line); position: relative; }
+.oil-fill { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 8px; }
+.oil-mark { position: absolute; top: -14px; bottom: -14px; width: 6px; margin-left: -3px; background: var(--text); }
+.oil-mark span { position: absolute; top: -46px; left: 50%; transform: translateX(-50%); font: 500 32px var(--num); color: var(--dim); }
+.oil-note { margin-top: 26px; font: 500 42px var(--txt); }
+.temps { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; column-gap: 72px; margin-top: 40px; }
+.temps dt { font: 500 34px var(--txt); color: var(--dim); }
+.temps dd { font: 600 60px var(--num); font-variant-numeric: tabular-nums; margin-top: 6px; }
+.temps dd small { font: 500 30px var(--txt); color: var(--dim); margin-left: 6px; }
+
+/* power: boost */
+.boost-value { display: flex; align-items: baseline; }
+.boost-value .big { font-size: 232px; }
+.boost-track { margin-top: 36px; height: 72px; position: relative; background: var(--line); border-radius: 6px; }
+.boost-fill { position: absolute; inset: 0 auto 0 0; background: var(--text); border-radius: 6px; }
+.boost-target { position: absolute; top: -18px; bottom: -18px; width: 0; border-left: 5px dashed var(--dim); }
+.boost-peak { position: absolute; top: -18px; bottom: -18px; width: 8px; background: var(--ice); }
+.boost-scale { display: flex; justify-content: space-between; margin-top: 22px; font: 500 34px var(--num); color: var(--dim); }
+.boost-meta { display: flex; column-gap: 80px; margin-top: 30px; font: 500 40px var(--txt); color: var(--dim); }
+.boost-meta b { font: 600 48px var(--num); color: var(--text); margin-left: 12px; }
+.boost-meta .ice { color: var(--ice); }
+
+/* health: oil pressure, battery, reset */
+.health dl { display: grid; row-gap: 32px; }
+.health dt { font: 500 40px var(--txt); color: var(--dim); }
+.health dd { font: 600 108px/1 var(--num); font-variant-numeric: tabular-nums; margin-top: 4px; }
+.health dd small { font: 500 38px var(--txt); color: var(--dim); margin-left: 10px; }
+.health .peak { margin-top: 6px; }
+.reset {
+  margin-top: 40px; height: 112px; padding: 0 56px; border-radius: 56px;
+  border: 3px solid var(--line); background: none; color: var(--text);
+  font: 500 44px var(--txt); cursor: pointer;
+}
+.reset:focus-visible { outline: 6px solid var(--ice); outline-offset: 6px; }
+.reset:active { background: var(--line); }
+
+/* status: one line, only when something is missing */
+.status { position: absolute; left: 96px; bottom: 24px; font: 500 36px var(--txt); color: var(--dim); }
+.status.err { color: var(--limit); }
+.limit { color: var(--limit) !important; }
+
+/* mockup controls (not part of the car screen) */
+.ctl { position: fixed; right: 16px; top: 8px; opacity: .8; display: flex; gap: 8px; font: 14px system-ui; }
+.ctl button { padding: 6px 10px; border-radius: 6px; border: 1px solid #334; background: #1a222c; color: #dde; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main class="screen" id="screen" aria-label="Motordaten">
+  <section class="rpm" aria-label="Drehzahl">
+    <div>
+      <div class="rpm-track"><div class="rpm-redzone"></div><div class="rpm-fill" id="rpmFill"></div><div class="rpm-peak" id="rpmPeak"></div></div>
+      <div class="rpm-scale"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span></div>
+    </div>
+    <div class="rpm-read"><span class="big" id="rpm">0</span><span class="unit">U/min</span><div class="peak" id="rpmPeakTxt">Spitze –</div></div>
+  </section>
+
+  <section class="jobs">
+    <div class="job">
+      <h2>Öltemperatur</h2>
+      <div class="oil-value"><span class="big" id="oil">–</span><span class="unit">°C</span></div>
+      <div class="oil-band"><div class="oil-fill" id="oilFill"></div><div class="oil-mark" style="left: calc(100% * 70 / 130)"><span>70</span></div></div>
+      <div class="oil-note" id="oilNote">–</div>
+      <dl class="temps">
+        <div><dt>Kühlmittel</dt><dd><span id="coolant">–</span><small>°C</small></dd></div>
+        <div><dt>Ansaugluft</dt><dd><span id="intake">–</span><small>°C</small></dd></div>
+        <div><dt>Ladeluft</dt><dd><span id="charge">–</span><small>°C</small></dd></div>
+      </dl>
+    </div>
+
+    <div class="job">
+      <h2>Ladedruck</h2>
+      <div class="boost-value"><span class="big" id="boost">–</span><span class="unit">bar</span></div>
+      <div class="boost-track"><div class="boost-fill" id="boostFill"></div><div class="boost-target" id="boostTarget"></div><div class="boost-peak" id="boostPeak"></div></div>
+      <div class="boost-scale"><span>0</span><span>0,5</span><span>1,0</span><span>1,5</span><span>2,0</span><span>2,5</span></div>
+      <div class="boost-meta"><span>Soll<b id="boostSoll">–</b></span><span class="ice">Spitze<b class="ice" id="boostPk">–</b></span></div>
+    </div>
+
+    <div class="job health">
+      <dl>
+        <div><dt>Öldruck</dt><dd><span id="oilp">–</span><small>bar</small></dd><div class="peak" id="oilpPk">Spitze –</div></div>
+        <div><dt>Bordnetz</dt><dd><span id="volt">–</span><small>V</small></dd></div>
+      </dl>
+      <button class="reset" id="reset">Spitzen zurücksetzen</button>
+    </div>
+  </section>
+  <p class="status" id="status" role="status"></p>
+</main>
+
+<div class="ctl" aria-label="Mockup">
+  <button data-s="cold">Kaltstart</button><button data-s="warm">Warm, Leerlauf</button>
+  <button data-s="pull">Volllast</button><button data-s="nodme">DME fehlt</button>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fit = () => { const s = Math.min(innerWidth / 2880, innerHeight / 960); $('screen').style.transform = `translate(-50%, -50%) scale(${s})`; };
+addEventListener('resize', fit); fit();
+
+const de = (v, d) => v.toFixed(d).replace('.', ',');
+const peak = { rpm: 0, boost: -1, oilp: 0 };
+const READY = 70, OILMAX = 130, RPMMAX = 7700, BOOSTMAX = 2.5;
+const mix = (a, b, t) => { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); const x = p(a), y = p(b);
+  return `rgb(${x.map((c, i) => Math.round(c + (y[i] - c) * t)).join(',')})`; };
+
+function show(v) {
+  peak.rpm = Math.max(peak.rpm, v.rpm); peak.boost = Math.max(peak.boost, v.boost); peak.oilp = Math.max(peak.oilp, v.oilp);
+  $('rpm').textContent = Math.round(v.rpm).toLocaleString('de-DE');
+  $('rpmFill').style.width = `${100 * v.rpm / RPMMAX}%`;
+  $('rpmPeak').style.left = `calc(${100 * peak.rpm / RPMMAX}% - 3px)`;
+  $('rpmPeakTxt').textContent = `Spitze ${Math.round(peak.rpm).toLocaleString('de-DE')}`;
+  $('rpm').classList.toggle('limit', v.rpm > 6400);
+
+  $('oil').textContent = Math.round(v.oil);
+  const t = Math.max(0, Math.min(1, (v.oil - 20) / (READY - 20)));
+  const c = v.oil >= READY ? '#E9EEF2' : mix('#5FA8D9', '#E9EEF2', t * 0.6);
+  $('oil').style.color = c; $('oilFill').style.backgroundColor = c;
+  $('oilFill').style.width = `${100 * Math.min(v.oil, OILMAX) / OILMAX}%`;
+  $('oilNote').textContent = v.oil >= READY ? 'Bereit für Volllast' : `Noch ${Math.ceil(READY - v.oil)} °C bis bereit`;
+  $('oilNote').style.color = v.oil >= READY ? 'var(--text)' : 'var(--cold)';
+  $('coolant').textContent = Math.round(v.coolant); $('intake').textContent = Math.round(v.intake); $('charge').textContent = Math.round(v.charge);
+
+  const b = Math.max(0, v.boost);
+  $('boost').textContent = de(b, 2);
+  $('boostFill').style.width = `${100 * b / BOOSTMAX}%`;
+  $('boostTarget').style.left = `${100 * Math.max(0, v.soll) / BOOSTMAX}%`;
+  $('boostPeak').style.left = `calc(${100 * Math.max(0, peak.boost) / BOOSTMAX}% - 4px)`;
+  $('boostSoll').textContent = `${de(Math.max(0, v.soll), 2)} bar`; $('boostPk').textContent = `${de(Math.max(0, peak.boost), 2)} bar`;
+
+  $('oilp').textContent = de(v.oilp, 1); $('oilpPk').textContent = `Spitze ${de(peak.oilp, 1)} bar`;
+  $('oilp').classList.toggle('limit', v.rpm > 1500 && v.oilp < 1.0);
+  $('volt').textContent = de(v.volt, 1);
+  $('status').textContent = ''; $('status').className = 'status';
+}
+
+const SCENES = {
+  cold: () => ({ rpm: 1180 + Math.random() * 40, oil: 24, coolant: 37, intake: 8, charge: 12, boost: 0, soll: 0, oilp: 5.6, volt: 14.4 }),
+  warm: () => ({ rpm: 840 + Math.random() * 30, oil: 92, coolant: 88, intake: 14, charge: 33, boost: 0, soll: 0, oilp: 2.1, volt: 14.1 }),
+  pull: (k) => { const r = 2500 + (k % 60) * 75; const bo = Math.min(1.95, (r - 2400) / 900 * 1.95);
+    return { rpm: r, oil: 104, coolant: 92, intake: 16, charge: 38, boost: bo + (Math.random() - .5) * .03, soll: Math.min(1.98, bo + .05), oilp: 4.2 + r / 6000, volt: 14.2 }; }
+};
+let scene = 'cold', k = 0, timer;
+function run(s) {
+  clearInterval(timer); scene = s;
+  if (s === 'nodme') { $('status').textContent = 'Motorsteuergerät antwortet nicht. Zündung einschalten.'; $('status').className = 'status err'; return; }
+  timer = setInterval(() => show(SCENES[scene](k++)), 200); show(SCENES[scene](k++));
+}
+document.querySelectorAll('.ctl button').forEach((b) => b.onclick = () => run(b.dataset.s));
+$('reset').onclick = () => { peak.rpm = 0; peak.boost = -1; peak.oilp = 0; };
+const q = new URLSearchParams(location.search).get('s'); run(q || 'cold');
+</script>
+</body>
+</html>
