@@ -11,7 +11,7 @@
  * - every SLOW_EVERY rounds (and each round until known): the DME's intake
  *   air, ambient pressure and exhaust temperature after the catalyst, the
  *   gearbox's (EGS) transmission oil, the supply voltage (OBD 42).
- * Power is torque x engine speed of the same round, in PS.
+ * Power is torque x the engine speed shown, in PS; on the overrun (negative torque) both show 0.
  * Rounds follow each other as fast as the gateway takes them, at least
  * CYCLE_MS apart; a busy gateway doubles the pause (up to MAX_CYCLE_MS),
  * answers bring it back. Only while the screen is in front.
@@ -325,7 +325,7 @@ class Motordaten extends ListApp {
         };
         // on the overrun the DME reports the engine's drag as negative torque: shown as 0
         v.torque = isNum(m.torque) ? Math.max(0, m.torque) : null;
-        v.power = isNum(v.torque) && isNum(m.rpm) ? v.torque * Math.max(0, m.rpm) / 9549 * PS_PER_KW : null;
+        v.power = isNum(v.torque) && isNum(v.rpm) ? v.torque * Math.max(0, v.rpm) / 9549 * PS_PER_KW : null;
         v.rpmPeak = this._peakOf('rpm', v.rpm);
         v.torquePeak = this._peakOf('torque', v.torque);
         v.powerPeak = this._peakOf('power', v.power);
