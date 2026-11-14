@@ -72,6 +72,11 @@ class Drawn extends EventEmitter {
         this.sentAt = 0;
         this.lastFrame = 0;
         this.keepalive = null;
+        // at most 30 frames a second: the values change at about 10 a second, the bars glide in between;
+        // more only costs the CPU MainApp limits the app to
+        if (this.gpu.fps) {
+            this.gpu.fps(30);
+        }
         this.gpu.on('ready', (screen, info) => {
             clearTimeout(this.lostTimer);
             this.lostTimer = null;

@@ -1,13 +1,13 @@
 {
   "name": "km_motordaten",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "Motordaten: Temperaturen, Ladedruck, Öldruck und Drehzahl der DME live",
   "private": false,
   "main": "javascript/runner.js",
   "oapAppSettings": {
-    "maxDiskUsage": 67108864,
-    "cpuLimit": 20,
-    "memoryThresholdKB": 65536,
+    "maxDiskUsage": 134217728,
+    "cpuLimit": 60,
+    "memoryThresholdKB": 196608,
     "priority": "PRIO_MEDIUM",
     "visibility": "FOREGROUND",
     "latencyClass": "FOREGROUND",

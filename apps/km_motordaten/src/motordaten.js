@@ -906,6 +906,11 @@ Diag.note(`Start ${(() => {
         return '?';
     }
 })()}`);
+// memory once a minute in the notebook: MainApp ends an app past its memoryThresholdKB
+setInterval(() => {
+    const m = process.memoryUsage();
+    Diag.note(`Speicher ${Math.round(m.rss / 1048576)} MB (Heap ${Math.round(m.heapUsed / 1048576)} MB)`);
+}, 60000).unref();
 const app = new Motordaten();
 app.start().catch((err) => {
     /* Stays resident so the manager can stop or restart it. */
