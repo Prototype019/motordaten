@@ -66,7 +66,7 @@ class Drawn extends EventEmitter {
         this.closedHide = false;
         this.single = false;        // one proxy only: the dial comes from FrontCCU (ccu), the push from that proxy
         this.knob = DIAL_INVALID;
-        this.trace = [];            // the last visibility events, for the Grenzwerte page and the log
+        this.trace = [];            // the last visibility events (also in the log)
         this.on_ = false;
         this.dirty = true;
         this.sentAt = 0;
@@ -293,9 +293,6 @@ class Drawn extends EventEmitter {
             this.trace.shift();
         }
         this.log.info(`screen: ${what}`);
-        if (this.page === 'settings') {
-            this.invalidate();
-        }
     }
 
     setPage(page) {
@@ -397,7 +394,7 @@ class Drawn extends EventEmitter {
         this.dirty = this._glide();
         this.rec.reset();
         const v = Object.assign({}, this.values, { rpmBar: this.bars.rpm, boostBar: this.bars.boost });
-        dash.draw(this.rec, this.page, v, this.limits, this.ui, this.page === 'settings' ? Object.assign({ trace: this.trace }, this.extra) : this.extra);
+        dash.draw(this.rec, this.page, v, this.limits, this.ui, this.extra);
         try {
             this.gpu.frame(this.rec);
             this.sentAt = Date.now();
