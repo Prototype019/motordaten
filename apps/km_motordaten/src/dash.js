@@ -596,7 +596,7 @@ const TILE = {
     faults: { color: C.limit, text: null },
     refused: { color: C.dim, text: 'abgelehnt' },
     none: { color: '#3A4652', text: 'keine Antwort' },
-    error: { color: C.dim, text: 'Fehler beim Lesen' }
+    error: { color: C.dim, text: 'nicht gelesen' }
 };
 
 function faultsPage(rec, ui, extra) {
@@ -628,7 +628,7 @@ function faultsPage(rec, ui, extra) {
 
     scan.forEach((u, i) => {
         const b = tileBox(i);
-        const look = TILE[u.state] || TILE.wait;
+        const look = u.state === 'read' && u.try > 1 ? { color: C.ice, text: `liest … (${u.try}.)` } : TILE[u.state] || TILE.wait;
         const id = `unit:${u.addr}`;
         if (ui && ui.pressed === id) {
             rec.roundRect(b.x, b.y, b.w, b.h, 10, C.line);

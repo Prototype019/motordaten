@@ -86,7 +86,8 @@ const TEXTS_EVERY_MS = 300000;     // ... and again this often while some are mi
 const IF_KOMBI = 'de.bmw.infotainment.KombiIF';
 const IF_FRONTCCU = 'de.bmw.infotainment.controlelements.FrontCCU';
 const FAULT_MASK = 0x0D;     // failing now, pending, confirmed
-const FAULT_WAIT_MS = 2000;  // a unit's answer to its fault memory read
+const FAULT_WAIT_MS = 4000;  // a unit's answer to its fault memory read (the DSC takes 3.2 s, ENET); each further try longer
+const FAULT_TRIES = 3;       // a unit that does not answer (DSC is slow to) is asked this often before it counts as silent
 const PROXIES = 48;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
@@ -400,20 +401,37 @@ class Motordaten extends ListApp {
 
     /* One unit's fault memory into its tile: a unit silent, refusing or failing is asked once more
      * (a slow unit, a busy gateway); a transport error shows as one, not as silence. */
-    _faultsOfUnit(unit, again) {
-        return this._tasu.faultsOf(unit.addr, FAULT_MASK, FAULT_WAIT_MS).then((u) => {
+    /* One unit's fault memory, asked up to FAULT_TRIES times, each waiting longer; the tile says "liest …" until
+     * the last try is done, so a slow unit never shows silent in between. */
+    _faultsOfUnit(unit, tries) {
+        const n = tries || 1;
+        const last = n >= FAULT_TRIES;
+        unit.state = 'read';
+        unit.try = n;
+        this._drawn.setExtra({ faults: Object.assign({}, this._drawn.extra.faults) });
+        return this._tasu.faultsOf(unit.addr, FAULT_MASK, FAULT_WAIT_MS * n).then((u) => {
             if (u && u[0] === 0x59) {
                 unit.entries = Faults.parse(new Map([[unit.addr, u]])).entries;
                 unit.state = unit.entries.length ? 'faults' : 'ok';
                 return undefined;
             }
-            unit.state = u && u[0] === 0x7F ? 'refused' : 'none';
-            unit.nrc = u && u[0] === 0x7F ? u[2] : undefined;
-            return again ? undefined : this._faultsOfUnit(unit, true);
+            if (u && u[0] === 0x7F) {
+                unit.state = 'refused';
+                unit.nrc = u[2];
+                return undefined;           // a refusal is an answer: asking again changes nothing
+            }
+            if (last) {
+                unit.state = 'none';
+                return undefined;
+            }
+            return this._faultsOfUnit(unit, n + 1);
         }, (e) => {
-            unit.state = 'error';
-            unit.error = (e && e.message) || String(e);
-            return again ? undefined : new Promise((r) => setTimeout(r, 300)).then(() => this._faultsOfUnit(unit, true));
+            if (last) {
+                unit.state = 'error';
+                unit.error = (e && e.message) || String(e);
+                return undefined;
+            }
+            return new Promise((r) => setTimeout(r, 300)).then(() => this._faultsOfUnit(unit, n + 1));
         });
     }
 
