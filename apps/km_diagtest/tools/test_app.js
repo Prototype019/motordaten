@@ -72,7 +72,7 @@ require('../src/diagtest.js');
     const rows = unit.rows('dgList');
     const get = (l) => (rows.find((r) => r[0] === l) || [])[1];
     assert.strictEqual(get('Diagnose-Dienst'), 'offen');
-    assert.strictEqual(get('DME-Typ (SGBD)'), '0F2422 = DME8FF_R (Tester F2)');
+    assert.strictEqual(get('DME-Typ (SGBD)'), '0F2422 = DME8FF_R (Tester F4)');
     assert.ok(/^NO_ERROR /.test(get('Gateway-Antwort')), get('Gateway-Antwort'));
     assert.ok(/^\d+ · 1 Arg: \{udsResponse,errorCode\}$/.test(get('Antwort-Ereignisse')), get('Antwort-Ereignisse'));
     assert.ok(/^\d+ PIDs, davon: 05 0F 0B 0C 04 11$/.test(get('OBD unterstützt')), get('OBD unterstützt'));

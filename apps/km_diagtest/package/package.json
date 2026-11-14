@@ -1,6 +1,6 @@
 {
   "name": "km_diagtest",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Diagnose-Test: DME-Typ, OBD-II- und BMW-Werte lesen (nur lesend)",
   "private": false,
   "main": "javascript/runner.js",

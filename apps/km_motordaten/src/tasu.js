@@ -5,7 +5,7 @@
  * the way cauliflowermossgrape/idrive7-apps (MIT, kit/runtime/diag.js)
  * describes it:
  *
- *   request: method sendTasuRequest{ sourceAddress 0xF2, targetAddress,
+ *   request: method sendTasuRequest{ sourceAddress (TESTER), targetAddress,
  *            serviceID, subroutineID 0, udsDataLength, udsData (the bytes
  *            after the service id), deadlockTime 0 } -> a transport verdict;
  *            a busy verdict is retried (BUSY_RETRIES, BUSY_MS x 1, 2, ...)
@@ -27,9 +27,10 @@ const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 
 const IFACE = 'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu';
 const INSTANCE = 'SystemFunctionsInternalTasuInst1';
-const TESTER = 0xF2;
-/* Tester addresses a request may come from (the head unit's own is 0xF2; ENET testers use 0xF4, 0xF1). */
-const TESTERS = Object.freeze([0xF2, 0xF4, 0xF1]);
+const TESTER = 0xF4;
+/* Tester addresses a request may come from, the one to try first first: on the G87's iDrive 8 the DME
+ * answers 0xF4 (an ENET tester's), while the gateway refuses 0xF2 (7F 31 25; docs/g87-s58.md). */
+const TESTERS = Object.freeze([0xF4, 0xF2, 0xF1]);
 const DME = 0x12;
 const GAP_MS = 25;
 const OPEN_MS = 15000;

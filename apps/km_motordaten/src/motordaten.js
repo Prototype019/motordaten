@@ -30,6 +30,7 @@ const ENGINE_STOPPED_RPM = 200;
 const CYCLE_MS = 150;          // at least this long per round of questions
 const SLOW_EVERY = 20;         // ambient pressure and voltage every this many rounds
 const REOPEN_MS = 10000;       // a failed gateway is tried again after this long (while shown)
+const HOLD_MS = 4000;          // a value missing an answer keeps its last one this long (the gateway drops some)
 
 /* Asked every round: [key, DID]. */
 const FAST = [['oil', 0x4402], ['coolant', 0x4300], ['intake', 0x580F], ['charge', 0x59D4],
@@ -46,6 +47,7 @@ class Motordaten extends ListApp {
         super({ root: 'ST_OnlineApps_Motordaten', prefix: 'md' });
         this._tasu = new Tasu(logger);
         this._dme = {};             // key -> value from the DME (null: no answer)
+        this._dmeAt = {};           // key -> when it last answered
         this._cds = {};             // rpm, oil, coolant from the car's signals
         this._peak = {};
         this._gateway = 'wait';     // wait | open | failed
@@ -171,15 +173,27 @@ class Motordaten extends ListApp {
                 .then(() => { this._gateway = 'open'; this._gatewayError = ''; },
                     (e) => { this._gateway = 'failed'; this._gatewayError = e.message; });
         }
-        const slow = this._round % SLOW_EVERY === 0;
+        // ambient pressure every round until known: boost and oil pressure are shown above it
+        const slow = this._round % SLOW_EVERY === 0 || !isNum(this._dme.ambient);
         this._round++;
         const ask = FAST.concat(slow ? SLOW : []);
         return ask.reduce((p, kv) => p.then(() => this._tasu.request(0x22, [kv[1] >> 8, kv[1] & 0xFF])
-            .then((u) => { this._dme[kv[0]] = D.didNumber(D.didById(kv[1]), u); },
-                (e) => { this._dme[kv[0]] = null; this._gatewayError = e.message; })), Promise.resolve())
+            .then((u) => this._keep(kv[0], D.didNumber(D.didById(kv[1]), u)),
+                (e) => { this._keep(kv[0], null); this._gatewayError = e.message; })), Promise.resolve())
             .then(() => (slow ? this._tasu.request(0x01, [0x42])
                 .then((u) => { this._dme.voltage = D.obdNumber(D.pidById(0x42), u); }, () => undefined) : undefined))
             .then(() => this._checkTester());
+    }
+
+    /* A new value, or none: then the last one stays for HOLD_MS (the gateway drops some answers). */
+    _keep(key, v) {
+        const now = Date.now();
+        if (isNum(v)) {
+            this._dme[key] = v;
+            this._dmeAt[key] = now;
+        } else if (!(now - (this._dmeAt[key] || 0) < HOLD_MS)) {
+            this._dme[key] = null;
+        }
     }
 
     /* Two rounds without a single answer: ask as the next tester address (the DME may answer only some). */
