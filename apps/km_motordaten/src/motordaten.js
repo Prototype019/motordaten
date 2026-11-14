@@ -733,6 +733,8 @@ class Motordaten extends ListApp {
         this._textsTimer = setTimeout(() => this._syncTexts(), TEXTS_FIRST_MS);
         this._drawn.on('mode', (mode) => this.useEntryState(mode === 'layer' ? LAYER : LIST));
         this._drawn.on('action', (id) => this._action(id));
+        // the temperature cells dragged into a new order: kept with the limits
+        this._drawn.on('order', (order) => this._setLimits(Object.assign({}, this._limits, { tempOrder: Limits.tempOrder(order) })));
         this._drawn.on('targets', (targets) => this._proxiesFor(targets));
         this._proxiesFor(require('./dash.js').targets('main'));
         this._drawn.connect();

@@ -184,6 +184,28 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     assert.deepStrictEqual(modesHeard, [], 'never the list screen');
     assert.ok(d.trace.some((t) => /getrennt/.test(t)));
 
+    // the temperature cells: held, a cell lifts, follows the finger and takes the slot it is let go over
+    d.setLimits(Limits.defaults());
+    const orders = [];
+    d.on('order', (o) => orders.push(o));
+    const cool = dash.tempCellBoxes(d.limits)[0];
+    g.emit('touch', 'down', cool.x + 40, cool.y + 60);
+    await wait(500);
+    assert.strictEqual(d.ui.drag && d.ui.drag.key, 'coolant', 'held: lifted');
+    g.emit('touch', 'move', cool.x + 40 + 2 * 236, cool.y + 60);
+    d.render();
+    g.emit('touch', 'up', cool.x + 40 + 2 * 236, cool.y + 60);
+    assert.deepStrictEqual(orders, [['intake', 'gearbox', 'coolant']], 'dropped on the last slot');
+    assert.strictEqual(d.ui.drag, null);
+    // a quick tap there lifts nothing
+    g.emit('touch', 'down', cool.x + 40, cool.y + 60);
+    g.emit('touch', 'up', cool.x + 40, cool.y + 60);
+    await wait(500);
+    assert.strictEqual(d.ui.drag, undefined === d.ui.drag ? undefined : null);
+    assert.strictEqual(orders.length, 1);
+    // kept and read back: a damaged order is mended
+    assert.deepStrictEqual(Limits.tempOrder(['gearbox', 'x', 'gearbox']), ['gearbox', 'coolant', 'intake']);
+
     // recording: the button's words follow it, and the app hears the new label
     let heard = null;
     d.on('targets', (t) => { heard = t; });

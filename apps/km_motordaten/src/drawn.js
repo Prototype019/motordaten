@@ -27,6 +27,8 @@ const dash = require('./dash.js');
 
 const KEEPALIVE_MS = 1000;
 const PRESS_SHOW_MS = 150;
+const LIFT_MS = 400;        // a temperature cell held this long lifts and can be dragged to another place
+const LIFT_SLOP = 24;       // a finger moving more than this before is no hold
 const GLIDE_MS = 90;
 const WHOLE = Object.freeze({ x: 0, y: 0, w: dash.W, h: dash.H });
 /* A hide the HMI asks for (state hidden or unfocused) waits this long: it reports both for a moment
@@ -436,6 +438,9 @@ class Drawn extends EventEmitter {
     }
 
     _touch(phase, x, y) {
+        if (this._drag(phase, x, y)) {
+            return;
+        }
         const id = this._hit(x, y);
         if (phase === 'down') {
             this.touchOn = id;
@@ -456,6 +461,48 @@ class Drawn extends EventEmitter {
                 this.emit('action', was);
             }
         }
+    }
+
+    /*
+     * Reordering the temperature cells on the live page: held LIFT_MS without moving, a cell lifts (ui.drag), follows
+     * the finger and, let go, takes the slot under it ('order' with the new order). True while it has the touch.
+     */
+    _drag(phase, x, y) {
+        const ui = this.ui;
+        if (phase === 'down') {
+            clearTimeout(this.liftTimer);
+            this.lift = null;
+            const cell = this.page === 'main' && !this._hit(x, y) &&
+                dash.tempCellBoxes(this.limits).find((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+            if (cell) {
+                this.lift = { key: cell.key, x0: x, y0: y, dx: x - cell.x };
+                this.liftTimer = setTimeout(() => {
+                    if (this.lift) {
+                        ui.drag = { key: this.lift.key, x: this.lift.x0, dx: this.lift.dx };
+                        this.invalidate();
+                    }
+                }, LIFT_MS);
+            }
+            return false;
+        }
+        if (ui.drag) {
+            if (phase === 'move') {
+                ui.drag.x = x;
+            } else if (phase === 'up') {
+                const order = dash.tempCellBoxes(this.limits).map((c) => c.key).filter((k) => k !== ui.drag.key);
+                order.splice(dash.tempSlotAt(x - ui.drag.dx), 0, ui.drag.key);
+                ui.drag = null;
+                this.lift = null;
+                this.emit('order', order);
+            }
+            this.invalidate();
+            return true;
+        }
+        if (this.lift && (phase === 'up' || Math.abs(x - this.lift.x0) > LIFT_SLOP || Math.abs(y - this.lift.y0) > LIFT_SLOP)) {
+            clearTimeout(this.liftTimer);
+            this.lift = null;
+        }
+        return false;
     }
 
     _press(id) {

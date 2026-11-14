@@ -128,10 +128,15 @@ net.createServer((c) => {
     c.on('error', () => {});
 }).listen(SOCK, run);
 
+/* One touch phase (1 down, 2 move, 3 up) at x, y, as the renderer passes the display's touch on. */
+function touchPhase(phase, x, y) {
+    const p = Buffer.alloc(12);
+    p.writeUInt32LE(phase, 0); p.writeFloatLE(x, 4); p.writeFloatLE(y, 8);
+    client.write(msg(105, p));
+}
 function touch(x, y) {
-    const t = (phase) => { const p = Buffer.alloc(12); p.writeUInt32LE(phase, 0); p.writeFloatLE(x, 4); p.writeFloatLE(y, 8); return msg(105, p); };
-    client.write(t(1));
-    setTimeout(() => client.write(t(3)), 60);
+    touchPhase(1, x, y);
+    setTimeout(() => touchPhase(3, x, y), 60);
 }
 
 function shot(name) {
@@ -156,12 +161,17 @@ function serve(now) {
 img{display:block;width:100%;height:auto;border-radius:6px;cursor:pointer;background:#10161d}
 .bar{display:flex;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}b{color:#e9eef2;font-weight:600}</style></head>
 <body><div class="wrap"><div class="bezel"><img id="s" alt="Bildschirm der App" width="2880" height="764"></div>
-<div class="bar"><span>Simulierte Fahrt: <b id="p">…</b></span><span>Klick = Tippen auf den Bildschirm</span></div></div>
+<div class="bar"><span>Simulierte Fahrt: <b id="p">…</b></span><span>Klick = Tippen · gedrückt halten und ziehen = Finger ziehen</span></div></div>
 <script>const s=document.getElementById('s'),p=document.getElementById('p');let busy=false;
 async function tick(){if(busy)return;busy=true;try{const r=await fetch('/frame.png?'+Date.now());const b=await r.blob();const u=URL.createObjectURL(b);
 s.onload=()=>URL.revokeObjectURL(u);s.src=u;p.textContent=decodeURIComponent(r.headers.get('x-phase')||'');}catch(e){}busy=false;}
 setInterval(tick,200);tick();
-s.addEventListener('click',(e)=>{const r=s.getBoundingClientRect();fetch('/touch?x='+Math.round((e.clientX-r.left)/r.width*2880)+'&y='+Math.round((e.clientY-r.top)/r.height*764),{method:'POST'});});
+// the mouse as a finger: pressed, moved and let go, held as long as the button is
+const at=(e)=>{const r=s.getBoundingClientRect();return 'x='+Math.round((e.clientX-r.left)/r.width*2880)+'&y='+Math.round((e.clientY-r.top)/r.height*764);};
+let down=false,last=0;s.draggable=false;
+s.addEventListener('pointerdown',(e)=>{e.preventDefault();down=true;s.setPointerCapture(e.pointerId);fetch('/touch?p=1&'+at(e),{method:'POST'});});
+s.addEventListener('pointermove',(e)=>{if(!down)return;const n=Date.now();if(n-last<40)return;last=n;fetch('/touch?p=2&'+at(e),{method:'POST'});});
+s.addEventListener('pointerup',(e)=>{if(!down)return;down=false;fetch('/touch?p=3&'+at(e),{method:'POST'});});
 </script></body></html>`;
     http.createServer((req, res) => {
         if (req.url.indexOf('/frame.png') === 0) {
@@ -177,7 +187,8 @@ s.addEventListener('click',(e)=>{const r=s.getBoundingClientRect();fetch('/touch
             res.end(png || '');
         } else if (req.url.indexOf('/touch') === 0) {
             const q = new URL(req.url, 'http://x').searchParams;
-            if (client) touch(Number(q.get('x')), Number(q.get('y')));
+            if (client) touchPhase(Number(q.get('p')) || 1, Number(q.get('x')), Number(q.get('y')));
+            if (client && !q.get('p')) setTimeout(() => touchPhase(3, Number(q.get('x')), Number(q.get('y'))), 60);
             res.end('ok');
         } else {
             res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });

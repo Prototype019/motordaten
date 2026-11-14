@@ -57,8 +57,17 @@ function onStep(item, v) {
     return Number((item.min + n * item.step).toFixed(item.d + 2));
 }
 
+/* The temperature cells under the oil band, in the order the driver dragged them into. */
+const TEMP_CELLS = Object.freeze(['coolant', 'intake', 'gearbox']);
+
+/* order as a valid order: every cell once, unknown ones dropped, missing ones appended. */
+function tempOrder(order) {
+    const seen = (Array.isArray(order) ? order : []).filter((k, i, all) => TEMP_CELLS.indexOf(k) >= 0 && all.indexOf(k) === i);
+    return seen.concat(TEMP_CELLS.filter((k) => seen.indexOf(k) < 0));
+}
+
 function defaults() {
-    const out = {};
+    const out = { tempOrder: TEMP_CELLS.slice() };
     ITEMS.forEach((it) => { out[it.key] = it.def; });
     return out;
 }
@@ -77,6 +86,7 @@ function load() {
             out[it.key] = onStep(it, saved[it.key]);
         }
     });
+    out.tempOrder = tempOrder(saved.tempOrder);
     return out;
 }
 
@@ -111,6 +121,7 @@ function toggled(limits, key) {
 function reset(limits, group) {
     const out = Object.assign({}, limits);
     ITEMS.filter((it) => it.group === group).forEach((it) => { out[it.key] = it.def; });
+    out.tempOrder = tempOrder(limits.tempOrder);
     return out;
 }
 
@@ -128,4 +139,4 @@ function readiness(limits, v) {
     return { on: items.length > 0, ready: items.length > 0 && !missing.length, items, missing };
 }
 
-module.exports = { ITEMS, READY, defaults, load, save, stepped, toggled, reset, readiness, onStep };
+module.exports = { ITEMS, READY, TEMP_CELLS, tempOrder, defaults, load, save, stepped, toggled, reset, readiness, onStep };

@@ -426,7 +426,7 @@ function readyBadge(rec, x, y, v, cfg) {
     });
 }
 
-function readiness(rec, v, cfg) {
+function readiness(rec, v, cfg, ui) {
     const { x, w } = COL.left;
     const readyAt = cfg.oilReady;
     rec.text('Öltemperatur', x, 262, 34, C.dim, { font: 'label' });
@@ -449,16 +449,55 @@ function readiness(rec, v, cfg) {
         rec.roundRect(x, by, Math.max(bh, w * clamp(oil, 0, OIL_MAX) / OIL_MAX), bh, 8, color);
     }
     readyBadge(rec, x, 520, v, cfg);
+    tempCellsDraw(rec, v, cfg, ui);
+}
 
-    const cells = [['Kühlmittel', v.coolant, Object.assign({}, HEAT.coolant, { limit: cfg.coolantMax, warm: cfg.coolantReady })],
-        ['Ansaugluft', v.intake, Object.assign({}, HEAT.intake, { limit: cfg.intakeMax })], ['Getriebeöl', v.gearbox, Object.assign({}, HEAT.gearbox, { limit: cfg.gearboxMax, warm: cfg.gearboxReady })]];
-    cells.forEach((c, i) => {
-        const cx = x + i * 236;
+/*
+ * The temperature cells under the oil band, in the driver's order (cfg.tempOrder); a long press lifts one
+ * (ui.drag { key, x }): it follows the finger on a raised card and the others make room where it would land.
+ */
+const CELL_STEP = 236;
+const CELL_TOP = 590;
+const CELL_H = 150;
+function tempCellBoxes(cfg) {
+    return L.tempOrder(cfg && cfg.tempOrder).map((key, i) => ({ key, x: COL.left.x + i * CELL_STEP, y: CELL_TOP, w: CELL_STEP - 16, h: CELL_H }));
+}
+/* Where a cell dragged to x lands: its slot. */
+function tempSlotAt(x) {
+    return clamp(Math.round((x - COL.left.x - (CELL_STEP - 16) / 2) / CELL_STEP), 0, L.TEMP_CELLS.length - 1);
+}
+function tempCellsDraw(rec, v, cfg, ui) {
+    const spec = {
+        coolant: ['Kühlmittel', v.coolant, Object.assign({}, HEAT.coolant, { limit: cfg.coolantMax, warm: cfg.coolantReady })],
+        intake: ['Ansaugluft', v.intake, Object.assign({}, HEAT.intake, { limit: cfg.intakeMax })],
+        gearbox: ['Getriebeöl', v.gearbox, Object.assign({}, HEAT.gearbox, { limit: cfg.gearboxMax, warm: cfg.gearboxReady })]
+    };
+    const drag = ui && ui.drag;
+    let order = L.tempOrder(cfg.tempOrder);
+    if (drag) {
+        // the others close up around where the dragged one would land
+        order = order.filter((k) => k !== drag.key);
+        order.splice(tempSlotAt(drag.x - drag.dx), 0, drag.key);
+    }
+    const one = (key, cx, lifted) => {
+        const c = spec[key];
+        if (lifted) {
+            rec.roundRect(cx - 14, CELL_TOP - 4, CELL_STEP - 4, CELL_H + 6, 14, '#1C2731');
+            rec.strokeRoundRect(cx - 14, CELL_TOP - 4, CELL_STEP - 4, CELL_H + 6, 14, 3, C.ice);
+        }
         const hot = isNum(c[1]) && c[2].limit !== null && c[1] >= c[2].limit;
-        rec.text(c[0], cx, 622, 28, hot ? C.limit : C.dim, { font: 'label' });
+        rec.text(c[0], cx, 622, 28, hot ? C.limit : lifted ? C.ice : C.dim, { font: 'label' });
         valueUnit(rec, isNum(c[1]) ? String(Math.round(c[1])) : '–', '°C', cx, 690, 54, hot ? C.limit : C.text, 26, 'left');
         heatStrip(rec, cx, 712, 200, 20, c[1], c[2]);
+    };
+    order.forEach((key, i) => {
+        if (!drag || key !== drag.key) {
+            one(key, COL.left.x + i * CELL_STEP, false);
+        }
     });
+    if (drag) {
+        one(drag.key, clamp(drag.x - drag.dx, COL.left.x - 20, COL.left.x + 2 * CELL_STEP + 20), true);
+    }
 }
 
 function power(rec, v, cfg) {
@@ -1028,7 +1067,7 @@ function draw(rec, page, v, cfg, ui, extra) {
         return rec;
     }
     rpmBand(rec, v, cfg);
-    readiness(rec, v, cfg);
+    readiness(rec, v, cfg, ui);
     power(rec, v, cfg);
     health(rec, v, cfg, ui, extra);
     if (v.status) {
@@ -1037,4 +1076,4 @@ function draw(rec, page, v, cfg, ui, extra) {
     return rec;
 }
 
-module.exports = { draw, targets, W, H, C };
+module.exports = { draw, targets, tempCellBoxes, tempSlotAt, W, H, C };
