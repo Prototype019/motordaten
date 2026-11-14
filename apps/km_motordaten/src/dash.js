@@ -164,7 +164,8 @@ const CHANNELS = [
     { id: 'fuel', label: 'Kraftstoff' },
     { id: 'load', label: 'Last & Zündung' },
     { id: 'knock', label: 'Klopfen je Zyl.' },
-    { id: 'battery', label: 'Batterie' }
+    { id: 'battery', label: 'Batterie' },
+    { id: 'cooling', label: 'Kühlung' }
 ];
 
 const FAULT_ROWS = 8;
@@ -890,7 +891,12 @@ const GROUPS = {
             ['knock', C.dim, 'left', 'Mittel']] },
     // the battery: its charge, and what flows (charging above 0, discharging below)
     battery: { axes: { left: { unit: '%', d: 0, floor: 100, color: C.text }, right: { unit: 'A', d: 0, floor: 40, color: C.ice } },
-        curves: [['battSoc', C.text, 'left', 'Ladezustand', 'min'], ['battCurrent', C.ice, 'right', 'Strom']] }
+        curves: [['battSoc', C.text, 'left', 'Ladezustand', 'min'], ['battCurrent', C.ice, 'right', 'Strom']] },
+    // the cooling: the coolant against what the DME aims for, and how hard it drives fan, thermostat, pump
+    cooling: { axes: { left: { unit: '°C', d: 0, floor: 160, color: C.text }, right: { unit: '%', d: 0, floor: 100, color: C.cold } },
+        curves: [['coolant', C.text, 'left', 'Kühlmittel'], ['coolTarget', C.dim, 'left', 'Soll', 'min'],
+            ['fanDuty', C.cold, 'right', 'Lüfter'], ['thermostat', C.ice, 'right', 'Thermostat'],
+            ['pumpPct', C.ok, 'right', 'Pumpe']] }
 };
 
 /* The smallest round number (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 x 10^n) at least v: its quarters stay round too. */
@@ -922,7 +928,7 @@ function logPage(rec, ui, extra) {
     rec.text(log ? `${dateText(log.start)} · ${duration(log.duration)}` : 'Aufzeichnung', X0, 110, 48, C.text, { font: 'label' });
     logTargets(extra).forEach((t) => {
         const on = t.id === `chan:${chan}`;
-        button(rec, t, ui, { size: 26, primary: on });
+        button(rec, t, ui, { size: 24, primary: on });
     });
     const group = GROUPS[chan];
     const box = { x: X0 + 110, y: 300, w: W - PAD - X0 - 110 - (group.axes.right ? 120 : 0), h: 270 };

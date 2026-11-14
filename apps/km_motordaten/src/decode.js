@@ -51,6 +51,15 @@ const DIDS = [
     // the battery's charge as the energy management reckons it (read over ENET on the G87: 65 %; the battery
     // sensor's own values 5852-5854 and 56F0 the DME refuses there)
     { id: 0x5425, name: 'Batterie Ladezustand', t: 's8', k: 1, o: 0, u: '%', d: 0 },
+    // the cooling: what the DME aims for and drives (to see what MHD's Max Cooling changes); the pumps' speeds as
+    // the DME gives them (one byte, its own steps)
+    { id: 0x4310, name: 'Kühlmittel Soll', t: 's16', k: 0.01, o: 0, u: '°C', d: 0 },
+    { id: 0x587F, name: 'Lüfter Ansteuerung', t: 's16', k: 0.01220703, o: 0, u: '%', d: 0 },
+    { id: 0x594F, name: 'Lüfter Drehzahl', t: 'u8', k: 20, o: 0, u: 'U/min', d: 0 },
+    { id: 0x4A74, name: 'Kennfeldthermostat', t: 's16', k: 0.1, o: 0, u: '%', d: 0 },
+    { id: 0x5910, name: 'Wasserpumpe Soll', t: 'u8', k: 1, o: 0, u: '', d: 0 },
+    { id: 0x58EA, name: 'Wasserpumpe Ist', t: 'u8', k: 1, o: 0, u: '', d: 0 },
+    { id: 0x5912, name: 'Pumpe Ladeluftkühlung Soll', t: 'u8', k: 1, o: 0, u: '', d: 0 },
     // the ignition angle of each cylinder (the knock control takes it back per cylinder; the DME reports only the
     // mean of that, 0x554C): cylinders 1-6, 0x4A4B is not one of them
     { id: 0x4A49, name: 'Zündwinkel Zyl. 1', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 },

@@ -20,7 +20,8 @@ const FIELDS = Object.freeze(['rpm', 'torque', 'power', 'boost', 'boostTarget', 
     'charge', 'gearbox', 'exhaust', 'voltage',
     // what the engine does (only recorded, not shown live)
     'lambda', 'lambdaTarget', 'rail', 'railTarget', 'fuelLow', 'knock', 'ignition', 'pedal', 'load', 'airMass',
-    'throttle', 'fuelFlow', 'fuelTemp', 'knockCyl1', 'knockCyl2', 'knockCyl3', 'knockCyl4', 'knockCyl5', 'knockCyl6', 'battSoc', 'battCurrent', 'battVoltage']);
+    'throttle', 'fuelFlow', 'fuelTemp', 'knockCyl1', 'knockCyl2', 'knockCyl3', 'knockCyl4', 'knockCyl5', 'knockCyl6', 'battSoc', 'battCurrent', 'battVoltage',
+    'coolTarget', 'fanDuty', 'fanRpm', 'thermostat', 'pumpTarget', 'pumpRpm', 'pumpCharge', 'pumpPct']);
 const SAMPLE_MS = 100;
 const FLUSH_MS = 1000;
 const MAX_MS = 30 * 60 * 1000;

@@ -34,6 +34,8 @@ function sampleLog() {
             rail: pull ? 200 + boost * 75 : 60, railTarget: pull ? 200 + boost * 76 : 60, fuelLow: pull ? 5.6 : 5.9,
             knock: pull && (s - 300) % 10 > 7 ? 1.5 : 0, ignition: pull ? 8 - boost * 3 : 12, pedal: pull ? 100 : 4,
             load: pull ? 60 + boost * 40 : 18, battSoc: 78 + s / 90, battCurrent: s < 60 ? 30 - s / 2 : 4, battVoltage: 14.3,
+            // Max Cooling from the pull on: the target drops, fan and thermostat go up
+            coolTarget: s > 300 ? 80 : 105, fanDuty: s > 300 ? 100 : 20, thermostat: s > 300 ? 100 : 35, pumpTarget: s > 300 ? 255 : 120, pumpPct: s > 300 ? 100 : 47,
             // cylinder 3 taken back a little at the top of each pull
             knockCyl1: 0, knockCyl2: pull ? 0.3 : 0, knockCyl3: pull && (s - 300) % 10 > 6 ? 2.5 : 0, knockCyl4: 0, knockCyl5: pull ? 0.4 : 0,
             knockCyl6: 0 }, t0 + t);
@@ -75,7 +77,8 @@ const EXTRA = {
     logfuel: { log: Logbook.load(logName), channel: 'fuel' },
     logload: { log: Logbook.load(logName), channel: 'load' },
     logknock: { log: Logbook.load(logName), channel: 'knock' },
-    logbattery: { log: Logbook.load(logName), channel: 'battery' }
+    logbattery: { log: Logbook.load(logName), channel: 'battery' },
+    logcooling: { log: Logbook.load(logName), channel: 'cooling' }
 };
 const Faults = require('../src/faults.js');
 /* A scan of every unit as the G87 answered over ENET (one entry in the camera); progress stops at k. */
@@ -117,6 +120,7 @@ SCENES.logfuel = {};
 SCENES.logload = {};
 SCENES.logknock = {};
 SCENES.logbattery = {};
+SCENES.logcooling = {};
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
     const page = name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';

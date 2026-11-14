@@ -122,6 +122,10 @@ const KNOCK = [['knock', 0x554C]].concat(CYLINDER_DIDS.map((id, i) => [`ign${i +
 const ENGINE2 = [['throttle', 0x4600], ['fuelFlow', 0x4521], ['fuelTemp', 0x4AD5]];
 const ENGINE2_EVERY = 6;
 
+/* The cooling, with the slow ones (recorded, for the chart Kühlung): target, fan, thermostat, pumps. */
+const COOLING = [['coolTarget', 0x4310], ['fanDuty', 0x587F], ['fanRpm', 0x594F], ['thermostat', 0x4A74],
+    ['pumpTarget', 0x5910], ['pumpRpm', 0x58EA], ['pumpCharge', 0x5912]];
+
 /* The battery, with the slow ones: its charge (a valid one is 0-100 %). */
 const BATTERY = [['battSoc', 0x5425]];
 
@@ -843,6 +847,7 @@ class Motordaten extends ListApp {
             .then(more(() => (rec && round % 2 === 1 ? this._read(ENGINE) : undefined)))
             .then(more(() => (rec && round % ENGINE2_EVERY === 3 ? this._read(ENGINE2) : undefined)))
             .then(more(() => (slow ? this._read(BATTERY) : undefined)))
+            .then(more(() => (slow || (rec && round % 4 === 2) ? this._read(COOLING) : undefined)))
             .then(more(() => (slow ? this._read(SLOW)
                 .then(() => this._tasu.request(0x22, [0x60, 0x00], LIVE_TIMEOUT_MS, EGS))
                 .then((u) => this._keep('gearbox', D.didNumber(D.didById(0x6000), u)), () => this._keep('gearbox', null))
@@ -959,6 +964,10 @@ class Motordaten extends ListApp {
             airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp,
             // the battery: its charge only when it reads as one (0-100 %), its sensor's voltage before the OBD one
             battSoc: isNum(m.battSoc) && m.battSoc >= 0 && m.battSoc <= 100 ? m.battSoc : null,
+            coolTarget: m.coolTarget, fanDuty: m.fanDuty, fanRpm: m.fanRpm, thermostat: m.thermostat,
+            pumpTarget: m.pumpTarget, pumpRpm: m.pumpRpm, pumpCharge: m.pumpCharge,
+            // the pump's target as a share of its byte's range (the DME's own steps; 255 = full)
+            pumpPct: isNum(m.pumpTarget) ? m.pumpTarget / 255 * 100 : null,
             battCurrent: m.battCurrent, battTemp: m.battTemp, battVoltage: isNum(m.battVoltage) && m.battVoltage > 5 ? m.battVoltage : null
         };
         // each cylinder's ignition below the earliest one: what the knock control takes back there
