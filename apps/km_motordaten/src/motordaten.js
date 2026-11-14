@@ -110,13 +110,17 @@ const FAST = [['rpm', 0x4807], ['torque', 0x5891], ['boostAbs', 0x4205], ['boost
 /* What the engine does, read only while recording (for the logs, not shown live): every other round the
  * first, every ENGINE2_EVERY rounds the second (DIDs read over ENET on the G87, docs/g87-s58.md). */
 const ENGINE = [['lambda', 0x5889], ['lambdaTarget', 0x5816], ['rail', 0x5658], ['railTarget', 0x56C1],
-    ['fuelLowAbs', 0x58F3], ['knock', 0x554C], ['ignition', 0x59FA], ['pedal', 0x480B]];
+    ['fuelLowAbs', 0x58F3], ['ignition', 0x59FA], ['pedal', 0x480B]];
+/* The knock control, live every other round: its mean retard and each cylinder's ignition angle (the cylinder
+ * it takes back sits below the others; the DME has no retard per cylinder). */
+const CYLINDER_DIDS = [0x4A49, 0x4A4A, 0x4A4C, 0x4A4D, 0x4A4E, 0x4A4F];
+const KNOCK = [['knock', 0x554C]].concat(CYLINDER_DIDS.map((id, i) => [`ign${i + 1}`, id]));
 const ENGINE2 = [['throttle', 0x4600], ['fuelFlow', 0x4521], ['fuelTemp', 0x4AD5]];
 const ENGINE2_EVERY = 6;
 
 /* One DME request every SLOW_EVERY rounds: slow to change. */
 const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F], ['oil', 0x4402], ['coolant', 0x4300],
-    ['charge', 0x59D4]];
+    ['charge', 0x59D4], ['oilLevel', 0x5811]];
 const PS_PER_KW = 1.35962;
 /*
  * Power from the air the engine burns, not from the DME's torque: a tune (MHD) keeps reporting about the stock
@@ -732,6 +736,7 @@ class Motordaten extends ListApp {
         const more = (fn) => () => (fast ? fn() : undefined);
         return this._read(FAST)
             .then((n) => { fast = n; this._gap(n); })
+            .then(more(() => (round % 2 === 0 ? this._read(KNOCK) : undefined)))
             .then(more(() => (rec && round % 2 === 1 ? this._read(ENGINE) : undefined)))
             .then(more(() => (rec && round % ENGINE2_EVERY === 3 ? this._read(ENGINE2) : undefined)))
             .then(more(() => (slow ? this._read(SLOW)
@@ -846,8 +851,16 @@ class Motordaten extends ListApp {
             // only while recording (ENGINE): for the logs
             lambda: m.lambda, lambdaTarget: m.lambdaTarget, rail: m.rail, railTarget: m.railTarget,
             fuelLow: above(m.fuelLowAbs), knock: m.knock, ignition: m.ignition, pedal: m.pedal, load: m.load,
-            airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp
+            airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp, oilLevel: m.oilLevel
         };
+        // each cylinder's ignition below the earliest one: what the knock control takes back there
+        const angles = CYLINDER_DIDS.map((id, i) => m[`ign${i + 1}`]);
+        if (angles.every(isNum)) {
+            const top = Math.max.apply(null, angles);
+            angles.forEach((a, i) => { v[`knockCyl${i + 1}`] = top - a; });
+            const worst = angles.indexOf(Math.min.apply(null, angles));
+            v.knockCyl = top - angles[worst] > 0.4 ? worst + 1 : null;
+        }
         // on the overrun the DME reports the engine's drag as negative torque: shown as 0
         const rpm = isNum(v.rpm) ? Math.max(0, v.rpm) : null;
         const dmeTorque = isNum(m.torque) ? Math.max(0, m.torque) : null;

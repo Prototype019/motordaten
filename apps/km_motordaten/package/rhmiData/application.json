@@ -5,7 +5,7 @@
     "type": "OnlineApp",
     "name": "km_motordaten",
     "vendor": "owner",
-    "version": "0.14.2",
+    "version": "0.15.0",
     "defaultLanguage": "de_DE",
     "uiDescriptions": [
       {

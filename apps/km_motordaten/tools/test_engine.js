@@ -56,8 +56,8 @@ assert.deepStrictEqual([neu.series.lambda[0], neu.series.rail[0], neu.series.kno
 
 // the log page: seven charts, each drawn
 const chans = dash.targets('log', {}).filter((t) => t.id.indexOf('chan:') === 0);
-assert.deepStrictEqual(chans.map((t) => t.id), ['chan:rpm', 'chan:boost', 'chan:temps', 'chan:oil', 'chan:mix', 'chan:fuel', 'chan:load']);
-assert.ok(chans[6].x + chans[6].w <= dash.W - 96, 'the buttons fit');
+assert.deepStrictEqual(chans.map((t) => t.id), ['chan:rpm', 'chan:boost', 'chan:temps', 'chan:oil', 'chan:mix', 'chan:fuel', 'chan:load', 'chan:knock']);
+assert.ok(chans[7].x + chans[7].w <= dash.W - 96, 'the buttons fit');
 ['mix', 'fuel', 'load'].forEach((c) => dash.draw(new Recorder(dash.W, dash.H), 'log', {}, {}, null, { log: neu, channel: c }));
 
 // the list page: "Alle löschen", then its confirmation; only with recordings

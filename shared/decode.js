@@ -47,7 +47,15 @@ const DIDS = [
     { id: 0x4ABC, name: 'Luftmasse', t: 'u16', k: 0.1, o: 0, u: 'kg/h', d: 0 },
     { id: 0x4600, name: 'Drosselklappe', t: 's16', k: 0.0078125, o: 0, u: '%', d: 0 },
     { id: 0x4521, name: 'Kraftstoffmasse', t: 'u16', k: 0.1, o: 0, u: 'kg/h', d: 1 },
-    { id: 0x4AD5, name: 'Kraftstofftemperatur', t: 'u8', k: 0.75, o: -48, u: '°C', d: 0 }
+    { id: 0x4AD5, name: 'Kraftstofftemperatur', t: 'u8', k: 0.75, o: -48, u: '°C', d: 0 },
+    // the ignition angle of each cylinder (the knock control takes it back per cylinder; the DME reports only the
+    // mean of that, 0x554C): cylinders 1-6, 0x4A4B is not one of them
+    { id: 0x4A49, name: 'Zündwinkel Zyl. 1', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 },
+    { id: 0x4A4A, name: 'Zündwinkel Zyl. 2', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 },
+    { id: 0x4A4C, name: 'Zündwinkel Zyl. 3', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 },
+    { id: 0x4A4D, name: 'Zündwinkel Zyl. 4', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 },
+    { id: 0x4A4E, name: 'Zündwinkel Zyl. 5', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 },
+    { id: 0x4A4F, name: 'Zündwinkel Zyl. 6', t: 's16', k: 0.1, o: 0, u: '°KW', d: 1 }
 ];
 
 /* The gearbox unit's (EGS, 0x18; ZF 8HP, SGBD GSZFBCE on the G87): transmission oil, as

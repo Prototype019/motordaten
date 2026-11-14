@@ -78,7 +78,9 @@ const TABS = [
     { id: 'tab:settings', page: 'settings', label: 'Einstellungen' }
 ].map((t, i) => Object.assign(t, { x: 0, y: 16 + i * 184, w: RAIL, h: 168 }));
 
-const ROW_H = 120;
+const ROW_H = 106;
+const SET_ROWS = 5;           // limits per column
+const SET_BTN = 86;
 const SET_TOP = 196;
 const SET_COLS = [{ x: X0, w: 1200 }, { x: X0 + 1288, w: 1236 }];
 const BTN = 96;
@@ -95,11 +97,11 @@ const MENU = [
 function settingsTargets() {
     const out = [];
     LIMIT_ITEMS.forEach((it, i) => {
-        const col = SET_COLS[i < 4 ? 0 : 1];
-        const y = SET_TOP + (i % 4) * ROW_H;
+        const col = SET_COLS[i < SET_ROWS ? 0 : 1];
+        const y = SET_TOP + (i % SET_ROWS) * ROW_H;
         const right = col.x + col.w;
-        out.push({ id: `dec:${it.key}`, x: right - 2 * BTN - 24, y: y + 6, w: BTN, h: BTN, label: '−' });
-        out.push({ id: `inc:${it.key}`, x: right - BTN, y: y + 6, w: BTN, h: BTN, label: '+' });
+        out.push({ id: `dec:${it.key}`, x: right - 2 * SET_BTN - 24, y: y + 6, w: SET_BTN, h: SET_BTN, label: '−' });
+        out.push({ id: `inc:${it.key}`, x: right - SET_BTN, y: y + 6, w: SET_BTN, h: SET_BTN, label: '+' });
     });
     out.push({ id: 'defaults', x: BACK_SET.x - 24 - 300, y: 64, w: 300, h: 84, label: 'Standard' });
     out.push(BACK_SET);
@@ -141,7 +143,8 @@ const CHANNELS = [
     { id: 'oil', label: 'Öldruck' },
     { id: 'mix', label: 'Lambda & Klopfen' },
     { id: 'fuel', label: 'Kraftstoff' },
-    { id: 'load', label: 'Last & Zündung' }
+    { id: 'load', label: 'Last & Zündung' },
+    { id: 'knock', label: 'Klopfen je Zyl.' }
 ];
 
 const FAULT_ROWS = 8;
@@ -192,7 +195,7 @@ function logsTargets(extra) {
 }
 
 function logTargets(extra) {
-    const out = CHANNELS.map((c, i) => ({ id: `chan:${c.id}`, x: X0 + i * 360, y: 150, w: 340, h: 72, label: c.label }));
+    const out = CHANNELS.map((c, i) => ({ id: `chan:${c.id}`, x: X0 + i * 315, y: 150, w: 299, h: 72, label: c.label }));
     const confirm = extra && extra.confirmDelete;
     out.push({ id: confirm ? 'delete!' : 'delete', x: W - PAD - 300 - 24 - (confirm ? 360 : 300), y: 660,
         w: confirm ? 360 : 300, h: BH, label: confirm ? 'Wirklich löschen' : 'Löschen', danger: confirm });
@@ -271,6 +274,7 @@ function valueUnit(rec, text, unit, x, y, size, color, unitSize, align) {
     const left = align === 'right' ? x - uw - gap - vw : x;
     rec.text(text, left, y, size, color, { font: 'num' });
     rec.text(unit, left + vw + gap, y, unitSize, C.dim, { font: 'label' });
+    return vw + gap + uw;
 }
 
 /* ---- the main page ---- */
@@ -461,10 +465,21 @@ function health(rec, v, cfg, ui, extra) {
     ];
     cells.forEach((c, i) => {
         const cx = x + i * 216;
-        rec.text(c[0], cx, 452, 28, c[3] ? C.limit : C.dim, { font: 'label' });
-        valueUnit(rec, c[1], c[2], cx, 516, 54, c[3] ? C.limit : C.text, 26, 'left');
+        rec.text(c[0], cx, 440, 28, c[3] ? C.limit : C.dim, { font: 'label' });
+        valueUnit(rec, c[1], c[2], cx, 498, 50, c[3] ? C.limit : C.text, 26, 'left');
     });
-    heatStrip(rec, x, 538, 184, 20, v.exhaust, Object.assign({ limit: cfg.exhaustMax }, HEAT.exhaust));
+    heatStrip(rec, x, 516, 184, 16, v.exhaust, Object.assign({ limit: cfg.exhaustMax }, HEAT.exhaust));
+
+    // the knock control (its retard, red from the limit, with the cylinder it takes back most) and the oil level
+    const knocking = isNum(v.knock) && v.knock >= cfg.knockMax;
+    rec.text('Klopfen', x, 574, 28, knocking ? C.limit : C.dim, { font: 'label' });
+    const kw = valueUnit(rec, isNum(v.knock) ? de(Math.max(0, v.knock), 1) : '–', '°KW', x, 626, 44, knocking ? C.limit : C.text, 24, 'left');
+    if (v.knockCyl && isNum(v.knock) && v.knock > 0) {
+        rec.text(`Zyl. ${v.knockCyl}`, x + kw + 14, 626, 26, knocking ? C.limit : C.ice, { font: 'scale' });
+    }
+    const oilLow = isNum(v.oilLevel) && v.oilLevel < cfg.oilLevelMin;
+    rec.text('Ölstand', x + 216, 574, 28, oilLow ? C.limit : C.dim, { font: 'label' });
+    valueUnit(rec, isNum(v.oilLevel) ? de(v.oilLevel, 1) : '–', 'l über Min.', x + 216, 626, 44, oilLow ? C.limit : C.text, 24, 'left');
     mainTargets(extra).forEach((t) => button(rec, t, ui, { size: 28 }));
 }
 
@@ -530,13 +545,13 @@ function settings(rec, cfg, ui) {
     rec.text('Grenzwerte', X0, 120, 56, C.text, { font: 'label' });
     rec.text('Ab diesen Werten färbt sich die Anzeige rot.', X0, 166, 30, C.dim, { font: 'label' });
     LIMIT_ITEMS.forEach((it, i) => {
-        const col = SET_COLS[i < 4 ? 0 : 1];
-        const y = SET_TOP + (i % 4) * ROW_H;
-        rec.fillRect(col.x, y + ROW_H - 6, col.w, 2, C.line);
-        rec.text(it.label, col.x, y + 68, 38, C.text, { font: 'label' });
+        const col = SET_COLS[i < SET_ROWS ? 0 : 1];
+        const y = SET_TOP + (i % SET_ROWS) * ROW_H;
+        rec.fillRect(col.x, y + ROW_H - 4, col.w, 2, C.line);
+        rec.text(it.label, col.x, y + 62, 36, C.text, { font: 'label' });
         const changed = cfg[it.key] !== it.def;
         const value = it.d ? de(cfg[it.key], it.d) : String(cfg[it.key]);
-        valueUnit(rec, value, it.unit, col.x + col.w - 2 * BTN - 56, y + 74, 54, changed ? C.ice : C.text, 28, 'right');
+        valueUnit(rec, value, it.unit, col.x + col.w - 2 * SET_BTN - 56, y + 68, 50, changed ? C.ice : C.text, 28, 'right');
     });
     SETTINGS_TARGETS.forEach((t) => {
         const step = t.id.indexOf('dec:') === 0 || t.id.indexOf('inc:') === 0;
@@ -725,7 +740,12 @@ const GROUPS = {
     fuel: { axes: { left: { unit: 'bar', d: 0, floor: 200, color: C.text }, right: { unit: 'bar', d: 1, floor: 8, color: C.cold } },
         curves: [['rail', C.text, 'left', 'Raildruck'], ['railTarget', C.dim, 'left', 'Soll'], ['fuelLow', C.cold, 'right', 'Niederdruck (Pumpe)', 'min']] },
     load: { axes: { left: { unit: '%', d: 0, floor: 100, color: C.text }, right: { unit: '°KW', d: 0, floor: 20, color: C.ice } },
-        curves: [['pedal', C.dim, 'left', 'Pedal'], ['load', C.text, 'left', 'Last'], ['ignition', C.ice, 'right', 'Zündwinkel']] }
+        curves: [['pedal', C.dim, 'left', 'Pedal'], ['load', C.text, 'left', 'Last'], ['ignition', C.ice, 'right', 'Zündwinkel']] },
+    // per cylinder: how far its ignition sits below the earliest one (what the knock control takes back there)
+    knock: { axes: { left: { unit: '°KW', d: 1, floor: 4, color: C.text } },
+        curves: [['knockCyl1', C.text, 'left', 'Zyl. 1'], ['knockCyl2', C.ice, 'left', '2'], ['knockCyl3', C.cold, 'left', '3'],
+            ['knockCyl4', C.ok, 'left', '4'], ['knockCyl5', '#E8B04B', 'left', '5'], ['knockCyl6', C.limit, 'left', '6'],
+            ['knock', C.dim, 'left', 'Mittel']] }
 };
 
 /* The smallest round number (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 x 10^n) at least v: its quarters stay round too. */
