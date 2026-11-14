@@ -347,7 +347,9 @@ function battery(v, cfg) {
         cell.note = [isNum(volts) ? `${de(volts, 1)} V` : '', amps].filter(Boolean).join(' · ');
         return cell;
     }
-    const cell = ['Bordnetz', isNum(volts) ? de(volts, 1) : '–', 'V', isNum(volts) && volts < cfg.voltageMin];
+    // the supply voltage warns only with the engine running: standing, the battery alone reads lower anyway
+    const running = isNum(v.rpm) && v.rpm > 500;
+    const cell = ['Bordnetz', isNum(volts) ? de(volts, 1) : '–', 'V', running && isNum(volts) && volts < cfg.voltageMin];
     cell.note = amps;
     return cell;
 }
