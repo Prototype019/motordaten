@@ -159,6 +159,7 @@ function logsTargets(extra) {
         const w = sure ? 460 : 340;
         out.push({ id: sure ? 'deleteAll!' : 'deleteAll', x: W - PAD - w, y: 64, w, h: 84,
             label: sure ? 'Wirklich alle löschen' : 'Alle löschen', danger: sure });
+        out.push({ id: 'usb', x: W - PAD - w - 24 - 380, y: 64, w: 380, h: 84, label: 'Auf USB speichern' });
     }
     return out;
 }
@@ -507,9 +508,12 @@ function faultUnitPage(rec, ui, extra) {
 function logsPage(rec, ui, extra) {
     const logs = (extra && extra.logs) || [];
     rec.text('Aufzeichnungen', X0, 120, 56, C.text, { font: 'label' });
-    rec.text(logs.length ? `${logs.length} gespeichert, die neueste zuerst. Es bleiben die letzten 20.` :
-        'Noch keine Aufzeichnung. Starte eine mit Aufnehmen im Reiter Live.', X0, 166, 30, C.dim, { font: 'label' });
-    logsTargets(extra).filter((t) => t.id.indexOf('deleteAll') === 0).forEach((t) => button(rec, t, ui));
+    // the USB export's progress or outcome in place of the line under the title
+    const usb = extra && extra.usb;
+    rec.text(usb ? usb.text : logs.length ? `${logs.length} gespeichert, die neueste zuerst. Es bleiben die letzten 20.` :
+        'Noch keine Aufzeichnung. Starte eine mit Aufnehmen im Reiter Live.', X0, 166, 30, usb && usb.error ? C.limit : usb ? C.ice : C.dim,
+        { font: 'label' });
+    logsTargets(extra).filter((t) => t.id.indexOf('deleteAll') === 0 || t.id === 'usb').forEach((t) => button(rec, t, ui));
     logsTargets(extra).filter((t) => t.id.indexOf('open:') === 0).forEach((t, i) => {
         const r = logs[i];
         if (ui && ui.focus === t.id) {

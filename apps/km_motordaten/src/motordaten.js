@@ -29,6 +29,7 @@ const D = require('./decode.js');
 const { Drawn } = require('./drawn.js');
 const Limits = require('./limits.js');
 const Logbook = require('./logbook.js');
+const Usb = require('./usb.js');
 const Faults = require('./faults.js');
 const clock = require('./clock.js');
 const { DtcTexts } = require('./dtctext.js');
@@ -238,7 +239,7 @@ class Motordaten extends ListApp {
         const d = this._drawn;
         if (id.indexOf('tab:') === 0) {
             const page = id.slice(4);
-            d.setExtra({ confirmDeleteAll: false });
+            d.setExtra({ confirmDeleteAll: false, usb: null });
             if (page === 'logs') {
                 this._showLogs();
             }
@@ -283,6 +284,8 @@ class Motordaten extends ListApp {
             this._showLogs();
             d.setExtra({ log: null, logName: null, confirmDelete: false });
             d.setPage('logs');
+        } else if (id === 'usb') {
+            this._exportUsb();
         } else if (id === 'deleteAll') {
             d.setExtra({ confirmDeleteAll: true });
         } else if (id === 'deleteAll!') {
@@ -446,6 +449,29 @@ class Motordaten extends ListApp {
     }
 
     /* The logbook's list for the Logs tab (summaries read once per recording). */
+    /* Every recording onto the USB stick (Motordaten/), the page telling how far it is and how it ended. */
+    _exportUsb() {
+        const d = this._drawn;
+        if (this._exporting) {
+            return;
+        }
+        const names = Logbook.list().map((r) => r.name);
+        if (!names.length) {
+            return;
+        }
+        this._exporting = true;
+        d.setExtra({ confirmDeleteAll: false, usb: { text: 'Speichere auf USB …' } });
+        Usb.exportLogs(Logbook.dir(), names, {
+            progress: (n, of) => d.setExtra({ usb: { text: `Speichere auf USB … ${n} von ${of}` } })
+        }).then((r) => {
+            logger.info(`usb: ${r.count} recordings onto ${r.stick}`);
+            d.setExtra({ usb: { text: `${r.count} ${r.count === 1 ? 'Aufzeichnung' : 'Aufzeichnungen'} auf „${r.stick}“ im Ordner ${Usb.FOLDER} gespeichert. Der Stick kann raus.` } });
+        }, (e) => {
+            logger.warn(`usb: ${e.message}`);
+            d.setExtra({ usb: { text: e.message, error: true } });
+        }).then(() => { this._exporting = false; });
+    }
+
     _showLogs() {
         const list = Logbook.list();
         this._logs = list.map((r) => {

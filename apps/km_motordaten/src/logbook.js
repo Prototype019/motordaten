@@ -181,4 +181,4 @@ function load(name) {
     return { name, start: p.start, duration: p.rows.length ? p.rows[p.rows.length - 1][0] : 0, t: kept.map((r) => r[0]), series };
 }
 
-module.exports = { Recording, FIELDS, list, summary, load, remove, removeAll, prune, SAMPLE_MS, MAX_MS, KEEP };
+module.exports = { Recording, FIELDS, dir, list, summary, load, remove, removeAll, prune, SAMPLE_MS, MAX_MS, KEEP };

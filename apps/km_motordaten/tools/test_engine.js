@@ -66,9 +66,38 @@ assert.ok(dash.targets('logs', { logs }).some((t) => t.id === 'deleteAll' && t.l
 assert.ok(dash.targets('logs', { logs, confirmDeleteAll: true }).some((t) => t.id === 'deleteAll!' && t.danger));
 assert.ok(!dash.targets('logs', { logs: [] }).some((t) => /deleteAll/.test(t.id)));
 dash.draw(new Recorder(dash.W, dash.H), 'logs', {}, {}, null, { logs, confirmDeleteAll: true });
-Logbook.removeAll('20261102-100000.csv');
+// onto a USB stick: the first mounted under /media, into Motordaten/, each file whole
+(async () => {
+    const Usb = require('../src/usb.js');
+    const media = fs.mkdtempSync(path.join(os.tmpdir(), 'kmmedia-'));
+    const stick = path.join(media, 'MY STICK');
+    fs.mkdirSync(stick);
+    const mounts = path.join(media, 'mounts');
+    fs.writeFileSync(mounts, `proc /proc proc rw 0 0\n/dev/sda1 ${media}/MY\\040STICK vfat rw 0 0\n`);
+    assert.deepStrictEqual(Usb.sticks(mounts, media), [stick]);
+    const names = Logbook.list().map((r) => r.name);
+    const seen = [];
+    const r = await Usb.exportLogs(Logbook.dir(), names, { mounts, root: media, progress: (n, of) => seen.push(`${n}/${of}`) });
+    assert.deepStrictEqual(r, { stick: 'MY STICK', count: 2 });
+    assert.deepStrictEqual(seen, ['1/2', '2/2']);
+    names.forEach((n) => assert.strictEqual(fs.readFileSync(path.join(stick, 'Motordaten', n), 'utf8'),
+        fs.readFileSync(path.join(Logbook.dir(), n), 'utf8')));
+    await Usb.exportLogs(Logbook.dir(), names, { mounts, root: media });       // again: the folder is there
+    await assert.rejects(Usb.exportLogs(Logbook.dir(), names, { mounts: path.join(media, 'none'), root: media }), /Kein USB-Stick/);
+    fs.readdirSync(path.join(stick, 'Motordaten')).forEach((n) => fs.unlinkSync(path.join(stick, 'Motordaten', n)));
+    fs.rmdirSync(path.join(stick, 'Motordaten'));
+    fs.chmodSync(stick, 0o555);
+    if (process.getuid && process.getuid() !== 0) {
+        await assert.rejects(Usb.exportLogs(Logbook.dir(), names, { mounts, root: media }), /Nicht gespeichert \(0 von 2\): der Stick lässt die App nicht schreiben/);
+    }
+    fs.chmodSync(stick, 0o755);
+    assert.ok(dash.targets('logs', { logs }).some((t) => t.id === 'usb'));
+    dash.draw(new Recorder(dash.W, dash.H), 'logs', {}, {}, null, { logs, usb: { text: 'x', error: true } });
+
+    Logbook.removeAll('20261102-100000.csv');
 assert.deepStrictEqual(Logbook.list().map((r) => r.name), ['20261102-100000.csv'], 'the running one stays');
 Logbook.removeAll();
 assert.strictEqual(Logbook.list().length, 0);
 
 console.log('test_engine: ok');
+})().catch((e) => { console.error(e); process.exit(1); });

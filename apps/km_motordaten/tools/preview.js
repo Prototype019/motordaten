@@ -59,6 +59,7 @@ const logName = sampleLog();
 const summary = Logbook.summary(logName);
 const EXTRA = {
     pull: { recording: { ms: 83000 } },
+    logsusb: { usb: { text: '2 Aufzeichnungen auf „KEVIN“ im Ordner Motordaten gespeichert. Der Stick kann raus.' }, logs: [summary] },
     logs: { logs: [summary, Object.assign({}, summary, { start: new Date(Date.UTC(2026, 10, 13, 18, 5)) })] },
     log: { log: Logbook.load(logName), channel: 'rpm' },
     logboost: { log: Logbook.load(logName), channel: 'boost', confirmDelete: true },
@@ -100,12 +101,13 @@ SCENES.faultsread = {};
 SCENES.logs = {};
 SCENES.log = {};
 SCENES.logboost = {};
+SCENES.logsusb = {};
 SCENES.logmix = {};
 SCENES.logfuel = {};
 SCENES.logload = {};
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
-    const page = name === 'settings' ? 'settings' : name === 'logs' ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
+    const page = name === 'settings' ? 'settings' : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
     const cfg = name === 'settings' ? Object.assign(Limits.defaults(), { rpmRed: 6800, oilReady: 80 }) : Limits.defaults();
     if (name === 'warnings') cfg.oilMax = 125;
     dash.draw(rec, page, SCENES[name], cfg, { focus: name === 'pull' ? 'reset' : name === 'settings' ? 'inc:oilReady' : null },
