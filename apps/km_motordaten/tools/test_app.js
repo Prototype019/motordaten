@@ -20,7 +20,7 @@ const ANSWERS = {
     '22 44 02': '62 44 02 00 66', '22 43 00': '62 43 00 0C 4C', '22 58 0F': '62 58 0F 4B',
     '22 59 D4': '62 59 D4 2E AF', '22 42 05': '62 42 05 30 B7', '22 4A B0': '62 4A B0 61 80',
     '22 42 01': '62 42 01 61 84', '22 44 36': '62 44 36 03 ED', '01 42': '41 42 35 FC',
-    '22 58 91': '62 58 91 00 07', '22 58 2F': '62 58 2F 17 E2'
+    '22 58 91': '62 58 91 00 07', '22 58 2F': '62 58 2F 17 E2', '22 4A BC': '62 4A BC 00 00', '22 58 13': '62 58 13 37'
 };
 let asked = 0;
 let silent = false;
@@ -129,6 +129,29 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     }
     assert.ok(Date.now() - t0 < 1200, `values back after ${Date.now() - t0} ms`);
 
+    // a tuned engine at full load: the DME reports the stock torque (masked), the air mass says what it makes
+    ANSWERS['22 58 91'] = '62 58 91 03 E8';          // 500 Nm reported
+    ANSWERS['22 4A BC'] = '62 4A BC 4E 20';          // 2000 kg/h of air
+    ANSWERS['22 58 13'] = '62 58 13 C8';             // 150 % relative filling
+    cds.rpm({ actualValueRPMEngineCrankshaft: 6500 * 4 });
+    await unit.wait(500);
+    const ps = Number(/^(\d+) PS/.exec(get('Leistung'))[1]);
+    const nm = Number(/^(\d+) Nm/.exec(get('Drehmoment'))[1]);
+    assert.ok(ps >= 690 && ps <= 702, `power from the air: ${get('Leistung')}`);
+    assert.ok(nm >= 745 && nm <= 760, `torque from that power: ${get('Drehmoment')}`);
+    // part load: the DME's own torque stands
+    ANSWERS['22 58 91'] = '62 58 91 01 90';          // 200 Nm
+    ANSWERS['22 4A BC'] = '62 4A BC 07 D0';          // 200 kg/h
+    ANSWERS['22 58 13'] = '62 58 13 32';             // 37.5 %
+    cds.rpm({ actualValueRPMEngineCrankshaft: 2500 * 4 });
+    await unit.wait(500);
+    assert.ok(/^200 Nm/.test(get('Drehmoment')), get('Drehmoment'));
+    ANSWERS['22 58 91'] = '62 58 91 00 07';
+    ANSWERS['22 4A BC'] = '62 4A BC 00 00';
+    ANSWERS['22 58 13'] = '62 58 13 37';
+    cds.rpm({ actualValueRPMEngineCrankshaft: 900 * 4 });
+    await unit.wait(300);
+
     // the button resets the peaks
     unit.press('mdRun');
     await unit.wait(600);
@@ -146,7 +169,7 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     assert.ok(asked > before, 'questions again when shown');
 
     // what the engine does is read only while recording
-    assert.ok(!keys.some((k) => / 58 89| 56 58| 58 13/.test(k)), 'no engine values asked without a recording');
+    assert.ok(!keys.some((k) => / 58 89| 56 58| 4A D5/.test(k)), 'no engine values asked without a recording');
 
     console.log(`test_app (motordaten): ok, ${asked} questions`);
     realExit(0);

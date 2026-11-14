@@ -7,11 +7,14 @@
  * (src/tasu.js; identifiers of src/decode.js; docs/g87-s58.md):
  * - every round, one request to the DME for up to 8 identifiers (FAST):
  *   engine speed, torque at the clutch, boost and its target, oil pressure,
- *   oil and coolant temperature, charge air (recorded only, not shown live);
+ *   air mass and relative filling (for the power);
  * - every SLOW_EVERY rounds (and each round until known): the DME's intake
- *   air, ambient pressure and exhaust temperature after the catalyst, the
- *   gearbox's (EGS) transmission oil, the supply voltage (OBD 42).
- * Power is torque x the engine speed shown, in PS; on the overrun (negative torque) both show 0.
+ *   air, ambient pressure, exhaust temperature after the catalyst, oil, coolant
+ *   and charge air (recorded only), the gearbox's (EGS) transmission oil, the
+ *   supply voltage (OBD 42).
+ * Power in PS from the measured air mass (airPowerPs), or the DME's torque x the
+ * engine speed where that gives more; the torque shown is that power's. On the
+ * overrun (negative torque) both show 0.
  * Rounds follow each other as fast as the gateway takes them, at least
  * CYCLE_MS apart; a busy gateway doubles the pause (up to MAX_CYCLE_MS),
  * answers bring it back. Only while the screen is in front.
@@ -48,6 +51,15 @@ const { DtcTexts } = require('./dtctext.js');
 
 /* Whether FrontCCU has reported a turn of the dial on this unit (data/controller.json): then the drawn
  * screens take the dial from it from the start. dialKnown(true) keeps that. */
+/* The power (PS) the measured air mass makes at this load, or null (see AIR_KW_PER_KGH). */
+function airPowerPs(air, load) {
+    if (!isNum(air) || !isNum(load) || air <= 0) {
+        return null;
+    }
+    const share = Math.max(0, Math.min(1, (load - LOAD_NONE) / (LOAD_FULL - LOAD_NONE)));
+    return air * AIR_KW_PER_KGH * BRAKE_EFFICIENCY * share * PS_PER_KW;
+}
+
 function dialKnown(set) {
     const dir = process.env.KM_DATA_DIR || require('path').join(__dirname, '..', '..', 'data');
     const file = require('path').join(dir, 'controller.json');
@@ -94,17 +106,31 @@ const RPM_FRESH_MS = 400;      // the DME's engine speed counts this long; the c
 
 /* One DME request each round: [key, DID], at most 8. */
 const FAST = [['rpm', 0x4807], ['torque', 0x5891], ['boostAbs', 0x4205], ['boostTargetAbs', 0x4AB0],
-    ['oilPressAbs', 0x4436], ['oil', 0x4402], ['coolant', 0x4300], ['charge', 0x59D4]];
+    ['oilPressAbs', 0x4436], ['airMass', 0x4ABC], ['load', 0x5813]];
 /* What the engine does, read only while recording (for the logs, not shown live): every other round the
  * first, every ENGINE2_EVERY rounds the second (DIDs read over ENET on the G87, docs/g87-s58.md). */
 const ENGINE = [['lambda', 0x5889], ['lambdaTarget', 0x5816], ['rail', 0x5658], ['railTarget', 0x56C1],
     ['fuelLowAbs', 0x58F3], ['knock', 0x554C], ['ignition', 0x59FA], ['pedal', 0x480B]];
-const ENGINE2 = [['load', 0x5813], ['airMass', 0x4ABC], ['throttle', 0x4600], ['fuelFlow', 0x4521], ['fuelTemp', 0x4AD5]];
+const ENGINE2 = [['throttle', 0x4600], ['fuelFlow', 0x4521], ['fuelTemp', 0x4AD5]];
 const ENGINE2_EVERY = 6;
 
 /* One DME request every SLOW_EVERY rounds: slow to change. */
-const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F]];
+const SLOW = [['intake', 0x580F], ['ambient', 0x4201], ['exhaust', 0x582F], ['oil', 0x4402], ['coolant', 0x4300],
+    ['charge', 0x59D4]];
 const PS_PER_KW = 1.35962;
+/*
+ * Power from the air the engine burns, not from the DME's torque: a tune (MHD) keeps reporting about the stock
+ * torque to the gearbox while the engine makes more, but the air mass is measured. Burned fuel is the air over
+ * the stoichiometric ratio (richer than lambda 1 burns no more), its heat value 11.94 kWh/kg, and a turbo petrol
+ * engine at full load turns BRAKE_EFFICIENCY of it into power: kW = air (kg/h) / 14.7 x 11.94 x 0.315
+ * = air x 0.256 (the rule of thumb of 1.25 PS per g/s of air). At part load the throttle and the pumping losses
+ * take more, so the efficiency counts in full only from LOAD_FULL relative filling and not at all below
+ * LOAD_NONE; where the DME's own torque gives more (part load, where no tune masks it), that one stands.
+ */
+const AIR_KW_PER_KGH = 11.94 / 14.7;
+const BRAKE_EFFICIENCY = 0.315;
+const LOAD_NONE = 10;
+const LOAD_FULL = 70;
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
 const isTrue = (raw) => raw === true || raw === 'true' || raw === 1 || raw === '1';
@@ -816,8 +842,17 @@ class Motordaten extends ListApp {
             airMass: m.airMass, throttle: m.throttle, fuelFlow: m.fuelFlow, fuelTemp: m.fuelTemp
         };
         // on the overrun the DME reports the engine's drag as negative torque: shown as 0
-        v.torque = isNum(m.torque) ? Math.max(0, m.torque) : null;
-        v.power = isNum(v.torque) && isNum(v.rpm) ? v.torque * Math.max(0, v.rpm) / 9549 * PS_PER_KW : null;
+        const rpm = isNum(v.rpm) ? Math.max(0, v.rpm) : null;
+        const dmeTorque = isNum(m.torque) ? Math.max(0, m.torque) : null;
+        const dmePower = dmeTorque !== null && rpm !== null ? dmeTorque * rpm / 9549 * PS_PER_KW : null;
+        const airPower = airPowerPs(m.airMass, m.load);
+        if (airPower !== null && (dmePower === null || airPower > dmePower) && rpm !== null && rpm > 500) {
+            v.power = airPower;
+            v.torque = airPower / PS_PER_KW * 9549 / rpm;
+        } else {
+            v.torque = dmeTorque;
+            v.power = dmePower;
+        }
         v.rpmPeak = this._peakOf('rpm', v.rpm);
         v.torquePeak = this._peakOf('torque', v.torque);
         v.powerPeak = this._peakOf('power', v.power);
