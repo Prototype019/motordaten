@@ -477,10 +477,15 @@ class Motordaten extends ListApp {
         this._drawn = new Drawn(this.getAppId(), logger);
         this._drawn.setLimits(this._limits);
         this._drawn.setSingle(dialKnown());
-        this._drawn.on('dial', () => {
+        this._drawn.on('dial', (steps) => {
+            // FrontCCU reports the dial: one proxy, the list under the layer a single empty row; kept once it
+            // has seen a turn
+            if (steps && !this._dialSeen) {
+                this._dialSeen = true;
+                dialKnown(true);
+            }
             if (!this._drawn.single) {
                 logger.info('FrontCCU reports the dial: one proxy from now on');
-                dialKnown(true);
                 this._drawn.setSingle(true);
             }
         });

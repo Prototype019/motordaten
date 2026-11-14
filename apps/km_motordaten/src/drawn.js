@@ -26,7 +26,6 @@ const { Recorder } = require('./kit_record.js');
 const dash = require('./dash.js');
 
 const KEEPALIVE_MS = 1000;
-const CLOSED_RESHOW_MS = 700;
 const PRESS_SHOW_MS = 150;
 const GLIDE_MS = 90;
 const WHOLE = Object.freeze({ x: 0, y: 0, w: dash.W, h: dash.H });
@@ -78,9 +77,13 @@ class Drawn extends EventEmitter {
         this.gpu.on('state', (st) => this._note(`render ${st.onScreen ? 'sichtbar' : 'weg'}${st.front ? '' : ' (andere App vorn)'}`));
         this.gpu.on('closed', () => {
             this._note('render geschlossen (Touch außerhalb)');
+            // the renderer hid the layer because a touch reached the HMI (outside the app area, or a tap the
+            // divert missed). Shown again at once while the host state is still there: the list under it
+            // never stays; when the HMI leaves the app, the host state's hide or the renderer's foreground
+            // gate (another app in front) keeps the layer away.
             this.closedHide = true;
             this._update();
-            setTimeout(() => { this.closedHide = false; this._update(); }, CLOSED_RESHOW_MS);
+            setImmediate(() => { this.closedHide = false; this._update(); });
         });
     }
 
@@ -200,7 +203,7 @@ class Drawn extends EventEmitter {
     /**
      * A FrontCCU.statusRotaryEncoderState sample. A turn of the dial while shown moves the focus over the
      * page's targets in their order (single mode). 'dial' is emitted on every real turn, so the app learns
-     * that FrontCCU reports the dial.
+     * that FrontCCU reports the dial (0: its first valid sample).
      */
     ccu(s) {
         const op = s && s.frontRotaryEncoderOperation;
@@ -211,6 +214,7 @@ class Drawn extends EventEmitter {
         }
         this.knob = knob;
         if (last === DIAL_INVALID) {
+            this.emit('dial', 0);       // FrontCCU reports the dial's counter: one proxy from now
             return;
         }
         const steps = ((knob - last + 0x18000) % 0x10000) - 0x8000;

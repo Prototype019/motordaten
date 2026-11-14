@@ -118,7 +118,7 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.on('dial', (n) => dials.push(n));
     d.ccu({ frontRotaryEncoderOperation: 100 });
     d.ccu({ frontRotaryEncoderOperation: 101 });
-    assert.deepStrictEqual(dials, [1], 'a turn is heard');
+    assert.deepStrictEqual(dials, [0, 1], 'the first sample, then a turn');
     const before = d.ui.focus;
     d.ccu({ frontRotaryEncoderOperation: 102 });
     assert.strictEqual(d.ui.focus, before, 'list mode: the HMI moves the focus, not the dial');
@@ -155,6 +155,13 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     assert.ok(d.trace.length > 0 && d.trace.some((t) => /HMI versteckt/.test(t)), 'the trace keeps what happened');
     d.setSingle(false);
     d.ui.focus = null;
+
+    // the renderer closed the layer (a touch reached the HMI): back at once while the host state is there
+    assert.strictEqual(g.visible, true);
+    g.emit('closed');
+    assert.strictEqual(g.visible, false);
+    await wait(5);
+    assert.strictEqual(g.visible, true, 'shown again at once');
 
     // recording: the button's words follow it, and the app hears the new label
     let heard = null;
