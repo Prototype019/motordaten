@@ -94,6 +94,38 @@
                 <property id="2" value="1"/>
                 <property id="3" value="3"/>
             </component>
+            <component id="46" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
+            <component id="47" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
+            <component id="48" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
+            <component id="49" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
+            <component id="50" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
+            <component id="51" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
+            <component id="52" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
+            <component id="53" type="button" widget="LT_Button_MediaEntry_1Row">
+                <property id="2" value="1"/>
+                <property id="3" value="3"/>
+            </component>
         </layoutGroup>
     </container>
 </application>

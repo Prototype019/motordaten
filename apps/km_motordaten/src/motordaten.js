@@ -28,7 +28,8 @@ const { Tasu, TESTERS, EGS } = require('./tasu.js');
 const D = require('./decode.js');
 const { Drawn } = require('./drawn.js');
 const Limits = require('./limits.js');
-const PROXIES = 16;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
+const Logbook = require('./logbook.js');
+const PROXIES = 24;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
 const LIST = 'ST_OnlineApps_Motordaten';
@@ -75,6 +76,10 @@ class Motordaten extends ListApp {
         this._started = false;
         this._drawn = null;
         this._limits = Limits.load();
+        this._recording = null;     // a Logbook.Recording while recording
+        this._summaries = new Map(); // recording name -> its summary (files do not change once written)
+        this._logs = [];
+        this._v = {};
         this._proxies = [];
         this._timer = setInterval(() => this._render(), 1000);
     }
@@ -93,6 +98,9 @@ class Motordaten extends ListApp {
     stop() {
         this._stopped = true;
         clearInterval(this._timer);
+        if (this._recording) {
+            this._stopRecording();
+        }
         if (this._drawn) {
             this._drawn.close();
         }
@@ -137,19 +145,106 @@ class Motordaten extends ListApp {
         });
     }
 
-    /* A press on the drawn screens: the buttons of the main page, the limits on the settings page. */
+    /* A press on the drawn screens: the tabs, the main page's buttons, the limits, the logbook. */
     _action(id) {
-        if (id === 'reset') {
+        const d = this._drawn;
+        if (id.indexOf('tab:') === 0) {
+            const page = id.slice(4);
+            if (page === 'logs') {
+                this._showLogs();
+            }
+            d.setPage(page);
+        } else if (id === 'record') {
+            this._toggleRecording();
+        } else if (id === 'reset') {
             this.run();
-        } else if (id === 'settings') {
-            this._drawn.setPage('settings');
-        } else if (id === 'done') {
-            this._drawn.setPage('main');
         } else if (id === 'defaults') {
             this._setLimits(Limits.defaults());
         } else if (/^(dec|inc):/.test(id)) {
-            const key = id.slice(4);
-            this._setLimits(Limits.stepped(this._limits, key, id.indexOf('inc:') === 0 ? 1 : -1));
+            this._setLimits(Limits.stepped(this._limits, id.slice(4), id.indexOf('inc:') === 0 ? 1 : -1));
+        } else if (id.indexOf('open:') === 0) {
+            const r = this._logs[Number(id.slice(5))];
+            if (r) {
+                d.setExtra({ log: Logbook.load(r.name), logName: r.name, channel: 'rpm', confirmDelete: false });
+                d.setPage('log');
+            }
+        } else if (id.indexOf('chan:') === 0) {
+            d.setExtra({ channel: id.slice(5), confirmDelete: false });
+        } else if (id === 'delete') {
+            d.setExtra({ confirmDelete: true });
+        } else if (id === 'delete!') {
+            Logbook.remove(d.extra.logName);
+            this._summaries.delete(d.extra.logName);
+            this._showLogs();
+            d.setExtra({ log: null, logName: null, confirmDelete: false });
+            d.setPage('logs');
+        } else if (id === 'back') {
+            d.setExtra({ confirmDelete: false });
+            this._showLogs();
+            d.setPage('logs');
+        }
+    }
+
+    /* The logbook's list for the Logs tab (summaries read once per recording). */
+    _showLogs() {
+        const list = Logbook.list();
+        this._logs = list.map((r) => {
+            if (!this._summaries.has(r.name) || (this._recording && this._recording.name === r.name)) {
+                this._summaries.set(r.name, Logbook.summary(r.name));
+            }
+            return this._summaries.get(r.name);
+        }).filter(Boolean);
+        if (this._drawn) {
+            this._drawn.setExtra({ logs: this._logs });
+        }
+    }
+
+    _toggleRecording() {
+        if (this._recording) {
+            this._stopRecording();
+            return;
+        }
+        try {
+            this._recording = new Logbook.Recording();
+            logger.info(`recording ${this._recording.name}`);
+        } catch (e) {
+            logger.warn(`recording not started: ${e && e.message}`);
+            this._recording = null;
+        }
+        this._poll();
+        this._recordingShown();
+    }
+
+    _stopRecording() {
+        const r = this._recording;
+        this._recording = null;
+        if (r) {
+            r.stop();
+            logger.info(`recording ${r.name} stopped: ${r.rows} samples`);
+        }
+        this._recordingShown();
+    }
+
+    /* The recording button's words follow the recording, a second at a time. */
+    _recordingShown() {
+        if (this._drawn) {
+            this._drawn.setExtra({ recording: this._recording ? { ms: Date.now() - this._recording.started } : null });
+        }
+    }
+
+    /* Each round's values into the recording; a full one stops. */
+    _sample() {
+        if (!this._recording) {
+            return;
+        }
+        if (!this._recording.sample(this._v)) {
+            this._stopRecording();
+            return;
+        }
+        const s = Math.floor((Date.now() - this._recording.started) / 1000);
+        if (s !== this._recShownS) {
+            this._recShownS = s;
+            this._recordingShown();
         }
     }
 
@@ -212,7 +307,7 @@ class Motordaten extends ListApp {
         }
         this._polling = true;
         const next = () => {
-            if (this._stopped || !this.isVisible()) {
+            if (this._stopped || !(this.isVisible() || this._recording)) {
                 this._polling = false;
                 return;
             }
@@ -221,6 +316,7 @@ class Motordaten extends ListApp {
                 .catch((e) => logger.warn(`round: ${e && e.message}`))
                 .then(() => {
                     this._render();
+                    this._sample();
                     setTimeout(next, Math.max(0, this._cycle - (Date.now() - started)));
                 });
         };
@@ -338,6 +434,7 @@ class Motordaten extends ListApp {
             status = `Keine Antwort der DME – Zündung an?${this._gatewayError ? ` (${this._gatewayError})` : ''}`;
         }
         v.status = status;
+        this._v = v;
         v.statusErr = this._gateway === 'failed';
         if (this._drawn && this._drawn.isShown()) {
             this._drawn.set(v);

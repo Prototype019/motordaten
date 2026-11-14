@@ -31,7 +31,10 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
 
 (async () => {
     // every target of every page has a proxy button
-    assert.ok(dash.targets('settings').length <= spec.PROXIES && dash.targets('main').length <= spec.PROXIES);
+    const many = { logs: new Array(30).fill({ start: new Date(), peak: {} }), confirmDelete: true, recording: { ms: 1 } };
+    ['main', 'settings', 'logs', 'log'].forEach((p) => assert.ok(dash.targets(p, many).length <= spec.PROXIES, p));
+    assert.strictEqual(spec.PROXIES, Number(/const PROXIES = (\d+)/.exec(require('fs').readFileSync(require.resolve('../src/motordaten.js'), 'utf8'))[1]),
+        'motordaten.js knows the proxy count');
 
     const g = fakeGpu();
     const d = new Drawn('km_motordaten', log, g);
@@ -80,23 +83,38 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     g.emit('touch', 'up', 10, 10);
     assert.deepStrictEqual(actions, ['reset'], 'dragged off: nothing');
 
-    // the controller: proxy i is target i
-    d.proxyFocus(1, true);
-    assert.strictEqual(d.ui.focus, 'settings');
-    d.proxyPress(1);
-    assert.deepStrictEqual(actions, ['reset', 'settings']);
+    // the controller: proxy i is target i; the tabs come first
+    const main = dash.targets('main', d.extra).map((t) => t.id);
+    assert.deepStrictEqual(main, ['tab:main', 'tab:logs', 'tab:settings', 'record', 'reset']);
+    d.proxyFocus(2, true);
+    assert.strictEqual(d.ui.focus, 'tab:settings');
+    d.proxyPress(2);
+    assert.deepStrictEqual(actions, ['reset', 'tab:settings']);
+    // a tab by touch too
+    const logsTab = dash.targets('main', d.extra)[1];
+    g.emit('touch', 'down', ...center(logsTab));
+    g.emit('touch', 'up', ...center(logsTab));
+    assert.strictEqual(actions.pop(), 'tab:logs');
+
+    // recording: the button's words follow it, and the app hears the new label
+    let heard = null;
+    d.on('targets', (t) => { heard = t; });
+    d.setExtra({ recording: { ms: 83000 } });
+    assert.strictEqual(heard.find((t) => t.id === 'record').label, 'Stopp 1:23');
+    d.setExtra({ recording: null });
+    assert.strictEqual(heard.find((t) => t.id === 'record').label, 'Aufnehmen');
 
     // the settings page: its targets for touch and proxies
     const told = [];
     d.on('targets', (t) => told.push(t.length));
     d.setPage('settings');
-    assert.deepStrictEqual(told, [dash.targets('settings').length]);
+    assert.deepStrictEqual(told, [dash.targets('settings', d.extra).length]);
     const inc = dash.targets('settings').find((t) => t.id === 'inc:oilReady');
     g.emit('touch', 'down', ...center(inc));
     g.emit('touch', 'up', ...center(inc));
     assert.strictEqual(actions.pop(), 'inc:oilReady');
-    d.proxyPress(dash.targets('settings').findIndex((t) => t.id === 'done'));
-    assert.strictEqual(actions.pop(), 'done');
+    d.proxyPress(dash.targets('settings', d.extra).findIndex((t) => t.id === 'defaults'));
+    assert.strictEqual(actions.pop(), 'defaults');
 
     d.hostVisible(false);
     assert.strictEqual(g.visible, false);
@@ -120,6 +138,40 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     fs.writeFileSync(path.join(process.env.KM_DATA_DIR, 'limits.json'), '{"oilReady": 1000, "rpmRed": "x"}');
     assert.strictEqual(Limits.load().oilReady, 100, 'a saved value out of range is clamped');
     assert.strictEqual(Limits.load().rpmRed, 6400, 'one that is no number is the default');
+
+    // the logbook: a recording sampled at most every 100 ms, read back for the list and the curves
+    const Logbook = require('../src/logbook.js');
+    const t0 = new Date(2026, 10, 14, 10, 42, 0).getTime();
+    const r = new Logbook.Recording(t0);
+    for (let t = 0; t < 2000; t += 50) {
+        r.sample({ rpm: 800 + t, boost: t / 2000, oil: 30 }, t0 + t);
+    }
+    assert.strictEqual(r.rows, 20, 'every 100 ms');
+    r.stop();
+    const list = Logbook.list();
+    assert.strictEqual(list[0].name, '20261114-104200.csv');
+    const sum = Logbook.summary(list[0].name);
+    assert.strictEqual(sum.samples, 20);
+    assert.strictEqual(sum.duration, 1900);
+    assert.strictEqual(sum.peak.rpm, 2700);
+    assert.strictEqual(sum.peak.torque, null, 'a field never given has no peak');
+    assert.ok(sum.spark.length > 0);
+    const loaded = Logbook.load(list[0].name);
+    assert.strictEqual(loaded.series.oil[0], 30);
+    assert.strictEqual(loaded.t.length, 20);
+    // a full recording stops; an empty one leaves no file; only the newest 20 stay; names are checked
+    const full = new Logbook.Recording(t0 + 60000);
+    assert.strictEqual(full.sample({ rpm: 1 }, t0 + 60000 + Logbook.MAX_MS), false);
+    full.stop();
+    assert.strictEqual(Logbook.list().length, 1, 'the empty one is gone');
+    for (let k = 0; k < 22; k++) {
+        const x = new Logbook.Recording(t0 + 3600000 + k * 1000);
+        x.sample({ rpm: k }, t0 + 3600000 + k * 1000);
+        x.stop();
+    }
+    assert.strictEqual(Logbook.list().length, 20);
+    Logbook.remove('../limits.json');
+    assert.ok(fs.existsSync(path.join(process.env.KM_DATA_DIR, 'limits.json')), 'only recordings are removed');
 
     // no layer mode: the list stays
     const other = new Drawn('km_motordaten', log, fakeGpu());

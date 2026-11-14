@@ -12,7 +12,7 @@
  *   state under it), and a frame is drawn on each renderer tick while
  *   something changed, and at least once a second (an app silent for 3 s
  *   is hidden).
- * - Two pages, 'main' and 'settings' (setPage). Their pressable targets
+ * - Pages 'main', 'logs', 'log' and 'settings' (setPage; setExtra for what they show). Their pressable targets
  *   (dash.targets) answer a tap, and the controller through the host
  *   state's proxy buttons, one per target in order (proxyFocus /
  *   proxyPress); 'targets' tells the app which a page has. A press emits
@@ -43,6 +43,7 @@ class Drawn extends EventEmitter {
         this.page = 'main';
         this.values = {};
         this.limits = {};
+        this.extra = {};            // what the pages show besides the values: recording, logs, log, channel, confirmDelete
         this.bars = { rpm: null, boost: null };   // the bars as drawn, gliding to the values
         this.ui = { focus: null, pressed: null };
         this.touchOn = null;        // the target a touch went down on
@@ -118,7 +119,7 @@ class Drawn extends EventEmitter {
 
     /* The controller's focus on proxy button i. */
     proxyFocus(i, on) {
-        const t = dash.targets(this.page)[i];
+        const t = dash.targets(this.page, this.extra)[i];
         if (on && t) {
             this.ui.focus = t.id;
         } else if (!on && t && this.ui.focus === t.id) {
@@ -128,7 +129,7 @@ class Drawn extends EventEmitter {
     }
 
     proxyPress(i) {
-        const t = dash.targets(this.page)[i];
+        const t = dash.targets(this.page, this.extra)[i];
         if (t) {
             this.ui.focus = t.id;
             this._press(t.id);
@@ -143,8 +144,24 @@ class Drawn extends EventEmitter {
         this.ui.focus = null;
         this.ui.pressed = null;
         this.touchOn = null;
-        this.emit('targets', dash.targets(page));
+        this._targetsChanged(true);
         this.invalidate();
+    }
+
+    /* What the pages show besides the values (merged in); the app hears when the targets change. */
+    setExtra(extra) {
+        this.extra = Object.assign({}, this.extra, extra);
+        this._targetsChanged(false);
+        this.invalidate();
+    }
+
+    _targetsChanged(always) {
+        const ts = dash.targets(this.page, this.extra);
+        const key = ts.map((t) => `${t.id}=${t.label}`).join('|');
+        if (always || key !== this._targetsKey) {
+            this._targetsKey = key;
+            this.emit('targets', ts);
+        }
     }
 
     /* New values: drawn at the next tick. */
@@ -200,7 +217,7 @@ class Drawn extends EventEmitter {
         this.dirty = this._glide();
         this.rec.reset();
         const v = Object.assign({}, this.values, { rpmBar: this.bars.rpm, boostBar: this.bars.boost });
-        dash.draw(this.rec, this.page, v, this.limits, this.ui);
+        dash.draw(this.rec, this.page, v, this.limits, this.ui, this.extra);
         try {
             this.gpu.frame(this.rec);
             this.sentAt = Date.now();
@@ -232,7 +249,7 @@ class Drawn extends EventEmitter {
     }
 
     _hit(x, y) {
-        const t = dash.targets(this.page).find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+        const t = dash.targets(this.page, this.extra).find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
         return t ? t.id : null;
     }
 

@@ -1,12 +1,13 @@
 'use strict';
 /* Motordaten: package and screen description (tools/gen.js). */
 /* Proxy buttons of the drawn screens' host state. */
-const PROXIES = 16;
+const PROXIES = 24;
 
 module.exports = {
     PROXIES,
     description: 'Motordaten: Temperaturen, Ladedruck, Öldruck und Drehzahl der DME live',
     loggingId: 'KMMD',
+    diskBytes: 67108864,        // the logbook: up to 20 recordings of 30 min
     icon: 'motordaten_icon.png',
     titleSid: 'SID_MD_TITLE',
     uuids: {
@@ -30,7 +31,7 @@ module.exports = {
     }, {
         /* The host state of the drawn screens (src/drawn.js): the renderer draws over it while it is open;
          * its buttons stand for the drawn page's targets under the controller, one each, in order
-         * (src/dash.js targets: the settings page has the most, 16). */
+         * (src/dash.js targets: the settings page has the most, 18). */
         id: 2, name: 'ST_OnlineApps_MotordatenLayer', titleId: 11, title: 'SID_MD_TITLE',
         components: Array.from({ length: PROXIES }, (x, i) => ({ id: 30 + i, kind: 'button', name: `mdLayerP${i}`, text: '' }))
     }],

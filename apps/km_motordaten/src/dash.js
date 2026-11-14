@@ -8,14 +8,18 @@
  *   readiness (oil temperature band, then coolant, intake and charge air),
  *   power (boost with its target and peak, power and torque), health (oil pressure with its
  *   peak; transmission oil, exhaust and supply voltage; the buttons).
+ * A tab rail on the left on every page: Live, Logs, Grenzwerte.
  * Page 'settings': the limits (src/limits.js), each with - and +, and
- *   Standard and Fertig.
+ *   Standard.
+ * Page 'logs': the recordings (src/logbook.js) with date, duration, peaks.
+ * Page 'log': one recording's curves by channel group, Löschen (twice), Zurück.
  *
- * draw(rec, page, v, cfg, ui) records one frame into a kit_record Recorder
+ * draw(rec, page, v, cfg, ui, extra) records one frame into a kit_record Recorder
  * (or a kit_canvas Canvas): v the values (null: none; rpmBar / boostBar the
  * bars as they glide), cfg the limits, ui { focus: the focused target's id,
- * pressed: the pressed one's }. targets(page) lists the page's pressable
- * boxes in controller order: { id, x, y, w, h }.
+ * pressed: the pressed one's }, extra { recording: { ms }, logs, log, channel,
+ * confirmDelete }. targets(page, extra) lists the page's pressable boxes in
+ * controller order: { id, x, y, w, h, label }.
  */
 const L = require('./limits.js');
 
@@ -26,10 +30,12 @@ const C = {
     cold: '#5FA8D9', ice: '#A9DCFF', limit: '#FF5B4F', redzone: '#FF5B4F59'
 };
 const PAD = 96;
+const RAIL = 200;             // the tab rail on the left
+const X0 = RAIL + 60;          // where page content starts
 const RPM_MAX = 7700;
 const OIL_MAX = 130;
 const OIL_PRESS_RPM = 1500;    // the oil pressure warning counts above this engine speed
-const COL = { left: { x: PAD, w: 660 }, mid: { x: 876, w: 1180 }, right: { x: 2176, w: 608 } };
+const COL = { left: { x: X0, w: 600 }, mid: { x: 980, w: 1076 }, right: { x: 2176, w: 608 } };
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
 const de = (v, d) => v.toFixed(d).replace('.', ',');
@@ -48,14 +54,31 @@ function mix(a, b, t) {
 
 /* ---- pressable targets ---- */
 
-const MAIN_TARGETS = [
-    { id: 'reset', x: COL.right.x, y: 650, w: 336, h: 92, label: 'Spitzen zurücksetzen' },
-    { id: 'settings', x: COL.right.x + 360, y: 650, w: 248, h: 92, label: 'Einstellungen' }
-];
+/* The main page's buttons, side by side at the bottom of the right column. The recording button's words
+ * follow the recording (mainTargets). */
+const BW = 292;
+const BH = 84;
+function mainTargets(extra) {
+    const x = COL.right.x;
+    const rec = extra && extra.recording;
+    const t = rec ? Math.floor(rec.ms / 1000) : 0;
+    const time = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    return [
+        { id: 'record', x, y: 650, w: BW, h: BH, label: rec ? `Stopp ${time}` : 'Aufnehmen', live: !!rec },
+        { id: 'reset', x: x + BW + 24, y: 650, w: BW, h: BH, label: 'Spitzen zurücksetzen' }
+    ];
+}
+
+/* The tabs, on every page: first in controller order. */
+const TABS = [
+    { id: 'tab:main', page: 'main', label: 'Live' },
+    { id: 'tab:logs', page: 'logs', label: 'Logs' },
+    { id: 'tab:settings', page: 'settings', label: 'Grenzwerte' }
+].map((t, i) => Object.assign(t, { x: 0, y: 24 + i * 176, w: RAIL, h: 160 }));
 
 const ROW_H = 120;
 const SET_TOP = 196;
-const SET_COLS = [{ x: PAD, w: 1300 }, { x: PAD + 1388, w: 1300 }];
+const SET_COLS = [{ x: X0, w: 1200 }, { x: X0 + 1288, w: 1236 }];
 const BTN = 96;
 
 function settingsTargets() {
@@ -67,27 +90,93 @@ function settingsTargets() {
         out.push({ id: `dec:${it.key}`, x: right - 2 * BTN - 24, y: y + 6, w: BTN, h: BTN, label: '−' });
         out.push({ id: `inc:${it.key}`, x: right - BTN, y: y + 6, w: BTN, h: BTN, label: '+' });
     });
-    out.push({ id: 'defaults', x: SET_COLS[1].x + SET_COLS[1].w - 2 * 300 - 24, y: 650, w: 300, h: 92, label: 'Standard' });
-    out.push({ id: 'done', x: SET_COLS[1].x + SET_COLS[1].w - 300, y: 650, w: 300, h: 92, label: 'Fertig' });
+    out.push({ id: 'defaults', x: SET_COLS[1].x + SET_COLS[1].w - 300, y: 650, w: 300, h: 92, label: 'Standard' });
     return out;
 }
 const SETTINGS_TARGETS = settingsTargets();
 
-function targets(page) {
-    return page === 'settings' ? SETTINGS_TARGETS : MAIN_TARGETS;
+/* ---- the logs pages ---- */
+
+const two = (n) => String(n).padStart(2, '0');
+const dateText = (d) => (d ? `${two(d.getDate())}.${two(d.getMonth() + 1)}.${d.getFullYear()} ${two(d.getHours())}:${two(d.getMinutes())}` : '');
+const duration = (ms) => { const t = Math.round((ms || 0) / 1000); return `${Math.floor(t / 60)}:${two(t % 60)}`; };
+
+const LOG_ROWS = 8;            // recordings on the list page (2 columns of 4)
+const LOG_COLS = [{ x: X0, w: 1200 }, { x: X0 + 1288, w: 1236 }];
+const BACK = { id: 'back', x: W - PAD - 300, y: 660, w: 300, h: BH, label: 'Zurück' };
+const CHANNELS = [
+    { id: 'rpm', label: 'Drehzahl & Leistung' },
+    { id: 'boost', label: 'Ladedruck' },
+    { id: 'temps', label: 'Temperaturen' },
+    { id: 'oil', label: 'Öldruck' }
+];
+
+function logsTargets(extra) {
+    const logs = (extra && extra.logs) || [];
+    const out = logs.slice(0, LOG_ROWS).map((r, i) => {
+        const col = LOG_COLS[i < 4 ? 0 : 1];
+        return { id: `open:${i}`, x: col.x, y: 196 + (i % 4) * 112, w: col.w, h: 100, label: dateText(r.start) };
+    });
+    return out;
+}
+
+function logTargets(extra) {
+    const out = CHANNELS.map((c, i) => ({ id: `chan:${c.id}`, x: X0 + i * 420, y: 150, w: 396, h: 72, label: c.label }));
+    const confirm = extra && extra.confirmDelete;
+    out.push({ id: confirm ? 'delete!' : 'delete', x: W - PAD - 300 - 24 - (confirm ? 360 : 300), y: 660,
+        w: confirm ? 360 : 300, h: BH, label: confirm ? 'Wirklich löschen' : 'Löschen', danger: confirm });
+    out.push(BACK);
+    return out;
+}
+
+/* The page's pressable targets in controller order: the tabs, then the page's own. */
+function targets(page, extra) {
+    let own = mainTargets(extra);
+    if (page === 'settings') {
+        own = SETTINGS_TARGETS;
+    } else if (page === 'logs') {
+        own = logsTargets(extra);
+    } else if (page === 'log') {
+        own = logTargets(extra);
+    }
+    return TABS.concat(own);
+}
+
+/* The tab rail: the page's tab marked (the log page belongs to Logs). */
+function rail(rec, page, ui) {
+    rec.fillRect(0, 0, RAIL, H, '#0C1117');
+    rec.fillRect(RAIL - 2, 0, 2, H, C.line);
+    const current = page === 'log' ? 'logs' : page;
+    TABS.forEach((t) => {
+        const on = t.page === current;
+        if (ui && ui.pressed === t.id) {
+            rec.fillRect(t.x, t.y, t.w, t.h, C.line);
+        }
+        if (on) {
+            rec.fillRect(0, t.y + 24, 8, t.h - 48, C.ice);
+        }
+        if (ui && ui.focus === t.id) {
+            rec.strokeRoundRect(t.x + 10, t.y + 6, t.w - 20, t.h - 12, 14, 4, C.ice);
+        }
+        rec.text(t.label, RAIL / 2, t.y + t.h / 2 + 12, 32, on ? C.text : C.dim, { font: 'label', align: 'center' });
+    });
 }
 
 function button(rec, t, ui, opts) {
     const r = t.h / 2;
+    const live = t.live || t.danger;
     if (ui && ui.focus === t.id) {
         rec.strokeRoundRect(t.x - 8, t.y - 8, t.w + 16, t.h + 16, r + 8, 5, C.ice);
     }
     if (ui && ui.pressed === t.id) {
         rec.roundRect(t.x, t.y, t.w, t.h, r, C.line);
     }
-    rec.strokeRoundRect(t.x, t.y, t.w, t.h, r, 3, opts && opts.primary ? C.text : C.line);
+    if (live) {
+        rec.roundRect(t.x, t.y, t.w, t.h, r, C.limit);
+    }
+    rec.strokeRoundRect(t.x, t.y, t.w, t.h, r, 3, live ? C.limit : opts && opts.primary ? C.text : C.line);
     const size = (opts && opts.size) || 32;
-    rec.text(t.label, t.x + t.w / 2, t.y + t.h / 2 + size * 0.36, size, C.text, { font: 'label', align: 'center' });
+    rec.text(t.label, t.x + t.w / 2, t.y + t.h / 2 + size * 0.36, size, live ? C.asphalt : C.text, { font: 'label', align: 'center' });
 }
 
 /* A value and its unit on one baseline; align 'left' or 'right' (right: the unit's end at x). */
@@ -103,8 +192,8 @@ function valueUnit(rec, text, unit, x, y, size, color, unitSize, align) {
 /* ---- the main page ---- */
 
 function rpmBand(rec, v, cfg) {
-    const x = PAD;
-    const w = 2144;
+    const x = X0;
+    const w = 2224 - X0;
     const y = 60;
     const h = 44;
     const red = cfg.rpmRed;
@@ -193,7 +282,7 @@ function power(rec, v, cfg) {
         ['Drehmoment', isNum(v.torque) ? String(Math.round(v.torque)) : '–', 'Nm', v.torquePeak, C.text]
     ];
     cells.forEach((c, i) => {
-        const cx = x + i * 296;
+        const cx = x + i * 268;
         const lw = rec.text(c[0], cx, 630, 28, c[4] === C.ice ? C.ice : C.dim, { font: 'label' });
         if (isNum(c[3]) && c[3] > 0) {
             rec.text(`max ${Math.round(c[3])}`, cx + lw + 12, 630, 26, C.ice, { font: 'scale' });
@@ -202,13 +291,13 @@ function power(rec, v, cfg) {
     });
 }
 
-function health(rec, v, cfg, ui) {
+function health(rec, v, cfg, ui, extra) {
     const { x } = COL.right;
     rec.text('Öldruck', x, 262, 34, C.dim, { font: 'label' });
     const low = isNum(v.oilPress) && isNum(v.rpm) && v.rpm > OIL_PRESS_RPM && v.oilPress < cfg.oilPressMin;
-    valueUnit(rec, isNum(v.oilPress) ? de(v.oilPress, 1) : '–', 'bar', x, 362, 100, low ? C.limit : C.text, 32, 'left');
+    valueUnit(rec, isNum(v.oilPress) ? de(v.oilPress, 1) : '–', 'bar', x, 352, 96, low ? C.limit : C.text, 32, 'left');
     if (isNum(v.oilPressPeak)) {
-        rec.text(`Spitze ${de(v.oilPressPeak, 1)} bar`, x, 408, 30, C.ice, { font: 'scale' });
+        rec.text(`Spitze ${de(v.oilPressPeak, 1)} bar`, x, 394, 30, C.ice, { font: 'scale' });
     }
     const cells = [
         ['Getriebeöl', isNum(v.gearbox) ? String(Math.round(v.gearbox)) : '–', '°C', isNum(v.gearbox) && v.gearbox >= cfg.gearboxMax],
@@ -217,17 +306,17 @@ function health(rec, v, cfg, ui) {
     ];
     cells.forEach((c, i) => {
         const cx = x + i * 216;
-        rec.text(c[0], cx, 492, 28, C.dim, { font: 'label' });
-        valueUnit(rec, c[1], c[2], cx, 566, 54, c[3] ? C.limit : C.text, 26, 'left');
+        rec.text(c[0], cx, 452, 28, C.dim, { font: 'label' });
+        valueUnit(rec, c[1], c[2], cx, 516, 54, c[3] ? C.limit : C.text, 26, 'left');
     });
-    MAIN_TARGETS.forEach((t) => button(rec, t, ui));
+    mainTargets(extra).forEach((t) => button(rec, t, ui, { size: 28 }));
 }
 
 /* ---- the settings page ---- */
 
 function settings(rec, cfg, ui) {
-    rec.text('Grenzwerte', PAD, 120, 56, C.text, { font: 'label' });
-    rec.text('Ab diesen Werten färbt sich die Anzeige rot. Das Ölband wird weiß, sobald das Öl bereit ist.', PAD, 166, 30, C.dim,
+    rec.text('Grenzwerte', X0, 120, 56, C.text, { font: 'label' });
+    rec.text('Ab diesen Werten färbt sich die Anzeige rot. Das Ölband wird weiß, sobald das Öl bereit ist.', X0, 166, 30, C.dim,
         { font: 'label' });
     L.ITEMS.forEach((it, i) => {
         const col = SET_COLS[i < 4 ? 0 : 1];
@@ -244,18 +333,136 @@ function settings(rec, cfg, ui) {
     });
 }
 
-function draw(rec, page, v, cfg, ui) {
+
+function logsPage(rec, ui, extra) {
+    const logs = (extra && extra.logs) || [];
+    rec.text('Aufzeichnungen', X0, 120, 56, C.text, { font: 'label' });
+    rec.text(logs.length ? `${logs.length} gespeichert, die neueste zuerst. Es bleiben die letzten 20.` :
+        'Noch keine Aufzeichnung. Starte eine mit Aufnehmen im Reiter Live.', X0, 166, 30, C.dim, { font: 'label' });
+    logsTargets(extra).forEach((t, i) => {
+        const r = logs[i];
+        if (ui && ui.focus === t.id) {
+            rec.strokeRoundRect(t.x - 8, t.y - 4, t.w + 16, t.h + 8, 16, 5, C.ice);
+        }
+        if (ui && ui.pressed === t.id) {
+            rec.roundRect(t.x, t.y, t.w, t.h, 12, C.line);
+        }
+        rec.fillRect(t.x, t.y + t.h + 4, t.w, 2, C.line);
+        rec.text(dateText(r.start), t.x + 8, t.y + 46, 36, C.text, { font: 'label' });
+        rec.text(`Dauer ${duration(r.duration)}`, t.x + 8, t.y + 86, 28, C.dim, { font: 'label' });
+        // the engine speed over the recording, small
+        const sp = r.spark || [];
+        const sx = t.x + 380;
+        const sw = 300;
+        const pts = [];
+        sp.forEach((y, k) => { if (isNum(y)) pts.push([sx + sw * k / Math.max(1, sp.length - 1), t.y + 84 - 64 * clamp(y / RPM_MAX, 0, 1)]); });
+        if (pts.length > 1) {
+            rec.fillRect(sx, t.y + 84, sw, 2, C.line);
+            rec.polyline(pts, 3, C.dim);
+        }
+        const p = r.peak || {};
+        const peaks = [isNum(p.rpm) ? `${thousands(p.rpm)} U/min` : null, isNum(p.boost) ? `${de(Math.max(0, p.boost), 2)} bar` : null,
+            isNum(p.power) ? `${Math.round(p.power)} PS` : null].filter(Boolean).join('    ');
+        rec.text(peaks, t.x + t.w - 8, t.y + 62, 34, C.ice, { font: 'scale', align: 'right' });
+    });
+}
+
+/* The curves of a recording's channel group: [field, colour, own scale max or null, decimals, unit]. */
+const GROUPS = {
+    rpm: [['rpm', C.text, 7700, 0, 'U/min'], ['power', C.cold, null, 0, 'PS']],
+    boost: [['boost', C.text, null, 2, 'bar'], ['boostTarget', C.dim, null, 2, 'bar Soll']],
+    temps: [['oil', C.text, null, 0, '°C Öl'], ['coolant', C.ice, null, 0, '°C Kühlmittel'], ['charge', C.cold, null, 0, '°C Ladeluft'],
+        ['gearbox', C.dim, null, 0, '°C Getriebe']],
+    oil: [['oilPress', C.text, null, 1, 'bar'], ['rpm', C.dim, 7700, 0, 'U/min']]
+};
+
+function logPage(rec, ui, extra) {
+    const log = extra && extra.log;
+    const chan = (extra && extra.channel) || 'rpm';
+    rec.text(log ? `${dateText(log.start)} · ${duration(log.duration)}` : 'Aufzeichnung', X0, 110, 48, C.text, { font: 'label' });
+    logTargets(extra).forEach((t) => {
+        const on = t.id === `chan:${chan}`;
+        button(rec, t, ui, { size: 28, primary: on });
+    });
+    const box = { x: X0 + 90, y: 268, w: W - PAD - X0 - 90, h: 300 };
+    rec.roundRect(box.x, box.y, box.w, box.h, 8, '#141C25');
+    if (!log || !log.t.length) {
+        rec.text('Keine Werte in dieser Aufzeichnung.', box.x + 40, box.y + 80, 34, C.dim, { font: 'label' });
+        return;
+    }
+    const span = Math.max(1, log.t[log.t.length - 1]);
+    const group = GROUPS[chan];
+    const gridMax = (ys, own) => own || ys.reduce((m, y) => (isNum(y) ? Math.max(m, y) : m), 0);
+    // a shared scale for curves of one unit, else each its own
+    const shared = chan === 'boost' || chan === 'temps';
+    let sharedMax = 0;
+    let sharedMin = 0;
+    group.forEach((g) => (log.series[g[0]] || []).forEach((y) => {
+        if (isNum(y)) { sharedMax = Math.max(sharedMax, y); sharedMin = Math.min(sharedMin, y); }
+    }));
+    // grid: four lines, labelled in the first curve's scale; minutes along the time axis
+    const first = group[0];
+    const firstMax = first[2] || (shared ? sharedMax : gridMax(log.series[first[0]] || []));
+    const firstMin = shared ? sharedMin : 0;
+    for (let k = 0; k <= 4; k++) {
+        const gy = box.y + box.h - 12 - (box.h - 24) * k / 4;
+        rec.fillRect(box.x, gy, box.w, 1, C.line);
+        const val = firstMin + (firstMax - firstMin) * k / 4;
+        rec.text(first[3] ? de(val, first[3]) : thousands(val), box.x - 16, gy + 10, 26, C.dim, { font: 'scale', align: 'right' });
+    }
+    const minute = 60000;
+    const every = span > 20 * minute ? 5 * minute : span > 5 * minute ? minute : span > minute ? 15000 : 5000;
+    for (let tm = every; tm < span; tm += every) {
+        const gx = box.x + box.w * tm / span;
+        rec.fillRect(gx, box.y, 1, box.h, C.line);
+        rec.text(duration(tm), gx, box.y + box.h + 34, 26, C.dim, { font: 'scale', align: 'center' });
+    }
+    let lx = box.x;
+    group.forEach((g) => {
+        const ys = log.series[g[0]] || [];
+        let max = g[2];
+        if (!max) {
+            max = shared ? sharedMax : ys.reduce((m, y) => (isNum(y) ? Math.max(m, y) : m), 0);
+        }
+        const min = shared ? sharedMin : 0;
+        const range = Math.max(1e-6, (max || 1) - min);
+        let seg = [];
+        const flush = () => { if (seg.length > 1) rec.polyline(seg, 3, g[1]); seg = []; };
+        ys.forEach((y, i) => {
+            if (!isNum(y)) { flush(); return; }
+            seg.push([box.x + box.w * log.t[i] / span, box.y + box.h - 12 - (box.h - 24) * clamp((y - min) / range, 0, 1)]);
+        });
+        flush();
+        const peak = ys.reduce((m, y) => (isNum(y) && (m === null || y > m) ? y : m), null);
+        const text = `max ${peak === null ? '–' : (g[3] ? de(peak, g[3]) : thousands(peak))} ${g[4]}`;
+        rec.fillRect(lx, 636, 28, 6, g[1]);
+        lx += 40 + rec.text(text, lx + 40, 650, 30, C.text, { font: 'scale' }) + 56;
+    });
+    rec.text('0:00', box.x, box.y + box.h + 34, 26, C.dim, { font: 'scale' });
+    rec.text(duration(span), box.x + box.w, box.y + box.h + 34, 26, C.dim, { font: 'scale', align: 'right' });
+}
+
+function draw(rec, page, v, cfg, ui, extra) {
     rec.clear(C.asphalt);
+    rail(rec, page, ui);
     if (page === 'settings') {
         settings(rec, cfg, ui);
+        return rec;
+    }
+    if (page === 'logs') {
+        logsPage(rec, ui, extra);
+        return rec;
+    }
+    if (page === 'log') {
+        logPage(rec, ui, extra);
         return rec;
     }
     rpmBand(rec, v, cfg);
     readiness(rec, v, cfg);
     power(rec, v, cfg);
-    health(rec, v, cfg, ui);
+    health(rec, v, cfg, ui, extra);
     if (v.status) {
-        rec.text(v.status, PAD, 752, 30, v.statusErr ? C.limit : C.dim, { font: 'label' });
+        rec.text(v.status, X0, 752, 30, v.statusErr ? C.limit : C.dim, { font: 'label' });
     }
     return rec;
 }

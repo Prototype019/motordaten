@@ -100,7 +100,7 @@ function applicationJson(app, spec) {
 function packageJson(app, spec) {
     return { name: app.id, version: app.version, description: spec.description, private: false,
         main: 'javascript/runner.js',
-        oapAppSettings: { maxDiskUsage: 10485760, cpuLimit: 20, memoryThresholdKB: spec.memoryKB || 65536,
+        oapAppSettings: { maxDiskUsage: spec.diskBytes || 10485760, cpuLimit: 20, memoryThresholdKB: spec.memoryKB || 65536,
             priority: 'PRIO_MEDIUM', visibility: 'FOREGROUND', latencyClass: 'FOREGROUND', loggingId: spec.loggingId,
             userLoginRequired: false, backgroundPriority: 150, someipManifest: 'manifest.json' },
         files: ['config', 'rhmiData', 'package.json', 'npm-shrinkwrap.json', 'permissions.json', 'javascript', 'manifest.json'],
