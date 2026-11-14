@@ -34,6 +34,7 @@ const Limits = require('./limits.js');
 const Logbook = require('./logbook.js');
 const Usb = require('./usb.js');
 const Diag = require('./diag.js');
+const { Records } = require('./records.js');
 
 /* An error nobody caught: noted (diag.log) and the app goes on, the screen staying up instead of the
  * manager restarting the app. */
@@ -98,7 +99,9 @@ const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
 const ENGINE_RUNNING_RPM = 400;   // from here the engine counts as started
 const PEAK_AFTER_START_MS = 5000;
-const COOLING_MIN_RPM = 500;      // MHD Max Cooling goes on only with the engine running // the start's flare (oil pressure, engine speed) is no peak: peaks count from here
+const COOLING_MIN_RPM = 500;
+/* The values the Maximalwerte page keeps the highest of (this drive and over all drives). */
+const MAX_KEYS = ['rpm', 'power', 'torque', 'boost', 'oilPress', 'oil', 'coolant', 'gearbox', 'intake', 'charge', 'exhaust', 'knock'];      // MHD Max Cooling goes on only with the engine running // the start's flare (oil pressure, engine speed) is no peak: peaks count from here
 const CYCLE_MS = 90;           // at least this long per round
 const MAX_CYCLE_MS = 1000;     // the longest pause a busy gateway gets
 const SLOW_EVERY = 12;         // the slow values every this many rounds
@@ -326,6 +329,13 @@ class Motordaten extends ListApp {
             this.run();
         } else if (id === 'menu:limits' || id === 'menu:ready' || id === 'menu:mhd') {
             d.setPage(id.slice(5));
+        } else if (id === 'records:clear') {
+            d.setExtra({ maxima: Object.assign({}, d.extra.maxima, { confirm: true }) });
+        } else if (id === 'records:clear!') {
+            if (this._records) {
+                this._records.clear();
+            }
+            d.setExtra({ maxima: Object.assign({}, d.extra.maxima, { confirm: false, rec: {} }) });
         } else if (id === 'cooling') {
             this._coolingPressed();
         } else if (id === 'cooling!') {
@@ -934,6 +944,28 @@ class Motordaten extends ListApp {
 
     /* ---- screen ---- */
 
+    /* The Maximalwerte page: every value's highest this drive (the peaks, kept like them) and the records over
+     * all drives; shown about twice a second while the page is open. */
+    _maxima(v) {
+        if (!this._records) {
+            this._records = new Records();
+        }
+        MAX_KEYS.forEach((key) => {
+            const peak = this._peakOf(key, v[key]);
+            if (isNum(peak)) {
+                this._records.offer(key, peak, clock.wall().getTime());
+            }
+        });
+        const d = this._drawn;
+        const now = Date.now();
+        if (d && d.page === 'records' && now - (this._maximaAt || 0) >= 500) {
+            this._maximaAt = now;
+            const trip = {};
+            MAX_KEYS.forEach((k) => { trip[k] = this._peak[k]; });
+            d.setExtra({ maxima: { trip, rec: Object.assign({}, this._records.best) } });
+        }
+    }
+
     _peakOf(key, v) {
         // the first seconds after the engine starts keep no peaks: the start flares oil pressure and speed
         if (isNum(v) && !(Date.now() - (this._startedAt || 0) < PEAK_AFTER_START_MS)) {
@@ -1013,6 +1045,7 @@ class Motordaten extends ListApp {
         v.powerPeak = this._peakOf('power', v.power);
         v.boostPeak = this._peakOf('boost', v.boost);
         v.oilPressPeak = this._peakOf('oilPress', v.oilPress);
+        this._maxima(v);
         let status = '';
         if (this._gateway === 'failed') {
             status = `DME nicht erreichbar: ${this._gatewayError}`;

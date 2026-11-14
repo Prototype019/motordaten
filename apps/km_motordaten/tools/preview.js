@@ -58,6 +58,7 @@ const SCENES = {
 const out = path.join(__dirname, '..', '..', '..', 'docs', 'design', 'preview');
 fs.mkdirSync(out, { recursive: true });
 SCENES.settings = {};
+SCENES.records = {};
 SCENES.mhd = {};
 SCENES.warming = Object.assign({}, SCENES.cold, { rpm: 2400, rpmPeak: 3100, oil: 86, coolant: 64, gearbox: 41, exhaust: 520 });
 SCENES.limits = {};
@@ -68,6 +69,12 @@ const logName = sampleLog();
 const summary = Logbook.summary(logName);
 const EXTRA = {
     pull: { recording: { ms: 83000 }, cooling: { state: 'ON' } },
+    records: { maxima: { trip: { rpm: 6950, power: 692, torque: 812, boost: 2.04, oilPress: 5.9, oil: 108, coolant: 96, gearbox: 92, intake: 21,
+        charge: 46, exhaust: 912, knock: 1.5 }, rec: { rpm: { v: 7180, at: Date.UTC(2026, 10, 9, 15, 0) }, power: { v: 692, at: Date.UTC(2026, 10, 14, 17, 0) },
+        torque: { v: 845, at: Date.UTC(2026, 10, 9, 15, 0) }, boost: { v: 2.11, at: Date.UTC(2026, 10, 9, 15, 0) }, oilPress: { v: 6.2, at: Date.UTC(2026, 10, 1, 9, 0) },
+        oil: { v: 121, at: Date.UTC(2026, 10, 9, 15, 0) }, coolant: { v: 104, at: Date.UTC(2026, 10, 9, 15, 0) }, gearbox: { v: 99, at: Date.UTC(2026, 10, 9, 15, 0) },
+        intake: { v: 31, at: Date.UTC(2026, 10, 3, 12, 0) }, charge: { v: 58, at: Date.UTC(2026, 10, 9, 15, 0) }, exhaust: { v: 948, at: Date.UTC(2026, 10, 9, 15, 0) },
+        knock: { v: 3.4, at: Date.UTC(2026, 10, 9, 15, 0) } } } },
     warming: { cooling: { confirm: true } },
     logsusb: { usb: { text: '2 Aufzeichnungen auf „KEVIN“ im Ordner Motordaten gespeichert. Der Stick kann raus.' }, logs: [summary] },
     logs: { logs: [summary, Object.assign({}, summary, { start: new Date(Date.UTC(2026, 10, 13, 18, 5)) })] },
@@ -123,7 +130,7 @@ SCENES.logbattery = {};
 SCENES.logcooling = {};
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
-    const page = name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
+    const page = name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' || name === 'records' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
     const cfg = /^(settings|limits|ready|mhd)$/.test(name) ? Object.assign(Limits.defaults(), { rpmRed: 6800, gearboxReadyOn: 1, gearboxReady: 60 }) :
         name === 'cold' || name === 'pull' || name === 'warming' ? Object.assign(Limits.defaults(), { gearboxReadyOn: 1 }) : Limits.defaults();
     if (name === 'warnings') cfg.oilMax = 125;

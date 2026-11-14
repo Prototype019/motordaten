@@ -102,13 +102,13 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
 
     // the controller: proxy i is target i; the tabs come first
     const main = dash.targets('main', d.extra).map((t) => t.id);
-    assert.deepStrictEqual(main, ['tab:main', 'tab:logs', 'tab:faults', 'tab:settings', 'record', 'reset']);
-    d.proxyFocus(3, true);
+    assert.deepStrictEqual(main, ['tab:main', 'tab:records', 'tab:logs', 'tab:faults', 'tab:settings', 'record', 'reset']);
+    d.proxyFocus(4, true);
     assert.strictEqual(d.ui.focus, 'tab:settings');
-    d.proxyPress(3);
+    d.proxyPress(4);
     assert.deepStrictEqual(actions, ['reset', 'tab:settings']);
     // a tab by touch too
-    const logsTab = dash.targets('main', d.extra)[1];
+    const logsTab = dash.targets('main', d.extra)[2];
     g.emit('touch', 'down', ...center(logsTab));
     g.emit('touch', 'up', ...center(logsTab));
     assert.strictEqual(actions.pop(), 'tab:logs');
@@ -130,12 +130,12 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.ccu({ frontRotaryEncoderOperation: 103 });
     assert.strictEqual(d.ui.focus, 'tab:main', 'first turn: the first target');
     d.ccu({ frontRotaryEncoderOperation: 106 });
-    assert.strictEqual(d.ui.focus, 'tab:settings', 'three detents on');
+    assert.strictEqual(d.ui.focus, 'tab:faults', 'three detents on');
     d.ccu({ frontRotaryEncoderOperation: 0xffff });
     d.ccu({ frontRotaryEncoderOperation: 104 });
-    assert.strictEqual(d.ui.focus, 'tab:logs', 'an invalid sample in between is skipped');
+    assert.strictEqual(d.ui.focus, 'tab:records', 'an invalid sample in between is skipped');
     d.ccu({ frontRotaryEncoderOperation: 104 + 500 });
-    assert.strictEqual(d.ui.focus, 'tab:logs', 'a jump is a stale sample');
+    assert.strictEqual(d.ui.focus, 'tab:records', 'a jump is a stale sample');
     d.ccu({ frontRotaryEncoderOperation: 104 + 500 + 9 });
     assert.strictEqual(d.ui.focus, 'reset', 'stops at the last target');
     d.proxyFocus(2, true);
@@ -219,8 +219,8 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.on('targets', (t) => told.push(t.length));
     d.setPage('settings');
     assert.deepStrictEqual(told, [dash.targets('settings', d.extra).length]);
-    assert.deepStrictEqual(dash.targets('settings').slice(4).map((t) => t.id), ['menu:limits', 'menu:ready', 'menu:mhd']);
-    assert.deepStrictEqual(dash.targets('mhd').slice(4).map((t) => t.id), ['toggle:mhdCoolingOn', 'settings:back']);
+    assert.deepStrictEqual(dash.targets('settings').slice(5).map((t) => t.id), ['menu:limits', 'menu:ready', 'menu:mhd']);
+    assert.deepStrictEqual(dash.targets('mhd').slice(5).map((t) => t.id), ['toggle:mhdCoolingOn', 'settings:back']);
     // the Max Cooling button only while switched on (extra.cooling), its confirm step, its on state
     assert.ok(!dash.targets('main', {}).some((t) => /^cooling/.test(t.id)), 'no button while off');
     assert.strictEqual(dash.targets('main', { cooling: { state: null } }).pop().label, 'Max Cooling');

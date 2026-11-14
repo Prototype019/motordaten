@@ -83,10 +83,27 @@ function coolingTarget(extra) {
 /* The tabs, on every page: first in controller order. */
 const TABS = [
     { id: 'tab:main', page: 'main', label: 'Live' },
+    { id: 'tab:records', page: 'records', label: 'Maximalwerte' },
     { id: 'tab:logs', page: 'logs', label: 'Logs' },
     { id: 'tab:faults', page: 'faults', label: 'Fehler' },
     { id: 'tab:settings', page: 'settings', label: 'Einstellungen' }
-].map((t, i) => Object.assign(t, { x: 0, y: 16 + i * 184, w: RAIL, h: 168 }));
+].map((t, i) => Object.assign(t, { x: 0, y: 12 + i * 150, w: RAIL, h: 140 }));
+
+/* The Maximalwerte page: a card per value, this drive's highest large, the record over all drives under it. */
+const MAX_CARDS = [
+    ['rpm', 'Drehzahl', 'U/min', 0], ['power', 'Leistung', 'PS', 0], ['torque', 'Drehmoment', 'Nm', 0], ['boost', 'Ladedruck', 'bar', 2],
+    ['oilPress', 'Öldruck', 'bar', 1], ['oil', 'Öltemperatur', '°C', 0], ['coolant', 'Kühlmittel', '°C', 0], ['gearbox', 'Getriebeöl', '°C', 0],
+    ['intake', 'Ansaugluft', '°C', 0], ['charge', 'Ladeluft', '°C', 0], ['exhaust', 'Abgas', '°C', 0], ['knock', 'Klopfen', '°', 1]
+];
+const MAX_GRID = { cols: 4, x: X0, y: 196, gap: 20, h: 168 };
+function recordsTargets(extra) {
+    const m = (extra && extra.maxima) || {};
+    if (!m.rec || !Object.keys(m.rec).length) {
+        return [];
+    }
+    return [{ id: m.confirm ? 'records:clear!' : 'records:clear', x: W - PAD - (m.confirm ? 440 : 360), y: 64, w: m.confirm ? 440 : 360, h: 84,
+        label: m.confirm ? 'Wirklich alle löschen' : 'Rekorde löschen', danger: !!m.confirm }];
+}
 
 const ROW_H = 88;
 const SET_ROWS = 6;           // limits per column
@@ -251,6 +268,8 @@ function targets(page, extra) {
         own = READY_TARGETS;
     } else if (page === 'mhd') {
         own = MHD_TARGETS;
+    } else if (page === 'records') {
+        own = recordsTargets(extra);
     } else if (page === 'logs') {
         own = logsTargets(extra);
     } else if (page === 'log') {
@@ -619,6 +638,33 @@ function readyPage(rec, cfg, ui) {
         const step = t.id.indexOf('dec:') === 0 || t.id.indexOf('inc:') === 0;
         button(rec, t, ui, { size: step ? 52 : 32 });
     });
+}
+
+function recordsPage(rec, ui, extra) {
+    const m = (extra && extra.maxima) || {};
+    const trip = m.trip || {};
+    const best = m.rec || {};
+    rec.text('Maximalwerte', X0, 120, 56, C.text, { font: 'label' });
+    rec.text('Groß: diese Fahrt seit dem Motorstart. Darunter: der Rekord über alle Fahrten.', X0, 166, 30, C.dim, { font: 'label' });
+    const G = MAX_GRID;
+    const cw = (W - PAD - X0 - G.gap * (G.cols - 1)) / G.cols;
+    MAX_CARDS.forEach(([key, label, unit, d], i) => {
+        const x = G.x + (i % G.cols) * (cw + G.gap);
+        const y = G.y + Math.floor(i / G.cols) * (G.h + G.gap);
+        rec.roundRect(x, y, cw, G.h, 16, '#151D26');
+        const t = trip[key];
+        const r = best[key];
+        // this drive at its record: the card says so
+        const atRecord = isNum(t) && r && t >= r.v;
+        rec.text(label, x + 28, y + 46, 30, atRecord ? C.ice : C.dim, { font: 'label' });
+        const show = (n) => (key === 'rpm' ? thousands(n) : d ? de(n, d) : String(Math.round(n)));
+        valueUnit(rec, isNum(t) ? show(t) : '–', unit, x + 28, y + 112, 64, C.text, 28, 'left');
+        if (r) {
+            const when = dateText(new Date(r.at)).slice(0, 10);
+            rec.text(`Rekord ${show(r.v)} ${unit}  ·  ${when}`, x + 28, y + 150, 24, atRecord ? C.ice : C.dim, { font: 'label' });
+        }
+    });
+    recordsTargets(extra).forEach((t) => button(rec, t, ui));
 }
 
 /* A switch: a pill with its knob, ice when on. */
@@ -1048,6 +1094,10 @@ function draw(rec, page, v, cfg, ui, extra) {
     }
     if (page === 'mhd') {
         mhdPage(rec, cfg, ui);
+        return rec;
+    }
+    if (page === 'records') {
+        recordsPage(rec, ui, extra);
         return rec;
     }
     if (page === 'logs') {
