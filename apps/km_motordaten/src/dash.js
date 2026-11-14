@@ -489,15 +489,11 @@ function settingsMenu(rec, cfg, ui) {
         rec.strokeRoundRect(m.x, m.y, m.w, m.h, 24, focus ? 5 : 2, focus ? C.ice : C.line);
         rec.text(m.label, m.x + 56, m.y + 104, 52, C.text, { font: 'label' });
         rec.text(m.text, m.x + 56, m.y + 160, 30, C.dim, { font: 'label' });
-        let summary;
-        if (m.page === 'limits') {
-            const changed = LIMIT_ITEMS.filter((it) => cfg[it.key] !== it.def).length;
-            summary = changed ? `${changed} geändert` : 'Standard';
-        } else {
+        // the ready card names what counts now; the limits card nothing (resetting is on its page)
+        if (m.page === 'ready') {
             const on = L.READY.filter((r) => cfg[r.on]);
-            summary = on.length ? on.map((r) => `${r.short} ${cfg[r.at]}°`).join('   ') : 'Aus';
+            rec.text(on.length ? on.map((r) => `${r.short} ${cfg[r.at]}°`).join('   ') : 'Aus', m.x + 56, m.y + m.h - 52, 34, C.ice, { font: 'label' });
         }
-        rec.text(summary, m.x + 56, m.y + m.h - 52, 34, C.ice, { font: 'label' });
         const cx = m.x + m.w - 72;
         const cy = m.y + m.h / 2;
         rec.polyline([[cx - 18, cy - 30], [cx + 12, cy], [cx - 18, cy + 30]], 6, C.dim);
