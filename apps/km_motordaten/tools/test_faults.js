@@ -73,6 +73,25 @@ const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 
     assert.deepStrictEqual(many.entries.map((e) => e.state), ['aktiv', 'gespeichert']);
     assert.strictEqual(Faults.unitName(0x99), 'Steuergerät 0x99');
 
+    // one unit at a time: 19 02 to that unit; never to all through faultsOf
+    const t3 = new Tasu(log);
+    const asked3 = [];
+    t3._setProxy({ sendTasuRequest: (p) => {
+        asked3.push(p.targetAddress);
+        setTimeout(() => t3._onResponse(frame(p.targetAddress, [0x59, 0x02, 0xFF])), 3);
+        return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });
+    } });
+    assert.deepStrictEqual(await t3.faultsOf(0x30, 0x0D), [0x59, 0x02, 0xFF]);
+    await assert.rejects(t3.faultsOf(ALL, 0x0D), /nicht erlaubt/);
+    assert.deepStrictEqual(asked3, [0x30]);
+    assert.ok(Faults.addresses().length >= 28 && Faults.addresses().indexOf(0x5D) >= 0);
+
+    // every unit with faults: still no more targets than proxy buttons
+    const scan = Faults.addresses().map((addr) => ({ addr, name: Faults.unitName(addr), state: 'faults', entries: [{}] }));
+    const ts = dash.targets('faults', { faults: { scan, entries: [{}] } });
+    assert.ok(ts.length <= spec.PROXIES, `${ts.length} targets`);
+    assert.ok(ts.some((t) => t.id === 'unit:93') && ts.some((t) => t.id === 'faults:clear'));
+
     // the pages have a proxy button for every target
     ['logs', 'faults'].forEach((p) => assert.ok(dash.targets(p, { logs: new Array(20).fill({ start: new Date(), peak: {} }) }).length <= spec.PROXIES));
 

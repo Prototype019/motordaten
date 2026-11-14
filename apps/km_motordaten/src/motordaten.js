@@ -31,7 +31,7 @@ const Limits = require('./limits.js');
 const Logbook = require('./logbook.js');
 const Faults = require('./faults.js');
 const FAULT_MASK = 0x0D;     // failing now, pending, confirmed
-const PROXIES = 24;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
+const PROXIES = 48;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
 const LIST = 'ST_OnlineApps_Motordaten';
@@ -171,6 +171,11 @@ class Motordaten extends ListApp {
             }
         } else if (id === 'faults:read') {
             this._readFaults();
+        } else if (id.indexOf('unit:') === 0) {
+            d.setExtra({ unit: Number(id.slice(5)) });
+            d.setPage('faultunit');
+        } else if (id === 'faults:back') {
+            d.setPage('faults');
         } else if (id === 'faults:clear') {
             const why = this._clearBlocked();
             d.setExtra({ faults: Object.assign({}, d.extra.faults, why ? { note: why, warn: true, confirmClear: false } :
@@ -214,18 +219,33 @@ class Motordaten extends ListApp {
         if (!d || (d.extra.faults && d.extra.faults.reading)) {
             return;
         }
-        d.setExtra({ faults: { reading: true } });
+        // every unit in turn, so the page shows each one as it is read
+        const scan = Faults.addresses().map((addr) => ({ addr, name: Faults.unitName(addr), state: 'wait', entries: [] }));
+        const show = (more) => d.setExtra({ faults: Object.assign({ reading: true, scan: scan.slice() }, more) });
+        show({ progress: 0 });
         const open = this._gateway === 'open' ? Promise.resolve() : this._tasu.open().then(() => { this._gateway = 'open'; });
         open
-            .then(() => this._tasu.faults(FAULT_MASK))
-            .then((replies) => {
-                const f = Faults.parse(replies);
-                logger.info(`faults: ${f.units} units, ${f.entries.map((e) => `${e.ecu.toString(16)}:${e.code}/${e.status}`).join(' ')}`);
-                const note = this._afterClear ? `${this._afterClear}${f.entries.length ? `Noch ${f.entries.length} Einträge.` : 'Keine Einträge mehr.'}` : null;
+            .then(() => scan.reduce((p, unit, k) => p.then(() => {
+                unit.state = 'read';
+                show({ progress: k + 1 });
+                return this._tasu.faultsOf(unit.addr, FAULT_MASK).then((u) => {
+                    if (u && u[0] === 0x59) {
+                        unit.entries = Faults.parse(new Map([[unit.addr, u]])).entries;
+                        unit.state = unit.entries.length ? 'faults' : 'ok';
+                    } else {
+                        unit.state = u && u[0] === 0x7F ? 'refused' : 'none';
+                    }
+                }, () => { unit.state = 'none'; });
+            }), Promise.resolve()))
+            .then(() => {
+                const entries = [].concat(...scan.map((u) => u.entries));
+                const answered = scan.filter((u) => u.state === 'ok' || u.state === 'faults' || u.state === 'refused').length;
+                logger.info(`faults: ${answered}/${scan.length} units, ${entries.map((e) => `${e.ecu.toString(16)}:${e.code}/${e.status}`).join(' ')}`);
+                const note = this._afterClear ? `${this._afterClear}${entries.length ? `Noch ${entries.length} Einträge.` : 'Keine Einträge mehr.'}` : null;
                 this._afterClear = null;
-                d.setExtra({ faults: { units: f.units, entries: f.entries, at: new Date(), note } });
+                d.setExtra({ faults: { scan, units: answered, entries, at: new Date(), note } });
             }, (e) => {
-                d.setExtra({ faults: { error: (e && e.message) || String(e) } });
+                d.setExtra({ faults: { scan, error: (e && e.message) || String(e) } });
             });
     }
 

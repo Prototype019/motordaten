@@ -20,6 +20,11 @@ const UNITS = {
     0x6E: 'Sitz Beifahrer', 0x76: 'Dämpfer', 0x78: 'Klimaanlage'
 };
 
+/* The units a G87 answers the fault memory with (ENET, docs/g87-s58.md), and the others named here:
+ * asked one by one when the gateway does not pass a request to all units. */
+const KNOWN = [0x01, 0x06, 0x08, 0x0F, 0x10, 0x12, 0x18, 0x21, 0x29, 0x2A, 0x2C, 0x30, 0x37, 0x39, 0x40, 0x43, 0x44,
+    0x56, 0x5D, 0x5E, 0x60, 0x61, 0x63, 0x67, 0x6D, 0x6E, 0x76, 0x78];
+
 const hex = (n, w) => n.toString(16).toUpperCase().padStart(w || 2, '0');
 
 function unitName(addr) {
@@ -60,4 +65,8 @@ function parse(replies) {
     return { units: replies.size, entries };
 }
 
-module.exports = { parse, unitName, stateOf, UNITS };
+function addresses() {
+    return Array.from(new Set(KNOWN.concat(Object.keys(UNITS).map(Number)))).sort((a, b) => a - b);
+}
+
+module.exports = { parse, unitName, stateOf, addresses, UNITS };

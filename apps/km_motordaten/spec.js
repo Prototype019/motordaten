@@ -1,7 +1,7 @@
 'use strict';
 /* Motordaten: package and screen description (tools/gen.js). */
 /* Proxy buttons of the drawn screens' host state. */
-const PROXIES = 24;
+const PROXIES = 48;
 
 module.exports = {
     PROXIES,
@@ -31,7 +31,7 @@ module.exports = {
     }, {
         /* The host state of the drawn screens (src/drawn.js): the renderer draws over it while it is open;
          * its buttons stand for the drawn page's targets under the controller, one each, in order
-         * (src/dash.js targets: the settings page has the most, 18). */
+         * (src/dash.js targets: the fault page with every unit failing has the most, 40). */
         id: 2, name: 'ST_OnlineApps_MotordatenLayer', titleId: 11, title: 'SID_MD_TITLE',
         components: Array.from({ length: PROXIES }, (x, i) => ({ id: 30 + i, kind: 'button', name: `mdLayerP${i}`, text: '' }))
     }],

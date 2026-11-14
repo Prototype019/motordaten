@@ -56,22 +56,38 @@ const EXTRA = {
     log: { log: Logbook.load(logName), channel: 'rpm' },
     logboost: { log: Logbook.load(logName), channel: 'boost', confirmDelete: true }
 };
-EXTRA.faults = { faults: { units: 28, at: new Date(2026, 10, 14, 11, 2), entries: [
-    { ecu: 0x5D, unit: 'Fahrerassistenz-Kamera', code: '800ABF', status: 0x2F, state: 'aktiv' },
-    { ecu: 0x12, unit: 'Motor (DME)', code: '1F2A01', status: 0x28, state: 'gespeichert' }] } };
-EXTRA.faultsread = { faults: { reading: true } };
-EXTRA.faultsnone = { faults: { units: 28, entries: [], at: new Date(2026, 10, 14, 11, 2) } };
+const Faults = require('../src/faults.js');
+/* A scan of every unit as the G87 answered over ENET (one entry in the camera); progress stops at k. */
+function scanUpTo(k) {
+    const answered = [0x01, 0x06, 0x08, 0x0F, 0x10, 0x12, 0x18, 0x21, 0x29, 0x2A, 0x2C, 0x30, 0x37, 0x39, 0x40, 0x43, 0x44,
+        0x56, 0x5D, 0x5E, 0x60, 0x61, 0x63, 0x67, 0x6D, 0x6E, 0x76, 0x78];
+    return Faults.addresses().map((addr, i) => {
+        const u = { addr, name: Faults.unitName(addr), state: 'wait', entries: [] };
+        if (i < k) {
+            u.state = answered.indexOf(addr) < 0 ? 'none' : addr === 0x5D ? 'faults' : 'ok';
+            if (addr === 0x5D) u.entries = [{ ecu: 0x5D, unit: u.name, code: '800ABF', status: 0x2F, state: 'aktiv' }];
+        } else if (i === k) {
+            u.state = 'read';
+        }
+        return u;
+    });
+}
+const done = scanUpTo(99);
+EXTRA.faults = { faults: { scan: done, units: 28, entries: done[done.findIndex((u) => u.addr === 0x5D)].entries, at: new Date(2026, 10, 14, 11, 2) } };
+EXTRA.faultsread = { faults: { reading: true, scan: scanUpTo(14), progress: 15 } };
 EXTRA.faultsclear = { faults: Object.assign({}, EXTRA.faults.faults, { confirmClear: true }) };
+EXTRA.faultunit = Object.assign({ unit: 0x5D }, EXTRA.faults);
 SCENES.faultsclear = {};
+SCENES.faultsread = {};
+SCENES.faultunit = {};
 SCENES.faults = {};
 SCENES.faultsread = {};
-SCENES.faultsnone = {};
 SCENES.logs = {};
 SCENES.log = {};
 SCENES.logboost = {};
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
-    const page = name === 'settings' ? 'settings' : name === 'logs' ? 'logs' : /^log/.test(name) ? 'log' : /^faults/.test(name) ? 'faults' : 'main';
+    const page = name === 'settings' ? 'settings' : name === 'logs' ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
     const cfg = name === 'settings' ? Object.assign(Limits.defaults(), { rpmRed: 6800, oilReady: 80 }) : Limits.defaults();
     dash.draw(rec, page, SCENES[name], cfg, { focus: name === 'pull' ? 'reset' : name === 'settings' ? 'inc:oilReady' : null },
         EXTRA[name] || {});

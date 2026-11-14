@@ -117,15 +117,33 @@ const SEGMENTS = [{ id: 'seg:logs', page: 'logs', label: 'Aufzeichnungen' }, { i
     .map((t, i) => Object.assign(t, { x: W - PAD - (2 - i) * 340 + 16, y: 64, w: 324, h: 76 }));
 const FAULT_ROWS = 8;
 
+/* The fault page's grid: every unit a tile, 5 across. */
+const GRID = { cols: 5, x: X0, y: 196, w: W - PAD - X0, rowH: 64, gap: 12 };
+function tileBox(i) {
+    const cw = (GRID.w - GRID.gap * (GRID.cols - 1)) / GRID.cols;
+    return { x: GRID.x + (i % GRID.cols) * (cw + GRID.gap), y: GRID.y + Math.floor(i / GRID.cols) * GRID.rowH, w: cw, h: GRID.rowH - 10 };
+}
+
 function faultsTargets(extra) {
     const f = (extra && extra.faults) || {};
-    const out = SEGMENTS.concat([{ id: 'faults:read', x: W - PAD - 300, y: 660, w: 300, h: BH, label: 'Neu lesen' }]);
+    const out = SEGMENTS.slice();
+    // the units with entries open their page
+    (f.scan || []).forEach((u, i) => {
+        if (u.state === 'faults') {
+            out.push(Object.assign({ id: `unit:${u.addr}`, label: u.name }, tileBox(i)));
+        }
+    });
+    out.push({ id: 'faults:read', x: W - PAD - 300, y: 668, w: 300, h: 80, label: 'Neu lesen' });
     if (f.entries && f.entries.length && !f.reading) {
         const confirm = !!f.confirmClear;
-        out.push({ id: confirm ? 'faults:clear!' : 'faults:clear', x: W - PAD - 300 - 24 - 360, y: 660, w: 360, h: BH,
+        out.push({ id: confirm ? 'faults:clear!' : 'faults:clear', x: W - PAD - 300 - 24 - 360, y: 668, w: 360, h: 80,
             label: confirm ? 'Wirklich löschen' : 'Fehler löschen', danger: confirm });
     }
     return out;
+}
+
+function faultUnitTargets() {
+    return [{ id: 'faults:back', x: W - PAD - 300, y: 668, w: 300, h: 80, label: 'Zurück' }];
 }
 
 function logsTargets(extra) {
@@ -157,6 +175,8 @@ function targets(page, extra) {
         own = logTargets(extra);
     } else if (page === 'faults') {
         own = faultsTargets(extra);
+    } else if (page === 'faultunit') {
+        own = faultUnitTargets();
     }
     return TABS.concat(own);
 }
@@ -165,7 +185,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'log' || page === 'faults' ? 'logs' : page;
+    const current = page === 'log' || page === 'faults' || page === 'faultunit' ? 'logs' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) {
@@ -358,9 +378,19 @@ function segments(rec, page, ui) {
 }
 
 const STATE_COLOR = { aktiv: C.limit, gespeichert: C.ice, 'vorläufig': C.dim, Historie: C.dim };
+/* A unit's tile: colour of its marker and words, by the state of its reading. */
+const TILE = {
+    wait: { color: C.line, text: '' },
+    read: { color: C.ice, text: 'liest …' },
+    ok: { color: C.text, text: 'OK' },
+    faults: { color: C.limit, text: null },
+    refused: { color: C.dim, text: 'nicht lesbar' },
+    none: { color: '#3A4652', text: 'keine Antwort' }
+};
 
 function faultsPage(rec, ui, extra) {
     const f = (extra && extra.faults) || {};
+    const scan = f.scan || [];
     rec.text('Fehlerspeicher', X0, 120, 56, C.text, { font: 'label' });
     segments(rec, 'faults', ui);
     let note;
@@ -369,41 +399,70 @@ function faultsPage(rec, ui, extra) {
     } else if (f.note) {
         note = f.note;
     } else if (f.reading) {
-        note = 'Lese alle Steuergeräte … das dauert einige Sekunden.';
+        note = `Lese Steuergerät ${f.progress || 0} von ${scan.length} … nur lesend.`;
     } else if (f.error) {
         note = `Lesen fehlgeschlagen: ${f.error}. Zündung an?`;
+    } else if (f.units === 0) {
+        note = 'Keine Antwort der Steuergeräte. Zündung an? Dann Neu lesen.';
     } else if (f.units === undefined) {
         note = 'Liest die Fehlerspeicher aller Steuergeräte, nur lesend.';
     } else {
-        const n = f.entries.length;
-        note = `${f.units} Steuergeräte geantwortet, ${n === 0 ? 'keine Einträge' : n === 1 ? '1 Eintrag' : `${n} Einträge`}` +
+        const withFaults = scan.filter((u) => u.state === 'faults').length;
+        note = `${f.units} von ${scan.length} Steuergeräten geantwortet, ` +
+            `${withFaults === 0 ? 'alle ohne Fehler' : withFaults === 1 ? '1 mit Fehlern' : `${withFaults} mit Fehlern`}` +
             (f.at ? ` · gelesen ${two(f.at.getHours())}:${two(f.at.getMinutes())}` : '');
     }
-    rec.text(note, X0, 166, 30, f.error || f.warn ? C.limit : C.dim, { font: 'label' });
-    const entries = f.entries || [];
-    if (!f.reading && f.units !== undefined && !entries.length) {
-        rec.text('Alle Steuergeräte sind ohne Eintrag.', X0, 300, 44, C.text, { font: 'label' });
+    rec.text(note, X0, 166, 30, f.error || f.warn || f.units === 0 ? C.limit : C.dim, { font: 'label' });
+
+    scan.forEach((u, i) => {
+        const b = tileBox(i);
+        const look = TILE[u.state] || TILE.wait;
+        const id = `unit:${u.addr}`;
+        if (ui && ui.pressed === id) {
+            rec.roundRect(b.x, b.y, b.w, b.h, 10, C.line);
+        } else {
+            rec.roundRect(b.x, b.y, b.w, b.h, 10, '#141C25');
+        }
+        if (ui && ui.focus === id) {
+            rec.strokeRoundRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8, 12, 4, C.ice);
+        }
+        rec.roundRect(b.x, b.y, 8, b.h, 4, look.color);
+        const words = look.text === null ? `${u.entries.length} ${u.entries.length === 1 ? 'Fehler' : 'Fehler'}` : look.text;
+        const ww = words ? rec.textWidth(words, 26, { font: 'label' }) : 0;
+        rec.clip(b.x, b.y, b.w - ww - 28, b.h);
+        rec.text(u.name, b.x + 22, b.y + 36, 28, u.state === 'none' || u.state === 'wait' ? C.dim : C.text, { font: 'label' });
+        rec.noclip();
+        if (words) {
+            rec.text(words, b.x + b.w - 14, b.y + 36, 26, u.state === 'faults' ? C.limit : u.state === 'ok' ? C.text : C.dim,
+                { font: 'label', align: 'right' });
+        }
+    });
+    faultsTargets(extra).filter((t) => t.id.indexOf('faults:') === 0).forEach((t) => button(rec, t, ui));
+    if (f.confirmClear) {
+        rec.text('Löscht die Einträge der roten Steuergeräte (nicht die Headunit). Nur bei Motor aus und Zündung an.',
+            X0, 718, 28, C.dim, { font: 'label' });
     }
-    entries.slice(0, FAULT_ROWS).forEach((e, i) => {
+}
+
+/* One unit's entries. */
+function faultUnitPage(rec, ui, extra) {
+    const f = (extra && extra.faults) || {};
+    const u = (f.scan || []).find((x) => x.addr === (extra && extra.unit));
+    rec.text(u ? u.name : 'Steuergerät', X0, 120, 56, C.text, { font: 'label' });
+    rec.text(u ? `Adresse 0x${u.addr.toString(16).toUpperCase().padStart(2, '0')} · ${u.entries.length} ${u.entries.length === 1 ? 'Eintrag' : 'Einträge'}` : '',
+        X0, 166, 30, C.dim, { font: 'label' });
+    ((u && u.entries) || []).slice(0, FAULT_ROWS).forEach((e, i) => {
         const col = LOG_COLS[i < 4 ? 0 : 1];
         const y = 196 + (i % 4) * 112;
         rec.fillRect(col.x, y + 104, col.w, 2, C.line);
-        rec.text(e.unit, col.x + 8, y + 48, 36, C.text, { font: 'label' });
-        rec.text(`Code ${e.code}  ·  0x${e.ecu.toString(16).toUpperCase().padStart(2, '0')}`, col.x + 8, y + 88, 28, C.dim,
-            { font: 'scale' });
+        rec.text(`Code ${e.code}`, col.x + 8, y + 48, 36, C.text, { font: 'scale' });
+        rec.text(`Status 0x${e.status.toString(16).toUpperCase().padStart(2, '0')}`, col.x + 8, y + 88, 28, C.dim, { font: 'scale' });
         const color = STATE_COLOR[e.state] || C.dim;
         const w = rec.textWidth(e.state, 30, { font: 'label' }) + 40;
         rec.strokeRoundRect(col.x + col.w - w - 8, y + 26, w, 52, 26, 3, color);
         rec.text(e.state, col.x + col.w - w / 2 - 8, y + 62, 30, color, { font: 'label', align: 'center' });
     });
-    if (entries.length > FAULT_ROWS) {
-        rec.text(`+${entries.length - FAULT_ROWS} weitere`, X0, 700, 30, C.dim, { font: 'label' });
-    }
-    faultsTargets(extra).filter((t) => t.id.indexOf('faults:') === 0).forEach((t) => button(rec, t, ui));
-    if (f.confirmClear) {
-        rec.text('Löscht die Einträge der Steuergeräte oben (nicht die Headunit). Nur bei Motor aus und Zündung an.',
-            X0, 700, 28, C.dim, { font: 'label' });
-    }
+    faultUnitTargets().forEach((t) => button(rec, t, ui));
 }
 
 function logsPage(rec, ui, extra) {
@@ -575,6 +634,10 @@ function draw(rec, page, v, cfg, ui, extra) {
     }
     if (page === 'faults') {
         faultsPage(rec, ui, extra);
+        return rec;
+    }
+    if (page === 'faultunit') {
+        faultUnitPage(rec, ui, extra);
         return rec;
     }
     rpmBand(rec, v, cfg);

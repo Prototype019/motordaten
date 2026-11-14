@@ -234,6 +234,27 @@ class Tasu extends EventEmitter {
     }
 
     /**
+     * One unit's fault memory: 19 02 <mask> to that unit alone (any unit but
+     * all at once). Resolves with its reply or null. For a gateway that does
+     * not pass a request to all units on: the units asked one by one.
+     */
+    faultsOf(unit, mask, timeoutMs) {
+        if (!Number.isInteger(unit) || unit < 0x01 || unit > 0xFE || unit === ALL) {
+            return Promise.reject(new Error(`Steuergerät ${unit} nicht erlaubt`));
+        }
+        let bytes;
+        try {
+            bytes = checkRead(0x19, [FAULTS, mask]);
+        } catch (e) {
+            return Promise.reject(e);
+        }
+        const run = () => this._request(0x19, bytes, timeoutMs || 900, unit);
+        const p = this._chain.then(run, run);
+        this._chain = p.catch(() => undefined);
+        return p;
+    }
+
+    /**
      * Clears one unit's fault memory: 14 FF FF FF (all groups) to that unit
      * alone, never to all units at once and never to the head unit
      * (NO_CLEAR). The only request here that changes anything in the car;
