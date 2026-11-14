@@ -29,7 +29,8 @@ class Drawn extends EventEmitter {
     constructor(appId, log, gpu) {
         super();
         this.log = log;
-        this.gpu = gpu || new RenderClient(appId, log);
+        // kit: the client uploads the glyph atlases, ramps and layers a frame uses from it (no kit: no text)
+        this.gpu = gpu || new RenderClient(appId, log, { kit: require('./kit_record.js'), mode: 'layer' });
         this.rec = new Recorder(dash.W, dash.H);
         this.mode = undefined;      // undefined: no answer yet; null: no renderer
         this.values = {};

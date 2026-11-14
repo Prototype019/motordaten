@@ -73,6 +73,24 @@ function fakeGpu() {
     other.hostVisible(true);
     assert.strictEqual(other.isShown(), false);
 
+    // the real client gets the kit, so it uploads the glyph atlases text needs
+    const real = new Drawn('km_motordaten', log);
+    assert.ok(real.gpu.kit && typeof real.gpu.kit.atlasById === 'function', 'client has the kit');
+    const rec = new (require('../src/kit_record.js').Recorder)(100, 100);
+    rec.text('Öl 92', 0, 50, 30, '#fff', { font: 'label' });
+    rec.text('1,94', 0, 90, 40, '#fff', { font: 'num' });
+    assert.ok(rec.atlases.size >= 2, 'text records its atlases');
+    rec.atlases.forEach((id) => assert.ok(real.gpu.kit.atlasById(id), `atlas ${id} found by the client`));
+    // a frame sends the atlases its text uses before the FRAME message
+    const sent = [];
+    Object.assign(real.gpu, { ready: true, native: true, placement: { scale: 1 }, _write: (b) => { sent.push(b.readUInt32LE(0)); return true; } });
+    real.mode = 'layer';
+    real.hostVisible(true);
+    assert.ok(sent.indexOf(4) >= 0, 'ATLAS sent');
+    assert.ok(sent.indexOf(4) < sent.lastIndexOf(7), 'before the FRAME');
+    real.hostVisible(false);
+    real.close();
+
     [fresh, other].forEach((x) => clearInterval(x.keepalive));
     console.log(`test_drawn: ok, ${g.frames} frames`);
     process.exit(0);
