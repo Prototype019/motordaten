@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD-Emulator</title>
+<style>
+  :root { --bg: #0b0d10; --panel: #14181e; --line: #262c35; --text: #e8edf2; --dim: #8a96a3; --accent: #78c4ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; max-width: 1280px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 12px; color: var(--dim); letter-spacing: .02em; }
+  /* the view through the windscreen: a road at dusk */
+  .road { position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden;
+    background:
+      linear-gradient(180deg, #2a3442 0%, #3b4553 38%, #22272e 39%, #181b20 100%); }
+  .road::before { content: ""; position: absolute; left: 50%; top: 39%; width: 0; height: 61%;
+    border-left: 4px dashed #6c737c; transform: translateX(-50%) perspective(300px) rotateX(55deg); transform-origin: top; opacity: .6; }
+  .road::after { content: ""; position: absolute; inset: auto 0 0 0; height: 14%;
+    background: linear-gradient(180deg, transparent, #050607); }
+  /* the HUD: 353 x 203 at 2x, projected: black is nothing */
+  .hud { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: min(706px, 70%); }
+  .hud .app { position: relative; }
+  .hud img { display: block; width: 100%; aspect-ratio: 353 / 203; mix-blend-mode: screen; image-rendering: auto; }
+  .hud .area { position: absolute; inset: 0; border: 1px dashed rgba(255,255,255,.18); border-radius: 4px; pointer-events: none; }
+  .hud.noframe .area { display: none; }
+  .bar { display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 6px;
+    color: #d9e1e8; mix-blend-mode: screen; font-weight: 600; }
+  .bar .sign { width: 34px; height: 34px; border-radius: 50%; border: 4px solid #e2493b; display: grid; place-items: center;
+    font-size: 13px; background: #f4f4f4; color: #111; }
+  .bar .speed { font-size: 30px; font-variant-numeric: tabular-nums; }
+  .bar .unit { font-size: 14px; color: var(--dim); }
+  .note { color: var(--dim); font-size: 13px; margin-top: 10px; }
+  .phase { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; color: var(--dim); font-size: 13px; flex-wrap: wrap; }
+  .phase b { color: var(--text); font-weight: 600; }
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; align-self: start; }
+  .status { font-weight: 600; margin-bottom: 10px; min-height: 1.4em; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 6px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--dim); padding-right: 10px; width: 46%; }
+  .buttons { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+  button { font: inherit; color: var(--text); background: #1f2630; border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; cursor: pointer; }
+  button:hover { background: #283140; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h1>HUD-Emulator · echte App, nachgebauter Renderer</h1>
+    <div class="road">
+      <div class="hud" id="hud">
+        <div class="app">
+          <img id="img" src="/hud.png" alt="Was die App ins HUD zeichnet">
+          <div class="area" title="Der Bereich der App, 353 × 203"></div>
+        </div>
+        <div class="bar" title="Platzhalter für BMWs eigene Anzeige">
+          <span class="sign">130</span><span class="speed" id="speed">0</span><span class="unit">km/h</span>
+        </div>
+      </div>
+    </div>
+    <div class="phase"><span>Fahrt: <b id="phase">–</b></span><span>Öl laut simulierter DME: <b id="oil">–</b></span><span id="t"></span></div>
+    <p class="note">Gestrichelt: der Bereich der App (353 × 203). Tempo und Schild darunter sind ein Platzhalter, nicht BMWs echtes Layout. Schwarz ist im HUD unsichtbar.</p>
+  </section>
+  <aside>
+    <h1>iDrive-Bildschirm der App</h1>
+    <div class="status" id="status"></div>
+    <div class="buttons">
+      <button id="press" type="button">HUD an / aus</button>
+      <button id="frame" type="button">Rahmen aus</button>
+    </div>
+    <table id="rows"></table>
+  </aside>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let busy = false;
+  async function tick() {
+    if (busy) return;
+    busy = true;
+    try {
+      const s = await (await fetch('/state', { cache: 'no-store' })).json();
+      $('phase').textContent = s.phase;
+      $('oil').textContent = s.oil + ' °C';
+      $('t').textContent = 't = ' + s.t + ' s';
+      $('speed').textContent = s.speed;
+      $('status').textContent = s.status;
+      $('rows').innerHTML = '';
+      for (const r of s.rows) {
+        const tr = document.createElement('tr');
+        for (const c of r) { const td = document.createElement('td'); td.textContent = c == null ? '' : c; tr.appendChild(td); }
+        $('rows').appendChild(tr);
+      }
+      const img = new Image();
+      img.onload = () => { $('img').src = img.src; };
+      img.src = '/hud.png?' + Date.now();
+    } catch (e) {
+      $('status').textContent = 'Emulator nicht erreichbar';
+    } finally {
+      busy = false;
+    }
+  }
+  $('press').onclick = () => fetch('/press').then(tick);
+  $('frame').onclick = () => {
+    const on = $('hud').classList.toggle('noframe');
+    $('frame').textContent = on ? 'Rahmen an' : 'Rahmen aus';
+  };
+  setInterval(tick, 300);
+  tick();
+</script>
+</body>
+</html>

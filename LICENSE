@@ -39,6 +39,10 @@ AUSNAHMEN / EXCEPTIONS (eigene Lizenzen der Urheber gelten / their own licences 
   (idrive7-apps), with parts by IterioDev (mgu-renderd), as distributed in
   robertnisipeanu/mgu-store. Licence text: shared/LICENSE-kit.txt.
 
+  apps/km_hudtest/src/cluster_render_client.js: MPL-2.0, Copyright (C) 2026 Robert
+  Nisipeanu (robertnisipeanu/idrive-apps, native/cluster-render), unchanged.
+  Licence text: apps/km_hudtest/MPL-2.0.txt.
+
   The fonts Barlow and Barlow Semi Condensed (tools/fonts/src) and the glyph
   atlases baked from them (shared/font_*.js and their copies): Copyright 2017
   The Barlow Project Authors, SIL Open Font License 1.1: shared/OFL-Barlow.txt.

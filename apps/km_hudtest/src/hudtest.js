@@ -1,0 +1,160 @@
+'use strict';
+/**
+ * HUD-Test: the oil temperature on the head-up display of the G87 (iDrive 8),
+ * through cluster-render (src/hud_link.js).
+ *
+ * Read-only, as Motordaten: one 22 request to the DME every POLL_MS for the oil
+ * temperature (5822, src/decode.js, docs/g87-s58.md), as tester 0xF4 through the
+ * head unit's gateway (src/tasu.js). Nothing is written to any unit.
+ *
+ * Reads while the HUD is on, in front or not (the point of a HUD); the button
+ * turns the HUD off (BMW's own content comes back) and on. The list shows what
+ * the renderer says: connection, iDrive generation, the layer's and the HUD's
+ * state, and anything it refused.
+ *
+ * Copyright (c) 2026 Prototype019. All rights reserved (LICENSE).
+ */
+const { ListApp, logger } = require('./screen.js');
+const { Tasu } = require('./tasu.js');
+const D = require('./decode.js');
+const { HudLink } = require('./hud_link.js');
+
+const ROOT = 'ST_OnlineApps_HudTest';
+const POLL_MS = 1000;
+const TIMEOUT_MS = 1500;
+const REOPEN_MS = 5000;
+/* [key, DID]: the oil temperature. */
+const ASK = [['oil', 0x5822]];
+
+const isNum = (v) => typeof v === 'number' && isFinite(v);
+const fmt = (v, u, d) => (isNum(v) ? `${v.toFixed(d).replace('.', ',')} ${u}` : '–');
+
+class HudTest extends ListApp {
+    constructor() {
+        super({ root: ROOT, prefix: 'ht' });
+        this._tasu = new Tasu(logger);
+        this._hud = new HudLink();
+        this._v = {};
+        this._gateway = 'wait';         // wait | open | failed
+        this._gatewayError = '';
+        this._lastOpen = 0;
+        this._answers = 0;
+        this._started = false;
+        this._stopped = false;
+        this._poll = null;
+        this._hud.on('change', () => this._render());
+        this._timer = setInterval(() => this._render(), 1000);
+    }
+
+    /* Once at start: the HUD on. Then the button: off / on. */
+    run() {
+        if (!this._started) {
+            this._started = true;
+            this._hud.start();
+            this._loop();
+        } else {
+            this._hud.on(!this._hud.isOn());
+            // off: what was read goes, so switching on never shows an old value
+            if (!this._hud.isOn()) {
+                this._v = {};
+                this._send();
+            }
+            if (this._hud.isOn() && !this._poll) {
+                this._loop();
+            }
+        }
+        this._render();
+    }
+
+    stop() {
+        this._stopped = true;
+        clearInterval(this._timer);
+        clearTimeout(this._poll);
+        this._poll = null;
+        this._hud.stop();
+    }
+
+    /* One round, then the next POLL_MS after it started; stops while the HUD is off. */
+    _loop() {
+        if (this._stopped || !this._hud.isOn()) {
+            this._poll = null;
+            return;
+        }
+        const started = Date.now();
+        this._poll = -1;            // a round is running
+        this._ask().catch((e) => logger.warn(`round: ${e && e.message}`)).then(() => {
+            if (this._stopped) return;
+            this._poll = setTimeout(() => this._loop(), Math.max(0, POLL_MS - (Date.now() - started)));
+        });
+    }
+
+    _ask() {
+        if (this._gateway !== 'open') {
+            if (this._gateway === 'failed' && Date.now() - this._lastOpen < REOPEN_MS) {
+                return Promise.resolve();
+            }
+            this._lastOpen = Date.now();
+            // opened: read at once, not a round later
+            return this._tasu.open()
+                .then(() => { this._gateway = 'open'; this._gatewayError = ''; return this._read(); },
+                    (e) => { this._gateway = 'failed'; this._gatewayError = e.message; this._render(); });
+        }
+        return this._read();
+    }
+
+    _read() {
+        const dids = ASK.map((kv) => D.didById(kv[1]));
+        const data = [].concat(...ASK.map((kv) => [kv[1] >> 8, kv[1] & 0xFF]));
+        return this._tasu.request(0x22, data, TIMEOUT_MS).then((u) => {
+            const got = D.didNumbers(dids, u) || {};
+            ASK.forEach((kv) => { this._v[kv[0]] = isNum(got[kv[1]]) ? got[kv[1]] : null; });
+            if (!u) {
+                this._gatewayError = 'keine Antwort';
+            } else if (u[0] === 0x7F) {
+                this._gatewayError = D.NRC[u[2]] || D.hex(u[2]);
+            } else if (Object.keys(got).length) {
+                this._gatewayError = '';
+                this._answers++;
+            }
+            this._send();
+        }, (e) => {
+            ASK.forEach((kv) => { this._v[kv[0]] = null; });
+            this._gatewayError = e.message;
+            this._send();
+        });
+    }
+
+    _send() {
+        this._hud.update({ oil: this._v.oil });
+        this._render();
+    }
+
+    _status() {
+        const h = this._hud;
+        if (!h.installed() && h.conn !== 'verbunden') {
+            return 'Cluster renderer fehlt: im Store installieren (Quelle robertnisipeanu/idrive-apps), dann Neustart';
+        }
+        if (h.conn !== 'verbunden') return `Renderer: ${h.conn}`;
+        if (h.backend && h.backend !== 'id8') return `Renderer läuft als ${h.backend}, erwartet id8`;
+        if (this._gateway === 'failed') return `Diagnose: ${this._gatewayError}`;
+        if (this._gatewayError) return `DME: ${this._gatewayError}`;
+        if (!h.isOn()) return 'HUD aus (Taste: an)';
+        return 'Läuft';
+    }
+
+    _render() {
+        this.show(this._status(), this._hud.rows().concat([
+            ['Öl', fmt(this._v.oil, '°C', 0)],
+            ['DME-Antworten', String(this._answers)]
+        ]));
+    }
+}
+
+process.on('uncaughtException', (e) => logger.error(`uncaught: ${e && e.stack}`));
+process.on('unhandledRejection', (e) => logger.warn(`unhandled rejection: ${e && e.message}`));
+
+const app = new HudTest();
+app.start().catch((err) => {
+    /* Stays resident so the manager can stop or restart it. */
+    logger.error(`hudtest failed to start: ${err && err.message}`);
+});
