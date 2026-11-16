@@ -13,7 +13,11 @@
  * -> reconnect, the layer made again and sent whole; only 22 requests for the
  * oil temperature, to the DME.
  *
+ * HT_CDS=1: with the car's signal (CDS) the oil comes from it and the DME is never asked;
+ * it is sent only on a change, so a quiet signal keeps its value; 255 (no value) -> the DME.
+ *
  *   node apps/km_hudtest/tools/test_app.js
+ *   HT_CDS=1 node apps/km_hudtest/tools/test_app.js
  */
 const assert = require('assert');
 const EventEmitter = require('events');
@@ -111,16 +115,79 @@ function tasuProxy() {
     };
 }
 
+/* ---- the car's signal (HT_CDS=1): CDS statusEngineTemperature, raw - 48 = °C ---- */
+const CDS = process.env.HT_CDS === '1';
+const cdsEvents = new EventEmitter();
+function cdsProxy() {
+    return {
+        init: () => Promise.resolve(),
+        waitUntilAvailable: () => Promise.resolve(),
+        statusEngineTemperature: { subscribe: (cb) => { cdsEvents.on('t', cb); return Promise.resolve(); } }
+    };
+}
+const cdsOil = (c) => cdsEvents.emit('t', { temperatureEngineOilDrive: c + 48, temperatureEngineDrive: 255 });
+
 const spec = require('../spec.js');
 const appJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package', 'rhmiData', 'application.json'), 'utf8'));
-const unit = require('../../../tools/fake_unit.js').install(spec, appJson,
-    { 'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasuProxy });
+const fakes = { 'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasuProxy };
+if (CDS) fakes['de.bmw.infotainment.vehicle.CDS'] = cdsProxy;
+const unit = require('../../../tools/fake_unit.js').install(spec, appJson, fakes);
 
 const row = (label) => (unit.rows('htList').find((r) => r[0] === label) || [])[1];
 const framesOf = (ref) => service.frames.filter((f) => f.ref === ref);
 
+/* With the signal: the oil from it, the DME never asked; the signal gone -> the DME, as without it. */
+function cdsRun() {
+    // sent once, as the car does when the value changes
+    setTimeout(() => cdsOil(29), 500);
+    return unit.wait(1500).then(() => {
+        assert.strictEqual(service.layers.length, 1);
+        assert.strictEqual(row('Öl'), '29 °C');
+        assert.strictEqual(row('Quelle'), 'Fahrzeugsignal');
+        assert.ok(/^verbunden, \d+ Werte$/.test(row('Fahrzeugsignal')), row('Fahrzeugsignal'));
+        assert.ok(/^Läuft/.test(unit.text('htStatus')), unit.text('htStatus'));
+        assert.strictEqual(asked, 0, 'the gateway left alone');
+        cdsOil(96);
+        return unit.wait(800);
+    }).then(() => {
+        assert.strictEqual(row('Öl'), '96 °C');
+        assert.ok(framesOf(service.layers[0].ref).length >= 2, 'drawn again');
+        // off and on: still only the signal
+        unit.press('htRun');
+        return unit.wait(600);
+    }).then(() => {
+        assert.strictEqual(row('HUD'), 'aus');
+        unit.press('htRun');
+        return unit.wait(1200);
+    }).then(() => {
+        assert.strictEqual(row('Öl'), '96 °C');
+        assert.strictEqual(asked, 0, 'still the gateway left alone');
+        // quiet for longer than the DME's round: the value stays, nothing asked
+        return unit.wait(3000);
+    }).then(() => {
+        assert.strictEqual(row('Öl'), '96 °C');
+        assert.strictEqual(asked, 0, 'a quiet signal keeps its value');
+        // the signal has no value (255): the DME
+        ANSWERS['58 22'] = '58 22 9C';
+        cdsEvents.emit('t', { temperatureEngineOilDrive: 255, temperatureEngineDrive: 255 });
+        return unit.wait(2500);
+    }).then(() => {
+        assert.ok(asked >= 1, 'the DME asked once the signal is gone');
+        assert.deepStrictEqual(Array.from(services), [0x22], 'read only');
+        assert.strictEqual(row('Quelle'), 'DME (Signal fehlt)');
+        assert.strictEqual(row('Öl'), '96 °C');
+    });
+}
+
 server.listen(SOCK, () => {
     require('../src/hudtest.js');
+    if (CDS) {
+        cdsRun().then(() => {
+            console.log(`test_app (signal): ok (${asked} DME requests after the signal stopped, ${service.frames.length} pictures)`);
+            process.exit(0);
+        }, (e) => { console.error(e); process.exit(1); });
+        return;
+    }
     unit.wait(1500).then(() => {
         // one layer, on the HUD, at its size
         assert.strictEqual(service.layers.length, 1, `layers: ${JSON.stringify(service.layers)}`);

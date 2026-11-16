@@ -29,6 +29,8 @@ module.exports = {
         ]
     }],
     proxies: {
+        // the oil temperature (statusEngineTemperature.temperatureEngineOilDrive); the DME only when it has none
+        'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineTemperature: 's' } },
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
             instances: 'SystemFunctionsInternalTasuInst1',
             methods: ['sendTasuRequest'],

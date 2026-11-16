@@ -6,7 +6,7 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 | App | Was sie tut |
 |---|---|
 | **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche über `mgu-render`. Live aus Motor und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10-mal pro Sekunde: Drehzahl, Ladedruck mit Soll, Leistung aus der gemessenen Luftmasse und Drehmoment, Öldruck, Öl-, Kühlmittel-, Ansaugluft-, Getriebeöl- und Abgastemperatur mit Temperaturbalken, Klopfregelung mit Zylinder, Bordnetz. Bereit-Anzeige für Volllast. Aufzeichnungen mit Diagrammen (auch Lambda, Raildruck, Klopfen je Zylinder) und USB-Export, Fehlerspeicher aller Steuergeräte mit Klartext, alle Grenzwerte einstellbar. |
-| **HUD-Test** (`km_hudtest`) | Test: die Öltemperatur schlicht im Head-up-Display (blau bis 70 °C, rot ab 130 °C), über den Cluster renderer von `robertnisipeanu/idrive-apps`. Nur lesend (`22 58 22` an die DME, einmal pro Sekunde). Die Liste zeigt, was der Renderer meldet. |
+| **HUD-Test** (`km_hudtest`) | Test: die Öltemperatur schlicht im Head-up-Display (blau bis 70 °C, rot ab 130 °C), über den Cluster renderer von `robertnisipeanu/idrive-apps`. Nur lesend: die Öltemperatur kommt aus dem Fahrzeugsignal (CDS), die Diagnose bleibt frei für Motordaten; nur wenn das Signal fehlt, fragt sie die DME (`22 58 22`, einmal pro Sekunde). Die Liste zeigt, was der Renderer meldet. |
 
 Jede App zeigt oben eine Statuszeile, worauf sie wartet oder was fehlschlug.
 
