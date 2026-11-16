@@ -35,7 +35,6 @@
   "license": "SEE LICENSE IN LICENSE",
   "mguLocalOnly": true,
   "mguHmi": [
-    "ID7",
     "ID8"
   ]
 }

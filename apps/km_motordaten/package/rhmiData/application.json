@@ -14,13 +14,6 @@
         "hmi": [
           "ID8"
         ]
-      },
-      {
-        "applicationFilePath": "./uiDescriptions/ID7/application.xml",
-        "uiDescriptionFilePath": "./uiDescriptions/ID7/uiDescription.json",
-        "hmi": [
-          "ID7"
-        ]
       }
     ],
     "stringBundleUuid": "a0ee1d78-27ba-4996-9355-df9bace162a4",
@@ -30,7 +23,6 @@
         "stringsPath": "./variantGroups/Common/texts",
         "resourcesPath": "./variantGroups/Common/images",
         "hmi": [
-          "ID7",
           "ID8"
         ],
         "brands": [
