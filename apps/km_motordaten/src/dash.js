@@ -66,18 +66,30 @@ function mainTargets(extra) {
     return [
         { id: 'record', x, y: 650, w: BW, h: BH, label: rec ? `Stopp ${time}` : 'Aufnehmen', live: !!rec },
         { id: 'reset', x: x + BW + 24, y: 650, w: BW, h: BH, label: 'Reset' }
-    ].concat(coolingTarget(extra));
+    ].concat(mhdTargets(extra));
 }
 
-/* MHD's Max Cooling, while switched on in the settings (extra.cooling): its button beside Klopfen. */
-function coolingTarget(extra) {
+/*
+ * MHD's buttons beside Klopfen, each while switched on in the settings: Max Cooling (extra.cooling) and the
+ * exhaust flap (extra.flap: { state AUTO / OPEN / CLOSED, paused: Zu handed to the DME at high engine speed }).
+ * One alone takes the whole width there, both share it with smaller words.
+ */
+const FLAP_WORD = { AUTO: 'Auto', OPEN: 'Auf', CLOSED: 'Zu' };
+function mhdTargets(extra) {
     const c = extra && extra.cooling;
-    if (!c) {
-        return [];
+    const f = extra && extra.flap;
+    const out = [];
+    if (c) {
+        const label = c.note ? c.note : c.busy ? 'Sende …' : c.confirm ? 'Wirklich an?' : c.state === 'ON' ? 'Max Cooling an' : 'Max Cooling';
+        out.push({ id: c.confirm ? 'cooling!' : 'cooling', label, danger: !!c.confirm, live: false, on: c.state === 'ON' });
     }
-    const label = c.note ? c.note : c.busy ? 'Sende …' : c.confirm ? 'Wirklich an?' : c.state === 'ON' ? 'Max Cooling an' : 'Max Cooling';
-    return [{ id: c.confirm ? 'cooling!' : 'cooling', x: COL.right.x + 216, y: 578, w: 392, h: 60, label,
-        danger: !!c.confirm, live: false, on: c.state === 'ON' }];
+    if (f) {
+        const label = f.note ? f.note : f.busy ? 'Sende …' : `Klappe: ${FLAP_WORD[f.state] || '?'}${f.paused ? ' (Auto)' : ''}`;
+        out.push({ id: 'flap', label, live: false, on: f.state !== 'AUTO' });
+    }
+    const gap = 16;
+    const w = out.length > 1 ? (392 - gap) / 2 : 392;
+    return out.map((t, i) => Object.assign(t, { x: COL.right.x + 216 + i * (w + gap), y: 578, w, h: 60, size: out.length > 1 ? 22 : 28 }));
 }
 
 /* The tabs, on every page: first in controller order. */
@@ -119,7 +131,7 @@ const BACK_SET = { id: 'settings:back', x: W - PAD - 300, y: 64, w: 300, h: 84, 
 const MENU = [
     { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann die Werte rot werden' },
     { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen' },
-    { id: 'menu:mhd', page: 'mhd', label: 'MHD-Tuning', text: 'Max Cooling direkt aus der App' }
+    { id: 'menu:mhd', page: 'mhd', label: 'MHD-Tuning', text: 'Max Cooling und Klappe aus der App' }
 ].map((m, i, all) => {
     const gap = 52;
     const w = Math.floor((W - PAD - X0 - gap * (all.length - 1)) / all.length);
@@ -158,9 +170,10 @@ function readyTargets() {
 }
 const READY_TARGETS = readyTargets();
 
-/* The MHD page: the switch for the Max Cooling button. */
+/* The MHD page: the switches for the Max Cooling button and the exhaust flap's button. */
 const MHD_SWITCH = { id: 'toggle:mhdCoolingOn', x: X0, y: SET_TOP + 30, w: 220, h: BTN, label: '' };
-const MHD_TARGETS = [MHD_SWITCH, BACK_SET];
+const MHD_FLAP_SWITCH = { id: 'toggle:mhdFlapOn', x: X0, y: SET_TOP + 30 + BTN + 30, w: 220, h: BTN, label: '' };
+const MHD_TARGETS = [MHD_SWITCH, MHD_FLAP_SWITCH, BACK_SET];
 
 /* ---- the logs pages ---- */
 
@@ -587,7 +600,7 @@ function health(rec, v, cfg, ui, extra) {
     const cyl = v.knockCyl && isNum(v.knock) && v.knock > 0 ? `  Zyl. ${v.knockCyl}` : '';
     rec.text(`Klopfen${cyl}`, x, 574, 28, knocking ? C.limit : C.dim, { font: 'label' });
     valueUnit(rec, isNum(v.knock) ? de(Math.max(0, v.knock), 1) : '–', '°', x, 626, 44, knocking ? C.limit : C.text, 26, 'left');
-    mainTargets(extra).forEach((t) => button(rec, t, ui, { size: 28 }));
+    mainTargets(extra).forEach((t) => button(rec, t, ui, { size: t.size || 28 }));
 }
 
 /* ---- the settings page ---- */
@@ -687,13 +700,17 @@ function mhdPage(rec, cfg, ui) {
     const on = !!cfg.mhdCoolingOn;
     toggleSwitch(rec, MHD_SWITCH, on, ui);
     rec.text('Max Cooling-Knopf auf der Live-Seite', MHD_SWITCH.x + MHD_SWITCH.w + 56, MHD_SWITCH.y + 64, 44, on ? C.text : C.dim, { font: 'label' });
+    const flap = !!cfg.mhdFlapOn;
+    toggleSwitch(rec, MHD_FLAP_SWITCH, flap, ui);
+    rec.text('Klappen-Knopf auf der Live-Seite (Auto / Auf / Zu)', MHD_FLAP_SWITCH.x + MHD_FLAP_SWITCH.w + 56, MHD_FLAP_SWITCH.y + 64, 44,
+        flap ? C.text : C.dim, { font: 'label' });
     const lines = [
-        'MHD lässt Wasserpumpe und Lüfter auf voller Leistung laufen, etwa vor oder nach schnellen Runden.',
-        'Einschalten nur bei laufendem Motor, Ausschalten jederzeit, beides mit einem Tippen.',
-        'Die App sendet dafür genau einen Befehl an die Motorsteuerung (2F 03 01 an, 2F 03 00 aus).',
-        'Ob es aktiv ist, meldet MHD nicht zurück: die App zeigt den zuletzt bestätigten Befehl.'
+        'Max Cooling: Wasserpumpe und Lüfter auf voller Leistung. An nur bei laufendem Motor (2F 03 01 / 2F 03 00).',
+        'Klappe: Auto lässt die Motorsteuerung entscheiden, Auf / Zu halten die Abgasklappe (2F 02 00 / 01 / 02).',
+        'Zu gibt über 4.000 U/min an die Motorsteuerung ab und schließt unter 3.500 U/min wieder.',
+        'MHD meldet den Zustand nicht zurück: die App zeigt den zuletzt bestätigten Befehl.'
     ];
-    lines.forEach((l, i) => rec.text(l, X0, MHD_SWITCH.y + 190 + i * 52, 30, C.dim, { font: 'label' }));
+    lines.forEach((l, i) => rec.text(l, X0, MHD_FLAP_SWITCH.y + 170 + i * 50, 30, C.dim, { font: 'label' }));
     button(rec, BACK_SET, ui);
 }
 

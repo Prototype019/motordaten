@@ -100,6 +100,15 @@ const ENGINE_STOPPED_RPM = 200;
 const ENGINE_RUNNING_RPM = 400;   // from here the engine counts as started
 const PEAK_AFTER_START_MS = 5000;
 const COOLING_MIN_RPM = 500;
+/* MHD's exhaust flap: Zu is handed to the DME (2F 02 00) above FLAP_OPEN_RPM and closed again under FLAP_CLOSE_RPM,
+ * so the flap is never held shut at full load (as Live Adjustments of cauliflowermossgrape/idrive7-apps does). */
+const FLAP_OPEN_RPM = 4000;
+const FLAP_CLOSE_RPM = 3500;
+/* Zu with no engine speed this long: handed to the DME (fail-safe); a command without an echo is tried again after FLAP_RETRY_MS. */
+const FLAP_NO_RPM_MS = 2000;
+const FLAP_RETRY_MS = 1000;
+const FLAP_CODE = { AUTO: 0x00, OPEN: 0x01, CLOSED: 0x02 };
+const FLAP_NEXT = { AUTO: 'OPEN', OPEN: 'CLOSED', CLOSED: 'AUTO' };
 /* The values the Maximalwerte page keeps the highest of (this drive and over all drives). */
 const MAX_KEYS = ['rpm', 'power', 'torque', 'boost', 'oilPress', 'oil', 'coolant', 'gearbox', 'intake', 'charge', 'exhaust', 'knock'];      // MHD Max Cooling goes on only with the engine running // the start's flare (oil pressure, engine speed) is no peak: peaks count from here
 const CYCLE_MS = 90;           // at least this long per round
@@ -205,6 +214,10 @@ class Motordaten extends ListApp {
         }
         if (this._drawn) {
             this._drawn.close();
+        }
+        // a flap held by the app goes back to the DME (best effort: the process may end first)
+        if (this._flap && this._flap.state !== 'AUTO' && this._tasu) {
+            this._tasu.exhaustFlap(FLAP_CODE.AUTO).catch(() => undefined);
         }
     }
 
@@ -340,10 +353,16 @@ class Motordaten extends ListApp {
             this._coolingPressed();
         } else if (id === 'cooling!') {
             this._sendCooling(true);
+        } else if (id === 'flap') {
+            this._flapPressed();
         } else if (id === 'settings:back') {
             d.setPage('settings');
         } else if (id.indexOf('toggle:') === 0) {
             this._setLimits(Limits.toggled(this._limits, id.slice(7)));
+            // the flap's button switched off while it holds the flap: back to the DME
+            if (!this._limits.mhdFlapOn && this._flap && this._flap.state !== 'AUTO') {
+                this._sendFlap('AUTO', false, true);
+            }
             this._coolingShown();
         } else if (id === 'defaults') {
             // the page's own settings back to the defaults
@@ -646,7 +665,9 @@ class Motordaten extends ListApp {
             return;
         }
         this._cooling = this._cooling || { state: null };
-        this._drawn.setExtra({ cooling: this._limits.mhdCoolingOn ? Object.assign({}, this._cooling) : null });
+        this._flap = this._flap || { state: 'AUTO', busy: false, paused: false };
+        this._drawn.setExtra({ cooling: this._limits.mhdCoolingOn ? Object.assign({}, this._cooling) : null,
+            flap: this._limits.mhdFlapOn ? Object.assign({}, this._flap) : null });
     }
 
     _coolingNote(note) {
@@ -701,6 +722,107 @@ class Motordaten extends ListApp {
             this._coolingNote('Nicht gesendet');
             logger.warn(`max cooling: ${e && e.message}`);
         });
+    }
+
+    /* ---- MHD's exhaust flap (only while switched on in the settings): 2F 02 00 auto / 01 open / 02 closed ---- */
+
+    _flapNote(note) {
+        clearTimeout(this._flapTimer);
+        this._flap = Object.assign({}, this._flap, { note });
+        this._coolingShown();
+        this._flapTimer = setTimeout(() => { this._flap = Object.assign({}, this._flap, { note: null }); this._coolingShown(); }, 3000);
+    }
+
+    /* A press: Auto -> Auf -> Zu -> Auto. Zu above FLAP_OPEN_RPM goes out as auto until the engine slows. */
+    _flapPressed() {
+        const f = this._flap || {};
+        if (!this._limits.mhdFlapOn || f.busy) {
+            return;
+        }
+        this._sendFlap(FLAP_NEXT[f.state] || 'AUTO', false, false);
+    }
+
+    /*
+     * want: AUTO / OPEN / CLOSED. guard: from _flapGuard (Zu paused or resumed, the state stays CLOSED).
+     * force: sent although the setting is off (handing the flap back when its button is switched off).
+     */
+    _sendFlap(want, guard, force) {
+        const f = this._flap || { state: 'AUTO' };
+        if ((!force && !this._limits.mhdFlapOn) || f.busy) {
+            return;
+        }
+        const rpm = this._v && this._v.rpm;
+        const paused = want === 'CLOSED' && (guard ? !!guard.pause : isNum(rpm) && rpm > FLAP_OPEN_RPM);
+        const code = paused ? FLAP_CODE.AUTO : FLAP_CODE[want];
+        clearTimeout(this._flapTimer);
+        this._flap = Object.assign({}, f, { busy: true, note: null });
+        this._coolingShown();
+        Diag.note(`Klappe ${want}${paused ? ' (über der Drehzahlgrenze: Auto)' : ''} gesendet`);
+        this._tasu.exhaustFlap(code).then((echoed) => {
+            Diag.note(`Klappe: ${echoed ? 'bestätigt' : 'keine Bestätigung'}`);
+            this._flap = echoed ? { state: want, busy: false, paused } : Object.assign({}, this._flap, { busy: false });
+            if (echoed) {
+                this._coolingShown();
+            } else {
+                this._flapNote('Kein MHD-Echo');
+            }
+            if (!echoed) {
+                this._flapRetryAt = Date.now() + FLAP_RETRY_MS;
+            }
+        }, (e) => {
+            this._flap = Object.assign({}, this._flap, { busy: false });
+            this._flapRetryAt = Date.now() + FLAP_RETRY_MS;
+            this._flapNote('Nicht gesendet');
+            logger.warn(`flap: ${e && e.message}`);
+        });
+    }
+
+    /*
+     * Every 100 ms: a flap held while its button is switched off goes back to the DME (also when the switch went
+     * off while a command was on its way); Zu is handed to the DME above FLAP_OPEN_RPM, and when the engine speed
+     * has been unknown for FLAP_NO_RPM_MS, and closed again under FLAP_CLOSE_RPM.
+     */
+    _flapGuard() {
+        const f = this._flap;
+        if (f && f.state === 'AUTO') {
+            this._flapBackTries = 0;
+            this._flapNoRpm = 0;
+        }
+        if (!f || f.state === 'AUTO' || f.busy || Date.now() < (this._flapRetryAt || 0)) {
+            return;
+        }
+        if (!this._limits.mhdFlapOn) {
+            // without an echo three times (a silent or untuned DME): given up, the DME has it anyway then
+            this._flapBackTries = (this._flapBackTries || 0) + 1;
+            if (this._flapBackTries > 3) {
+                Diag.note('Klappe: Rückgabe ohne Bestätigung aufgegeben');
+                this._flap = { state: 'AUTO', busy: false, paused: false };
+                this._flapBackTries = 0;
+                this._coolingShown();
+                return;
+            }
+            this._sendFlap('AUTO', false, true);
+            return;
+        }
+        this._flapBackTries = 0;
+        if (f.state !== 'CLOSED') {
+            this._flapNoRpm = 0;
+            return;
+        }
+        const rpm = this._v && this._v.rpm;
+        if (!isNum(rpm)) {
+            this._flapNoRpm = this._flapNoRpm || Date.now();
+            if (!f.paused && Date.now() - this._flapNoRpm > FLAP_NO_RPM_MS) {
+                Diag.note('Klappe: keine Drehzahl, Zu an die DME abgegeben');
+                this._sendFlap('CLOSED', { pause: true }, true);
+            }
+            return;
+        }
+        this._flapNoRpm = 0;
+        const pause = rpm > FLAP_OPEN_RPM ? true : rpm < FLAP_CLOSE_RPM ? false : f.paused;
+        if (pause !== f.paused) {
+            this._sendFlap('CLOSED', { pause }, true);
+        }
     }
 
     _setLimits(limits) {
@@ -806,9 +928,10 @@ class Motordaten extends ListApp {
         this._polling = true;
         // the screen and the recording go on at their own pace, whatever a round waits for
         clearInterval(this._ticker);
-        this._ticker = setInterval(() => { this._render(); this._sample(); }, 100);
+        this._ticker = setInterval(() => { this._render(); this._sample(); this._flapGuard(); }, 100);
         const next = () => {
-            if (this._stopped || !(this.isVisible() || this._recording)) {
+            // a flap held shut keeps the rounds going: its engine speed limit needs the engine speed
+            if (this._stopped || !(this.isVisible() || this._recording || (this._flap && this._flap.state === 'CLOSED'))) {
                 this._polling = false;
                 clearInterval(this._ticker);
                 return;

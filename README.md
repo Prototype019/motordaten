@@ -32,8 +32,10 @@ Vorschau: `docs/design/preview/hudtest_hud_*.png` (`node apps/km_hudtest/tools/p
 Motordaten liest über das Diagnose-Gateway der Headunit, als Tester 0xF4:
 `22 <ID>` (ReadDataByIdentifier, bis zu 8 Kennungen), OBD-II `01` / `09` mit einer PID und den
 Fehlerspeicher `19 02` (auch an alle Steuergeräte gleichzeitig); Einzelanfragen nur an DME und Getriebe.
-Änderungen im Auto gibt es zwei: MHD Max Cooling (`2F 03 01` / `2F 03 00` an die DME, nur wenn in den Einstellungen
-eingeschaltet, an nur bei laufendem Motor) und Fehler löschen (`14 FF FF FF`): nur auf Wunsch mit Rückfrage, nur bei Motor aus
+Änderungen im Auto gibt es drei: MHD Max Cooling (`2F 03 01` / `2F 03 00` an die DME, nur wenn in den Einstellungen
+eingeschaltet, an nur bei laufendem Motor), die MHD-Abgasklappe (`2F 02 00` Auto / `01` Auf / `02` Zu an die DME, nur wenn
+in den Einstellungen eingeschaltet, anfangs aus; „Zu“ gibt über 4.000 U/min an die DME ab und schließt unter 3.500 U/min
+wieder) und Fehler löschen (`14 FF FF FF`): nur auf Wunsch mit Rückfrage, nur bei Motor aus
 und Zündung an, je Steuergerät einzeln, nie die Headunit.
 Alles andere lehnt `shared/tasu.js` ab, bevor es das Gateway erreicht: keine
 Sitzungswechsel, kein Löschen, kein Schreiben, keine Routinen. Eine Anfrage
