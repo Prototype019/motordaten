@@ -34,6 +34,13 @@ assert.strictEqual(S.chosen(s, 'pos', 'up'), s, 'an unknown word changes nothing
 assert.strictEqual(S.stepped(s, 'coolantReadyOn', 1), s, 'a switch has no steps');
 assert.ok(S.save(s));
 assert.deepStrictEqual(S.load(), s, 'kept and read back');
+// as on the car (Node 8): mkdir of a folder that is there throws, whatever the options; saved twice, the second wins
+const realMkdir = fs.mkdirSync;
+fs.mkdirSync = (dir) => { if (fs.existsSync(dir)) { const e = new Error('EEXIST'); e.code = 'EEXIST'; throw e; } return realMkdir(dir); };
+assert.ok(S.save(S.chosen(s, 'size', 'large')), 'saved with the folder there');
+assert.strictEqual(S.load().size, 'large', 'and read back');
+fs.mkdirSync = realMkdir;
+assert.ok(!fs.readdirSync(path.dirname(S.file())).some((n) => /\.tmp$/.test(n)), 'no temp file left');
 fs.writeFileSync(S.file(), '{ not json');
 assert.deepStrictEqual(S.load(), def, 'a broken file: the defaults');
 

@@ -8,9 +8,9 @@
  * Nothing here talks to the car's units: it only draws what update() gets, with the
  * app's own src/hud_draw.js (HUD, key(values): what is shown, drawHud(values, canvas)).
  * Shared by the apps (shared/hud_link.js, copied by tools/gen.js).
- * Drawn at most every DRAW_MS, and only when what is shown changes. on(false)
+ * Drawn at most every DRAW_MS, and only when what is shown changes. show(false)
  * hides the layer, so the renderer releases the HUD and BMW's own content is
- * back; on(true) shows it again.
+ * back; show(true) shows it again. update(values, now): what to draw; now: at once (before showing).
  *
  * Events: 'change' whenever anything rows() shows changed.
  *
@@ -65,14 +65,18 @@ class HudLink extends EventEmitter {
         this._watch = null;
     }
 
-    /* Whether the service's socket is there (cluster-render installed and its socket up). */
+    /* Whether the service's socket is there (cluster-render installed and its socket up); looked at once a second. */
     installed() {
+        const now = Date.now();
+        if (this._installedAt && now - this._installedAt < 1000) return this._installed;
+        this._installedAt = now;
         try {
             fs.statSync(this._path);
-            return true;
+            this._installed = true;
         } catch (e) {
-            return false;
+            this._installed = false;
         }
+        return this._installed;
     }
 
     start() {
@@ -172,8 +176,8 @@ class HudLink extends EventEmitter {
         this.emit('change');
     }
 
-    /* The HUD shown (true) or hidden (false). */
-    on(show) {
+    /* The HUD shown (true) or hidden (false). (Not on(): that is EventEmitter's, for 'change'.) */
+    show(show) {
         this._on = !!show;
         if (this._cr) this._cr.set(this.ref, { visible: this._on ? 1 : 0 });
         this.emit('change');
@@ -184,9 +188,9 @@ class HudLink extends EventEmitter {
     }
 
     /* New values: { oil }. */
-    update(v) {
-        Object.assign(this._values, v);
-        this._draw(false);
+    update(v, now) {
+        this._values = Object.assign({}, v);
+        this._draw(!!now);
     }
 
     /* Drawn again when what shows changed, at most every DRAW_MS. */

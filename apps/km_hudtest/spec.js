@@ -1,7 +1,7 @@
 'use strict';
 /* HUD: package and screen description (tools/gen.js). */
-/* Proxy buttons of the drawn screens' host state (src/dash.js targets: the most on a page, the ready page, 13). */
-const PROXIES = 24;          // the most targets on a page: Werte, 5 tabs + 8 cards + 1
+/* Proxy buttons of the drawn screens' host state (src/dash.js targets: the most on a page, Bereit: 5 tabs + 13). */
+const PROXIES = 24;
 
 module.exports = {
     PROXIES,

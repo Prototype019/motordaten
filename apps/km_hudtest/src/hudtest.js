@@ -71,6 +71,7 @@ class HudApp extends ListApp {
         this._stopped = false;
         this._poll = null;
         this._drawn = null;
+        this._lastMode = null;           // the mode before Aus (the list button brings it back)
         this._layerState = null;
         this._proxies = [];
         this._hud.on('change', () => this._render());
@@ -82,13 +83,16 @@ class HudApp extends ListApp {
         if (!this._started) {
             this._started = true;
             this._startedAt = Date.now();
-            this._hud.on(false);
+            this._hud.show(false);
             this._hud.start();
             this._subscribe();
             this._loop();
             this._startDrawn();
         } else {
-            this._choose('mode', this._settings.mode === 'off' ? S.defaults().mode : 'off');
+            // Aus, and back to what it was before
+            const mode = this._settings.mode;
+            if (mode !== 'off') this._lastMode = mode;
+            this._choose('mode', mode === 'off' ? (this._lastMode || S.defaults().mode) : 'off');
         }
         this._tick();
     }
@@ -182,7 +186,15 @@ class HudApp extends ListApp {
         if (id.indexOf('tab:') === 0) {
             if (d) d.setPage(id.slice(4));
         } else if (id.indexOf('cell:') === 0) {
+            // the controller's focus stays on the place it was pressed at (its proxy button), not on the card
+            // that moved away from it
+            const before = d ? require('./dash.js').targets(d.page, d.extra).findIndex((t) => t.id === id) : -1;
             this._set(S.tapped(this._settings, id.slice(5)));
+            if (d && before >= 0 && d.ui.focus === id) {
+                const t = require('./dash.js').targets(d.page, d.extra)[before];
+                d.ui.focus = t ? t.id : null;
+                d.invalidate();
+            }
         } else if (id.indexOf('choose:') === 0) {
             const parts = id.split(':');
             this._choose(parts[1], parts[2]);
@@ -191,8 +203,8 @@ class HudApp extends ListApp {
         } else if (/^(dec|inc):/.test(id)) {
             this._set(S.stepped(this._settings, id.slice(4), id.indexOf('inc:') === 0 ? 1 : -1));
         } else if (id === 'defaults') {
-            // the page's numbers and switches back; what, where and how large stay
-            const keep = {};
+            // the page's numbers and switches back; what, where, how large and the chosen values stay
+            const keep = { order: this._settings.order, count: this._settings.count };
             Object.keys(S.CHOICES).forEach((k) => { keep[k] = this._settings[k]; });
             this._set(Object.assign(S.defaults(), keep));
         } else if (id === 'test') {
@@ -242,10 +254,12 @@ class HudApp extends ListApp {
         }
         this._view = view;
         if (view) {
-            this._hud.update(Object.assign({}, view, { pos: this._settings.pos, size: this._settings.size }));
-            if (!this._hud.isOn()) this._hud.on(true);
+            // coming on: drawn at once, so the HUD never shows what it had before
+            const on = this._hud.isOn();
+            this._hud.update(Object.assign({}, view, { pos: this._settings.pos, size: this._settings.size }), !on);
+            if (!on) this._hud.show(true);
         } else if (this._hud.isOn()) {
-            this._hud.on(false);
+            this._hud.show(false);
         }
         this._render();
     }
@@ -308,7 +322,8 @@ class HudApp extends ListApp {
         const s = this._settings;
         if (s.mode === 'off') return [];
         const out = s.mode === 'values' ? S.shown(s).filter((k) => V.byKey(k).src !== 'cds') : [];
-        if (!this._cdsFresh() && (s.mode === 'warm' || S.shown(s).indexOf('oil') >= 0)) out.unshift('oil');
+        // the oil when the signal has none: warming up, shown, or for the hot warning in Werte
+        if (!this._cdsFresh()) out.unshift('oil');
         return out;
     }
 

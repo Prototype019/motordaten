@@ -81,10 +81,17 @@ function load() {
     }
 }
 
+/* Saves whole or not at all (a temp file renamed over it); false when it could not. */
 function save(s) {
     try {
-        fs.mkdirSync(dataDir(), { recursive: true });
-        fs.writeFileSync(file(), JSON.stringify(clean(s)));
+        fs.mkdirSync(dataDir());           // one level (Node 8 on the car has no recursive mkdir)
+    } catch (e) {
+        /* there */
+    }
+    try {
+        const tmp = `${file()}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(clean(s)));
+        fs.renameSync(tmp, file());
         return true;
     } catch (e) {
         return false;

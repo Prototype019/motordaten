@@ -203,10 +203,34 @@ function cdsRun() {
         const before = asked;
         return unit.wait(2500).then(() => assert.strictEqual(asked, before, 'nothing through the gateway any more'));
     }).then(() => {
-        app._action('choose:mode:off');
+        // Standard on Bereit keeps the chosen values
+        app._action('cell:coolant');
+        app._action('inc:oilReady');
+        app._action('defaults');
+        assert.strictEqual(app._settings.oilReady, 80, 'numbers back');
+        assert.deepStrictEqual(require('../src/settings.js').shown(app._settings), ['oil', 'rpm', 'coolant'], 'the values kept');
+        // the controller on Werte: pressed, a card moves, the focus stays on the place
+        const dash = require('../src/dash.js');
+        const fake = { page: 'values', ui: { focus: null }, extra: {}, invalidate() {}, setLimits() {}, set() {},
+            setExtra(e) { this.extra = Object.assign({}, this.extra, e); } };
+        app._drawn = fake;
+        app._extra();
+        const at = dash.targets('values', fake.extra).findIndex((t) => t.id === 'cell:voltage');
+        fake.ui.focus = 'cell:voltage';
+        app._action('cell:voltage');
+        assert.notStrictEqual(dash.targets('values', fake.extra)[at].id, 'cell:voltage', 'the card moved');
+        assert.strictEqual(fake.ui.focus, dash.targets('values', fake.extra)[at].id, 'the focus stayed on its place');
+        app._drawn = null;
+        // the list button: Aus, then back to Werte (not to Warmfahren)
+        unit.press('htRun');
         return unit.wait(800);
     }).then(() => {
+        assert.strictEqual(row('Anzeige'), 'Aus');
         assert.strictEqual(row('HUD'), 'aus', 'Aus: hidden');
+        unit.press('htRun');
+        return unit.wait(800);
+    }).then(() => {
+        assert.strictEqual(row('Anzeige'), 'Werte', 'back to what it was');
     });
 }
 

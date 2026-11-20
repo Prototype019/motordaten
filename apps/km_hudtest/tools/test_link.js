@@ -85,9 +85,13 @@ function service(name, onMsg) {
         if (m.op === 'hello') send(sock, { ev: 'hello', proto: 1, backend: 'id8', targets: 'hud:353x203' });
     });
     h = new HudLink({ socketPath: ok.p });
+    let changes = 0;
+    h.on('change', () => changes++);
+    assert.strictEqual(h.isOn(), true, 'on(\'change\') is a listener, not show()');
     h.start();
     await wait(400);
     assert.strictEqual(h.conn, 'verbunden');
+    assert.ok(changes >= 1, 'change emitted');
     assert.strictEqual(h.why(), '');
     h.update({ oil: 90 });
     await wait(400);
