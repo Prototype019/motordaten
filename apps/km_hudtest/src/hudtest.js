@@ -90,9 +90,7 @@ class HudApp extends ListApp {
             this._startDrawn();
         } else {
             // Aus, and back to what it was before
-            const mode = this._settings.mode;
-            if (mode !== 'off') this._lastMode = mode;
-            this._choose('mode', mode === 'off' ? (this._lastMode || S.defaults().mode) : 'off');
+            this._choose('mode', this._settings.mode === 'off' ? (this._lastMode || S.defaults().mode) : 'off');
         }
         this._tick();
     }
@@ -218,6 +216,8 @@ class HudApp extends ListApp {
     }
 
     _choose(key, word) {
+        // the mode before Aus, however Aus was chosen
+        if (key === 'mode' && word === 'off' && this._settings.mode !== 'off') this._lastMode = this._settings.mode;
         this._set(S.chosen(this._settings, key, word));
     }
 
