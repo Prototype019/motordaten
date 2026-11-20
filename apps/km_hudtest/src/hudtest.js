@@ -189,7 +189,7 @@ class HudTest extends ListApp {
     _status() {
         const h = this._hud;
         if (!h.installed() && h.conn !== 'verbunden') {
-            return 'Cluster renderer fehlt: im Store installieren (Quelle robertnisipeanu/idrive-apps), dann Neustart';
+            return 'Cluster renderer fehlt: HUD-Test im Store neu installieren (bringt ihn mit), dann Neustart';
         }
         if (h.conn !== 'verbunden') return h.why() || `Renderer: ${h.conn}`;
         if (h.backend && h.backend !== 'id8') return `Renderer läuft als ${h.backend}, erwartet id8`;
@@ -202,7 +202,9 @@ class HudTest extends ListApp {
     }
 
     _render() {
-        this.show(this._status(), this._hud.rows().concat([
+        // the status first in the list too: iDrive 8 does not show the page's status line
+        const status = this._status();
+        this.show(status, [['Stand', status]].concat(this._hud.rows()).concat([
             ['Öl', fmt(this._v.oil, '°C', 0)],
             ['Quelle', this._cdsFresh() ? 'Fahrzeugsignal' : (this._gateway === 'wait' ? '–' : 'DME (Signal fehlt)')],
             ['Fahrzeugsignal', `${this._cds}, ${this._cdsCount} Werte`],

@@ -1,6 +1,6 @@
 {
   "name": "km_hudtest",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "HUD-Test: Öltemperatur im Head-up-Display (Test)",
   "private": false,
   "main": "javascript/runner.js",
