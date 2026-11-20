@@ -6,7 +6,7 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 | App | Was sie tut |
 |---|---|
 | **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche über `mgu-render`. Live aus Motor und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10-mal pro Sekunde: Drehzahl, Ladedruck mit Soll, Leistung aus der gemessenen Luftmasse und Drehmoment, Öldruck, Öl-, Kühlmittel-, Ansaugluft-, Getriebeöl- und Abgastemperatur mit Temperaturbalken, Klopfregelung mit Zylinder, Bordnetz. Bereit-Anzeige für Volllast. Aufzeichnungen mit Diagrammen (auch Lambda, Raildruck, Klopfen je Zylinder) und USB-Export, Fehlerspeicher aller Steuergeräte mit Klartext, alle Grenzwerte einstellbar. |
-| **HUD-Test** (`km_hudtest`) | Test: die Öltemperatur schlicht im Head-up-Display (blau bis 70 °C, rot ab 130 °C), über den Cluster renderer von `robertnisipeanu/idrive-apps`. Nur lesend: die Öltemperatur kommt aus dem Fahrzeugsignal (CDS), die Diagnose bleibt frei für Motordaten; nur wenn das Signal fehlt, fragt sie die DME (`22 58 22`, einmal pro Sekunde). Die Liste zeigt, was der Renderer meldet. |
+| **HUD** (`km_hudtest`) | Warmfahren und Werte im Head-up-Display, über den Cluster renderer von `robertnisipeanu/idrive-apps` (der Store installiert ihn mit). Warmfahren: Öl bzw. Kühlmittel in Blau, bis alles bereit ist, dann kurz „Bereit“ und das HUD ist wieder frei; Öl zu heiß in Rot. Werte: bis zu drei frei gewählte Werte nebeneinander (Öl, Kühlmittel, Drehzahl, Ladedruck, Öldruck, Ansaugluft, Getriebeöl, Bordnetz), Reihenfolge per Ziehen. Position und Größe einstellbar, „Im HUD testen“. Eigene Oberfläche im Motordaten-Look (Live, Werte, Anzeige, Bereit, Status). Nur lesend: Öl, Kühlmittel und Drehzahl aus dem Fahrzeugsignal (CDS); die übrigen über die Diagnose, nur solange sie im HUD stehen, einmal pro Sekunde. |
 
 Jede App zeigt oben eine Statuszeile, worauf sie wartet oder was fehlschlug.
 
@@ -18,14 +18,16 @@ Im Store: **Settings → Add source** → `Prototype019/motordaten`, Kanal
 (auf iDrive 8 wird eine Installation erst nach dem Neustart aktiv).
 Mit Zündung an öffnen.
 
-### HUD-Test
+### HUD
 
-1. Im Store den **Cluster renderer** installieren (Quelle `robertnisipeanu/idrive-apps`, im Store schon eingetragen).
-2. **HUD-Test** installieren, Headunit neu starten, App öffnen.
-3. Die Öltemperatur erscheint im HUD über der Tempoleiste.
-4. Die Taste schaltet sie aus (BMWs eigene Anzeige kommt zurück) und wieder an.
+1. Im Store **HUD** installieren (bringt den **Cluster renderer** von `robertnisipeanu/idrive-apps` mit), Headunit neu starten, App öffnen.
+2. **Live**: was gerade im HUD steht, Öl und Kühlmittel, Anzeige Warmfahren / Werte / Aus, „Im HUD testen“ (zeigt jede Ansicht ein paar Sekunden).
+3. **Werte**: halten und ziehen ändert die Reihenfolge und was im HUD steht, tippen nimmt einen Wert hinein oder heraus (bis zu drei).
+4. **Anzeige**: was, wo (links / Mitte / rechts) und wie groß. **Bereit**: welche Temperaturen fürs Warmfahren zählen, ab wann Öl, Kühlmittel und Drehzahl rot werden.
 
-Vorschau: `docs/design/preview/hudtest_hud_*.png` (`node apps/km_hudtest/tools/preview.js`).
+Werte über die Diagnose (Ladedruck, Öldruck, Ansaugluft, Getriebeöl, Bordnetz) fragt die App beim Motor bzw. Getriebe an, solange sie im HUD stehen. Läuft gleichzeitig Motordaten, teilen sich beide die Diagnose-Leitung; wer keine Aussetzer in Motordaten will, nimmt im HUD nur Werte aus dem Fahrzeugsignal.
+
+Vorschau: `docs/design/preview/hud_look_*.png` und `hud_screen_*.png` (`node apps/km_hudtest/tools/preview.js`).
 
 ## Lesen und Löschen
 
@@ -48,7 +50,7 @@ node tools/gen.js                              # alle apps/*/package/ aus apps/*
 node tools/make_icon.js <id> [r,g,b]           # Kachel-Icon
 (cd apps/<id> && node tools/test_app.js)       # App auf einer simulierten Headunit
 node apps/km_motordaten/tools/emulator.js --live   # die echte App im Browser, mit simulierter Fahrt
-node apps/km_hudtest/tools/emulator.js             # HUD-Test im Browser (http://localhost:8788), Öl wird warm gefahren
+node apps/km_hudtest/tools/emulator.js             # HUD-App im Browser (http://localhost:8788): HUD, App zum Klicken und Ziehen, eine Fahrt im Kreis
 ```
 
 `shared/` (Listen-Bildschirm, Diagnose-Link, Werte-Tabellen) kopiert `tools/gen.js` in die Apps.
