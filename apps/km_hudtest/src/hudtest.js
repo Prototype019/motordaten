@@ -191,7 +191,7 @@ class HudTest extends ListApp {
         if (!h.installed() && h.conn !== 'verbunden') {
             return 'Cluster renderer fehlt: im Store installieren (Quelle robertnisipeanu/idrive-apps), dann Neustart';
         }
-        if (h.conn !== 'verbunden') return `Renderer: ${h.conn}`;
+        if (h.conn !== 'verbunden') return h.why() || `Renderer: ${h.conn}`;
         if (h.backend && h.backend !== 'id8') return `Renderer läuft als ${h.backend}, erwartet id8`;
         if (!this._cdsFresh()) {
             if (this._gateway === 'failed') return `Diagnose: ${this._gatewayError}`;

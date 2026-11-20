@@ -20,6 +20,8 @@ const { ClusterRender, DEFAULT_PATH } = require('./cluster_render_client.js');
 const draw = require('./hud_draw.js');
 
 const DRAW_MS = 250;
+/* Open without a hello this long: the service is asked for its status. */
+const ASK_MS = 3000;
 /* Layer states (PROTOCOL.md "layer") in German, for the list. */
 const LAYER_DE = { shown: 'angezeigt', waiting: 'wartet auf den Platz', suspended: 'verdeckt', stalled: 'hängt',
     hidden: 'ausgeblendet', error: 'Fehler' };
@@ -52,6 +54,13 @@ class HudLink extends EventEmitter {
         this.target = '';
         this.refused = '';
         this.frames = 0;
+        /* Why no hello came (the client itself keeps this to itself): the socket's last
+         * error, since when the socket has been open without one, the service's status text. */
+        this.sockError = '';
+        this.openSince = 0;
+        this.serviceSays = '';
+        this._askedAt = 0;
+        this._watch = null;
     }
 
     /* Whether the service's socket is there (cluster-render installed and its socket up). */
@@ -73,6 +82,8 @@ class HudLink extends EventEmitter {
             iw: draw.HUD.w, ih: draw.HUD.h, fps: 5, visible: this._on ? 1 : 0 });
         cr.on('ready', () => {
             this.conn = 'verbunden';
+            this.sockError = '';
+            this.serviceSays = '';
             this.backend = cr.backend || null;
             this.targets = cr.targets || null;
             // after every (re)connect the client sends the image whole again; draw now anyway
@@ -94,6 +105,23 @@ class HudLink extends EventEmitter {
             this.target = [TARGET_DE[state] || state, holder ? `hält: ${holder}` : '', reason || ''].filter(Boolean).join(', ');
             this.emit('change');
         });
+        cr.on('status', (text) => {
+            this.serviceSays = String(text || '').split('\n')[0].slice(0, 160);
+            this.emit('change');
+        });
+        /* Each socket the client opens: its error, and whether it is open (the client
+         * keeps both to itself). Its file stays as it is (MPL-2.0, unchanged). */
+        const open = cr._open.bind(cr);
+        cr._open = () => {
+            open();
+            const s = cr.sock;
+            if (!s || s._kmWatched) return;
+            s._kmWatched = true;
+            s.on('connect', () => { this.sockError = ''; this.openSince = Date.now(); this.emit('change'); });
+            s.on('error', (e) => { this.sockError = (e && (e.code || e.message)) || 'Fehler'; });
+            s.on('close', () => { this.openSince = 0; });
+        };
+        this._watch = setInterval(() => this._ask(), 1000);
         cr.on('refused', (op, ref, reason) => {
             this.refused = `${op}${ref ? ` ${ref === this.ref ? 'HUD' : ref}` : ''}: ${reason}`;
             this.emit('change');
@@ -102,7 +130,36 @@ class HudLink extends EventEmitter {
         this._draw(true);
     }
 
+    /* Open but no hello after ASK_MS: the service is asked for its status (a refusing
+     * service answers only that: "not supported on this car ..."), every ASK_MS again. */
+    _ask() {
+        const cr = this._cr;
+        if (!cr || cr.ready || !cr.connected || !this.openSince) return;
+        const now = Date.now();
+        if (now - this.openSince < ASK_MS || now - this._askedAt < ASK_MS) return;
+        this._askedAt = now;
+        cr.status();
+        this.emit('change');
+    }
+
+    /* Why the renderer is not there yet, in plain words; '' when it is. */
+    why() {
+        if (this.conn === 'verbunden' || this.conn === 'aus') return '';
+        if (/not supported/i.test(this.serviceSays)) return `Renderer lehnt dieses Auto ab: ${this.serviceSays}`;
+        if (this.openSince) {
+            const s = Math.round((Date.now() - this.openSince) / 1000);
+            return `Renderer antwortet nicht (Verbindung steht seit ${s} s)`;
+        }
+        const code = this.sockError;
+        if (code === 'ECONNREFUSED') return 'Renderer läuft nicht (Socket da, Dienst aus)';
+        if (code === 'EACCES' || code === 'EPERM') return 'Renderer: kein Zugriff auf den Socket';
+        if (code === 'ENOENT') return 'Renderer: Socket fehlt';
+        return code ? `Renderer: ${code}` : '';
+    }
+
     stop() {
+        clearInterval(this._watch);
+        this._watch = null;
         clearTimeout(this._drawTimer);
         this._drawTimer = null;
         if (this._cr) {
@@ -147,18 +204,20 @@ class HudLink extends EventEmitter {
         this._canvas = draw.drawHud(v, this._canvas);
         if (this._cr.pixels(this.ref, null, pixelsOf(this._canvas))) {
             this._shownKey = key;
-            this.frames++;
+            if (this._cr.ready) this.frames++;   // only what goes to the renderer
         }
     }
 
     /* The list's rows: [label, value]. */
     rows() {
         return [
-            ['Renderer', this.conn + (this.backend ? ` (${this.backend})` : '')],
+            ['Renderer', this.conn + (this.backend ? ` (${this.backend})` : '') +
+                (this.conn === 'verbinde' && this.sockError && !this.openSince ? `, Socket: ${this.sockError}` : '')],
+            ['Renderer sagt', this.serviceSays || '–'],
             ['Ziele des Renderers', String(this.targets || '–').replace(/,/g, ', ')],
             ['HUD', this._on ? this.layer : 'aus'],
             ['HUD-Platz', this.target || '–'],
-            ['Bilder gesendet', String(this.frames)],
+            ['Bilder ans HUD', String(this.frames)],
             ['Abgelehnt', this.refused || '–']
         ];
     }
