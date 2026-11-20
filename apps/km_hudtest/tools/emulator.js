@@ -9,8 +9,9 @@
  *
  *   node apps/km_hudtest/tools/emulator.js [port]   (default http://localhost:8788)
  *
- * Where BMW draws its own HUD content around the area is not measured yet: the speed bar here is
- * a placeholder, not BMW's layout.
+ * The oil comes as in the car: from the car's signal (CDS statusEngineTemperature, sent on change,
+ * raw - 48 = °C); the page's button takes the signal away (255) to try the DME fallback.
+ * BMW's own bar under the area is drawn as measured on the G87's HUD (emulator.html).
  */
 const EventEmitter = require('events');
 const fs = require('fs');
@@ -41,6 +42,7 @@ function car(t) {
 }
 
 /* ---- the fake cluster-render ---- */
+let cdsOn = true;
 const service = { conns: 0, backend: 'id8', layer: null, image: null, visible: true, frames: 0, refused: [] };
 
 function send(sock, obj) {
@@ -139,9 +141,22 @@ function start() {
             return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });
         }
     });
+    // the car's signal: sent when the whole degree changes, 255 while switched off
+    const cdsEv = new EventEmitter();
+    let lastRaw = null;
+    setInterval(() => {
+        const raw = cdsOn ? Math.max(0, Math.min(254, Math.round(car(now()).oil) + 48)) : 255;
+        if (raw === lastRaw) return;
+        lastRaw = raw;
+        cdsEv.emit('t', { temperatureEngineOilDrive: raw, temperatureEngineDrive: 255 });
+    }, 250);
+    const cds = () => ({
+        init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
+        statusEngineTemperature: { subscribe: (cb) => { cdsEv.on('t', cb); return Promise.resolve(); } }
+    });
     const unit = require(path.join(APP, '../../tools/fake_unit.js')).install(require(path.join(APP, 'spec.js')),
         require(path.join(APP, 'package/rhmiData/application.json')),
-        { 'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasu });
+        { 'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasu, 'de.bmw.infotainment.vehicle.CDS': cds });
     process.exit = () => {};
     require(path.join(APP, 'src/hudtest.js'));
     serve(unit, now);
@@ -158,10 +173,14 @@ function serve(unit, now) {
             res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
             res.end(JSON.stringify({
                 phase: (PHASES.find((p) => t < p[0]) || PHASES[PHASES.length - 1])[1],
-                speed: Math.round(car(t).speed), oil: Math.round(car(t).oil), t: Math.round(t),
+                speed: Math.round(car(t).speed), limit: car(t).speed <= 60 ? 50 : 130, cds: cdsOn,
+                oil: Math.round(car(t).oil), t: Math.round(t),
                 status: unit.text('htStatus') || '', rows: unit.rows('htList'),
                 frames: service.frames, conns: service.conns, refused: service.refused
             }));
+        } else if (req.url.indexOf('/cds') === 0) {
+            cdsOn = !cdsOn;
+            res.end('ok');
         } else if (req.url.indexOf('/press') === 0) {
             unit.press('htRun');
             res.end('ok');

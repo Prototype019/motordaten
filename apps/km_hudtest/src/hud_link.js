@@ -102,7 +102,7 @@ class HudLink extends EventEmitter {
         });
         cr.on('target', (t, state, holder, reason) => {
             if (t !== 'hud') return;
-            this.target = [TARGET_DE[state] || state, holder ? `hält: ${holder}` : '', reason || ''].filter(Boolean).join(', ');
+            this.target = [TARGET_DE[state] || state, holder ? `hält: ${holder === 'us' ? 'wir' : holder}` : '', reason || ''].filter(Boolean).join(', ');
             this.emit('change');
         });
         cr.on('status', (text) => {

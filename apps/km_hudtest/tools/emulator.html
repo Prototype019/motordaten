@@ -20,17 +20,14 @@
   .road::after { content: ""; position: absolute; inset: auto 0 0 0; height: 14%;
     background: linear-gradient(180deg, transparent, #050607); }
   /* the HUD: 353 x 203 at 2x, projected: black is nothing */
-  .hud { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: min(706px, 70%); }
+  .hud { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); width: min(470px, 54%); }
   .hud .app { position: relative; }
   .hud img { display: block; width: 100%; aspect-ratio: 353 / 203; mix-blend-mode: screen; image-rendering: auto; }
   .hud .area { position: absolute; inset: 0; border: 1px dashed rgba(255,255,255,.18); border-radius: 4px; pointer-events: none; }
   .hud.noframe .area { display: none; }
-  .bar { display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 6px;
-    color: #d9e1e8; mix-blend-mode: screen; font-weight: 600; }
-  .bar .sign { width: 34px; height: 34px; border-radius: 50%; border: 4px solid #e2493b; display: grid; place-items: center;
-    font-size: 13px; background: #f4f4f4; color: #111; }
-  .bar .speed { font-size: 30px; font-variant-numeric: tabular-nums; }
-  .bar .unit { font-size: 14px; color: var(--dim); }
+  /* BMW's own HUD bar, measured on the G87's HUD (photo 2026-11-20): right under the app's area,
+     centred, 559 x 67 in the HUD's pixels (the area is 353 x 203); speed limit, speed, km/h */
+  .bmw { position: absolute; left: -28.33%; width: 158.36%; top: 100%; display: block; mix-blend-mode: screen; }
   .note { color: var(--dim); font-size: 13px; margin-top: 10px; }
   .phase { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; color: var(--dim); font-size: 13px; flex-wrap: wrap; }
   .phase b { color: var(--text); font-weight: 600; }
@@ -56,13 +53,23 @@
           <img id="img" src="/hud.png" alt="Was die App ins HUD zeichnet">
           <div class="area" title="Der Bereich der App, 353 × 203"></div>
         </div>
-        <div class="bar" title="Platzhalter für BMWs eigene Anzeige">
-          <span class="sign">130</span><span class="speed" id="speed">0</span><span class="unit">km/h</span>
+          <svg class="bmw" viewBox="0 0 559 67" aria-label="BMWs eigene HUD-Leiste (nachgebaut)">
+            <rect x="0" y="0" width="559" height="67" fill="#2d5b88" opacity=".9"/>
+            <rect x="0" y="0" width="559" height="4" fill="#79a7d2"/>
+            <rect x="362" y="0" width="150" height="3" fill="#7fd08a"/>
+            <g stroke="#0e1d2c" stroke-width="3">
+              <line x1="143" y1="67" x2="167" y2="5"/><line x1="238" y1="67" x2="262" y2="5"/><line x1="488" y1="67" x2="512" y2="5"/>
+            </g>
+            <circle cx="193" cy="36" r="25" fill="#f2f2f2" stroke="#e2493b" stroke-width="5"/>
+            <text id="limit" x="193" y="43" text-anchor="middle" font-size="20" font-weight="600" fill="#111">50</text>
+            <text id="speed" x="398" y="56" text-anchor="middle" font-size="50" font-weight="700" fill="#f4f6f8">0</text>
+            <text x="452" y="56" font-size="15" font-weight="600" fill="#e6ebf0">km/h</text>
+          </svg>
         </div>
       </div>
     </div>
-    <div class="phase"><span>Fahrt: <b id="phase">–</b></span><span>Öl laut simulierter DME: <b id="oil">–</b></span><span id="t"></span></div>
-    <p class="note">Gestrichelt: der Bereich der App (353 × 203). Tempo und Schild darunter sind ein Platzhalter, nicht BMWs echtes Layout. Schwarz ist im HUD unsichtbar.</p>
+    <div class="phase"><span>Fahrt: <b id="phase">–</b></span><span>Öl im simulierten Auto: <b id="oil">–</b></span><span id="t"></span></div>
+    <p class="note">Gestrichelt: der Bereich der App (353 × 203). Die blaue Leiste darunter ist BMWs eigene, nach dem Foto vom G87 nachgebaut (Lage und Größe gemessen). Schwarz ist im HUD unsichtbar.</p>
   </section>
   <aside>
     <h1>iDrive-Bildschirm der App</h1>
@@ -70,6 +77,7 @@
     <div class="buttons">
       <button id="press" type="button">HUD an / aus</button>
       <button id="frame" type="button">Rahmen aus</button>
+      <button id="cds" type="button">Fahrzeugsignal aus</button>
     </div>
     <table id="rows"></table>
   </aside>
@@ -86,6 +94,8 @@
       $('oil').textContent = s.oil + ' °C';
       $('t').textContent = 't = ' + s.t + ' s';
       $('speed').textContent = s.speed;
+      $('limit').textContent = s.limit;
+      $('cds').textContent = s.cds ? 'Fahrzeugsignal aus' : 'Fahrzeugsignal an';
       $('status').textContent = s.status;
       $('rows').innerHTML = '';
       for (const r of s.rows) {
@@ -103,6 +113,7 @@
     }
   }
   $('press').onclick = () => fetch('/press').then(tick);
+  $('cds').onclick = () => fetch('/cds').then(tick);
   $('frame').onclick = () => {
     const on = $('hud').classList.toggle('noframe');
     $('frame').textContent = on ? 'Rahmen an' : 'Rahmen aus';
