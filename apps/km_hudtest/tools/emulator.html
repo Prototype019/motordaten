@@ -9,6 +9,8 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 -apple-system, system-ui, sans-serif; }
   main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 16px; max-width: 1280px; margin: 0 auto; }
+  .screen { grid-column: 1 / -1; }
+  .screen img { display: block; width: 100%; aspect-ratio: 2880 / 764; border-radius: 12px; border: 1px solid var(--line); cursor: pointer; background: #10161D; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
   h1 { font-size: 15px; font-weight: 600; margin: 0 0 12px; color: var(--dim); letter-spacing: .02em; }
   /* the view through the windscreen: a road at dusk */
@@ -46,7 +48,7 @@
 <body>
 <main>
   <section>
-    <h1>HUD-Emulator · echte App, nachgebauter Renderer</h1>
+    <h1>HUD · echte App, nachgebauter Renderer</h1>
     <div class="road">
       <div class="hud" id="hud">
         <div class="app">
@@ -71,11 +73,15 @@
     <div class="phase"><span>Fahrt: <b id="phase">–</b></span><span>Öl im simulierten Auto: <b id="oil">–</b></span><span id="t"></span></div>
     <p class="note">Gestrichelt: der Bereich der App (353 × 203). Die blaue Leiste darunter ist BMWs eigene, nach dem Foto vom G87 nachgebaut (Lage und Größe gemessen). Schwarz ist im HUD unsichtbar.</p>
   </section>
+  <section class="screen">
+    <h1>Die App auf dem iDrive-Bildschirm · klicken wie tippen</h1>
+    <img id="screen" src="/screen.png" alt="Der Bildschirm der HUD-App">
+  </section>
   <aside>
-    <h1>iDrive-Bildschirm der App</h1>
+    <h1>Werte und Verbindung</h1>
     <div class="status" id="status"></div>
     <div class="buttons">
-      <button id="press" type="button">HUD an / aus</button>
+      <button id="press" type="button">Anzeige aus / an</button>
       <button id="frame" type="button">Rahmen aus</button>
       <button id="cds" type="button">Fahrzeugsignal aus</button>
     </div>
@@ -106,6 +112,9 @@
       const img = new Image();
       img.onload = () => { $('img').src = img.src; };
       img.src = '/hud.png?' + Date.now();
+      const scr = new Image();
+      scr.onload = () => { $('screen').src = scr.src; };
+      scr.src = '/screen.png?' + Date.now();
     } catch (e) {
       $('status').textContent = 'Emulator nicht erreichbar';
     } finally {
@@ -114,6 +123,10 @@
   }
   $('press').onclick = () => fetch('/press').then(tick);
   $('cds').onclick = () => fetch('/cds').then(tick);
+  $('screen').onclick = (e) => {
+    const r = e.target.getBoundingClientRect();
+    fetch('/tap?x=' + ((e.clientX - r.left) / r.width) + '&y=' + ((e.clientY - r.top) / r.height)).then(tick);
+  };
   $('frame').onclick = () => {
     const on = $('hud').classList.toggle('noframe');
     $('frame').textContent = on ? 'Rahmen an' : 'Rahmen aus';

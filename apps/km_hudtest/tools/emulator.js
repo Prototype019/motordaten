@@ -26,6 +26,7 @@ const CYCLE_S = 48;
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'km-hudemu-'));
 const SOCK = path.join(work, 'render.sock');
 process.env.KM_CR_SOCKET = SOCK;
+process.env.KM_DATA_DIR = work;     // the app's settings (hud.json) live for this run only
 
 const D = require(path.join(APP, 'src/decode.js'));
 const { Canvas } = require(path.join(APP, 'src/kit_canvas.js'));
@@ -43,6 +44,8 @@ function car(t) {
 
 /* ---- the fake cluster-render ---- */
 let cdsOn = true;
+let app = null;
+const screen = { page: 'main', pressed: null };
 const service = { conns: 0, backend: 'id8', layer: null, image: null, visible: true, frames: 0, refused: [] };
 
 function send(sock, obj) {
@@ -114,6 +117,17 @@ net.createServer((sock) => {
     });
 }).listen(SOCK, start);
 
+const dash = require(path.join(APP, 'src/dash.js'));
+const REC = require(path.join(APP, 'src/kit_record.js'));
+/* The app's drawn screen, as mgu-render would show it. */
+function screenPng() {
+    const rec = new REC.Recorder(dash.W, dash.H);
+    dash.draw(rec, screen.page, app ? app.screenValues() : {}, app ? app._settings : null, { pressed: screen.pressed });
+    const c = new Canvas(dash.W, dash.H);
+    REC.play(rec.words(), c);
+    return c.png();
+}
+
 function hudPng() {
     const l = service.layer;
     if (!l || !service.visible) return new Canvas(353, 203).png();
@@ -148,7 +162,10 @@ function start() {
         const raw = cdsOn ? Math.max(0, Math.min(254, Math.round(car(now()).oil) + 48)) : 255;
         if (raw === lastRaw) return;
         lastRaw = raw;
-        cdsEv.emit('t', { temperatureEngineOilDrive: raw, temperatureEngineDrive: 255 });
+        // the coolant ahead of the oil while warming up, as on the car
+        const oil = car(now()).oil;
+        const coolant = cdsOn ? Math.round(Math.min(92, oil + 18)) + 48 : 255;
+        cdsEv.emit('t', { temperatureEngineOilDrive: raw, temperatureEngineDrive: coolant });
     }, 250);
     const cds = () => ({
         init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
@@ -158,6 +175,10 @@ function start() {
         require(path.join(APP, 'package/rhmiData/application.json')),
         { 'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasu, 'de.bmw.infotainment.vehicle.CDS': cds });
     process.exit = () => {};
+    // the app itself: its screens drawn here (no mgu-render on the Mac), its buttons pressed by clicks
+    const { ListApp } = require(path.join(APP, 'src/screen.js'));
+    const startApp = ListApp.prototype.start;
+    ListApp.prototype.start = function () { app = this; return startApp.apply(this, arguments); };
     require(path.join(APP, 'src/hudtest.js'));
     serve(unit, now);
 }
@@ -178,6 +199,21 @@ function serve(unit, now) {
                 status: unit.text('htStatus') || '', rows: unit.rows('htList'),
                 frames: service.frames, conns: service.conns, refused: service.refused
             }));
+        } else if (req.url.indexOf('/screen.png') === 0) {
+            res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
+            res.end(screenPng());
+        } else if (req.url.indexOf('/tap') === 0) {
+            const q = new URL(req.url, 'http://x').searchParams;
+            const x = Number(q.get('x')) * dash.W;
+            const y = Number(q.get('y')) * dash.H;
+            const t = dash.targets(screen.page).find((k) => x >= k.x && x <= k.x + k.w && y >= k.y && y <= k.y + k.h);
+            if (t && app) {
+                if (t.id.indexOf('tab:') === 0) screen.page = t.id.slice(4);
+                else app._action(t.id);
+                screen.pressed = t.id;
+                setTimeout(() => { screen.pressed = null; }, 150);
+            }
+            res.end(t ? t.id : '');
         } else if (req.url.indexOf('/cds') === 0) {
             cdsOn = !cdsOn;
             res.end('ok');

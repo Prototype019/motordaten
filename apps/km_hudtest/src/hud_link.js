@@ -1,11 +1,13 @@
 'use strict';
 /**
- * HUD-Test: one image layer on the head-up display through cluster-render
+ * One image layer on the head-up display through cluster-render
  * (robertnisipeanu/idrive-apps, installed from the Store as "Cluster renderer"),
  * through its Node client (src/cluster_render_client.js, MPL-2.0, unchanged):
  * the target hud, all of its 353 x 203.
  *
- * Nothing here talks to the car's units: it only draws what update() gets.
+ * Nothing here talks to the car's units: it only draws what update() gets, with the
+ * app's own src/hud_draw.js (HUD, key(values): what is shown, drawHud(values, canvas)).
+ * Shared by the apps (shared/hud_link.js, copied by tools/gen.js).
  * Drawn at most every DRAW_MS, and only when what is shown changes. on(false)
  * hides the layer, so the renderer releases the HUD and BMW's own content is
  * back; on(true) shows it again.
@@ -199,7 +201,7 @@ class HudLink extends EventEmitter {
         }
         this._lastDraw = Date.now();
         const v = this._values;
-        const key = [draw.num(v.oil, 0), draw.oilColour(v.oil).join()].join('|');
+        const key = draw.key(v);
         if (key === this._shownKey) return;
         this._canvas = draw.drawHud(v, this._canvas);
         if (this._cr.pixels(this.ref, null, pixelsOf(this._canvas))) {

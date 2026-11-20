@@ -1,13 +1,13 @@
 {
   "name": "km_hudtest",
-  "version": "0.2.3",
-  "description": "HUD-Test: Öltemperatur im Head-up-Display (Test)",
+  "version": "0.3.0",
+  "description": "HUD: Warmfahren und Öltemperatur im Head-up-Display",
   "private": false,
   "main": "javascript/runner.js",
   "oapAppSettings": {
     "maxDiskUsage": 10485760,
-    "cpuLimit": 30,
-    "memoryThresholdKB": 98304,
+    "cpuLimit": 40,
+    "memoryThresholdKB": 163840,
     "priority": "PRIO_MEDIUM",
     "visibility": "FOREGROUND",
     "latencyClass": "FOREGROUND",

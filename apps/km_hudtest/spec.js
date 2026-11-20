@@ -1,12 +1,16 @@
 'use strict';
-/* HUD-Test: package and screen description (tools/gen.js). */
+/* HUD: package and screen description (tools/gen.js). */
+/* Proxy buttons of the drawn screens' host state (src/dash.js targets: the most on a page, the ready page, 13). */
+const PROXIES = 24;
+
 module.exports = {
-    description: 'HUD-Test: Öltemperatur im Head-up-Display (Test)',
+    PROXIES,
+    description: 'HUD: Warmfahren und Öltemperatur im Head-up-Display',
     loggingId: 'KMHT',
     diskBytes: 10485760,
-    // Node 8 with the oap-sdk and SOME/IP, one 353x203 RGBA canvas and the renderer client's copy of it
-    memoryKB: 98304,
-    cpuLimit: 30,
+    // Node 8 with the oap-sdk and SOME/IP, the drawn screens (fonts, the recorder) and the HUD's 353x203 canvas
+    memoryKB: 163840,
+    cpuLimit: 40,
     icon: 'hudtest_icon.png',
     titleSid: 'SID_HT_TITLE',
     uuids: {
@@ -17,8 +21,8 @@ module.exports = {
     },
     texts: {
         SID_TEMP_EMPTY: '',
-        SID_HT_TITLE: 'HUD-Test',
-        SID_HT_RUN: 'HUD an / aus'
+        SID_HT_TITLE: 'HUD',
+        SID_HT_RUN: 'Anzeige aus / an'
     },
     states: [{
         id: 1, name: 'ST_OnlineApps_HudTest', titleId: 10, title: 'SID_HT_TITLE',
@@ -27,9 +31,15 @@ module.exports = {
             { id: 25, kind: 'button', name: 'htRun', text: 'SID_HT_RUN' },
             { id: 24, kind: 'row', name: 'htList', text: '' }
         ]
+    }, {
+        /* The host state of the drawn screens (src/drawn.js): the renderer draws over it while it is open;
+         * its buttons stand for the drawn page's targets under the controller, one each, in order. */
+        id: 2, name: 'ST_OnlineApps_HudTestLayer', titleId: 11, title: 'SID_HT_TITLE',
+        components: Array.from({ length: PROXIES }, (x, i) => ({ id: 30 + i, kind: 'button', name: `htLayerP${i}`, text: '' }))
     }],
     proxies: {
-        // the oil temperature (statusEngineTemperature.temperatureEngineOilDrive); the DME only when it has none
+        // oil and coolant (statusEngineTemperature: temperatureEngineOilDrive, temperatureEngineDrive); the DME only
+        // for the oil when the signal has none
         'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineTemperature: 's' } },
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
             instances: 'SystemFunctionsInternalTasuInst1',

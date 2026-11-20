@@ -1,17 +1,17 @@
 'use strict';
 /**
- * Runs src/hudtest.js on a fake head unit (tools/fake_unit.js) whose DME
+ * Runs src/hudtest.js (the HUD app, list screen: no mgu-render here) on a fake head unit (tools/fake_unit.js) whose DME
  * answers with replies read from the G87 over ENET (docs/g87-s58.md), against
  * a fake cluster-render on a local socket that speaks its protocol
  * (PROTOCOL.md: u32 length, type, body; J and F messages) the way the
  * iDrive 8 service answers: hello with backend id8 and its targets, the
  * layer shown.
  *
- * Checks: one image layer on hud (353 x 203), its pixels sent whole, the
- * list's rows; a new value -> new pixels, the same -> none; the button hides
- * the layer and stops asking the DME, again shows it; the service going away
- * -> reconnect, the layer made again and sent whole; only 22 requests for the
- * oil temperature, to the DME.
+ * Checks: one image layer on hud (353 x 203), shown while warming up, its pixels sent whole, the list's rows;
+ * a new value -> new pixels, the same -> none; the button (Anzeige aus) hides the layer and stops asking the
+ * DME, again (Warmfahren) shows it; a setting from the drawn screens (where) draws again and is kept; the
+ * service going away -> reconnect, the layer made again and sent whole; warm -> Bereit, then hidden; only 22
+ * requests for the oil temperature, to the DME.
  *
  * HT_CDS=1: with the car's signal (CDS) the oil comes from it and the DME is never asked;
  * it is sent only on a change, so a quiet signal keeps its value; 255 (no value) -> the DME.
@@ -31,6 +31,7 @@ const draw = require('../src/hud_draw.js');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'km-hudtest-'));
 const SOCK = path.join(dir, 'render.sock');
 process.env.KM_CR_SOCKET = SOCK;
+process.env.KM_DATA_DIR = dir;      // the settings (hud.json) in the test's own folder
 
 /* ---- the fake cluster-render ---- */
 const service = { conns: 0, hellos: 0, layers: [], sets: [], frames: [], sockets: [] };
@@ -145,12 +146,12 @@ function cdsRun() {
         assert.strictEqual(row('Öl'), '29 °C');
         assert.strictEqual(row('Quelle'), 'Fahrzeugsignal');
         assert.ok(/^verbunden, \d+ Werte$/.test(row('Fahrzeugsignal')), row('Fahrzeugsignal'));
-        assert.ok(/^Läuft/.test(unit.text('htStatus')), unit.text('htStatus'));
+        assert.ok(/^Warmfahren/.test(unit.text('htStatus')), unit.text('htStatus'));
         assert.strictEqual(asked, 0, 'the gateway left alone');
-        cdsOil(96);
+        cdsOil(66);
         return unit.wait(800);
     }).then(() => {
-        assert.strictEqual(row('Öl'), '96 °C');
+        assert.strictEqual(row('Öl'), '66 °C');
         assert.ok(framesOf(service.layers[0].ref).length >= 2, 'drawn again');
         // off and on: still only the signal
         unit.press('htRun');
@@ -160,12 +161,12 @@ function cdsRun() {
         unit.press('htRun');
         return unit.wait(1200);
     }).then(() => {
-        assert.strictEqual(row('Öl'), '96 °C');
+        assert.strictEqual(row('Öl'), '66 °C');
         assert.strictEqual(asked, 0, 'still the gateway left alone');
         // quiet for longer than the DME's round: the value stays, nothing asked
         return unit.wait(3000);
     }).then(() => {
-        assert.strictEqual(row('Öl'), '96 °C');
+        assert.strictEqual(row('Öl'), '66 °C');
         assert.strictEqual(asked, 0, 'a quiet signal keeps its value');
         // the signal has no value (255): the DME
         ANSWERS['58 22'] = '58 22 9C';
@@ -178,6 +179,11 @@ function cdsRun() {
         assert.strictEqual(row('Öl'), '96 °C');
     });
 }
+
+let app = null;
+const { ListApp } = require('../src/screen.js');
+const startApp = ListApp.prototype.start;
+ListApp.prototype.start = function () { app = this; return startApp.apply(this, arguments); };
 
 server.listen(SOCK, () => {
     require('../src/hudtest.js');
@@ -203,19 +209,28 @@ server.listen(SOCK, () => {
         assert.strictEqual(row('HUD'), 'angezeigt');
         assert.strictEqual(row('HUD-Platz'), 'angezeigt');
         assert.strictEqual(row('Öl'), '29 °C');
-        assert.ok(/^Läuft/.test(unit.text('htStatus')), unit.text('htStatus'));
+        assert.ok(/^Warmfahren/.test(unit.text('htStatus')), unit.text('htStatus'));
         assert.deepStrictEqual(Array.from(services), [0x22], 'read only');
 
         // the same values: no new pixels
         const n = service.frames.length;
         return unit.wait(2200).then(() => {
             assert.strictEqual(service.frames.length, n, 'nothing new to draw');
-            // warm: new pixels
-            ANSWERS['58 22'] = '58 22 9C';           // 96 °C
+            // warmer: new pixels
+            ANSWERS['58 22'] = '58 22 7E';           // 66 °C
             return unit.wait(1500);
         }).then(() => {
             assert.ok(framesOf(hud.ref).length >= 2, 'drawn again');
-            assert.strictEqual(row('Öl'), '96 °C');
+            assert.strictEqual(row('Öl'), '66 °C');
+            // where, from the drawn screens: drawn again, kept
+            const n2 = framesOf(hud.ref).length;
+            app._action('choose:pos:left');
+            return unit.wait(800).then(() => {
+                assert.ok(framesOf(hud.ref).length > n2, 'moved: drawn again');
+                assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'hud.json'), 'utf8')).pos, 'left', 'kept');
+                assert.strictEqual(require('../src/settings.js').load().pos, 'left');
+            });
+        }).then(() => {
             // the button: off -> hidden, the DME left alone
             unit.press('htRun');
             return unit.wait(600);
@@ -245,6 +260,26 @@ server.listen(SOCK, () => {
                 assert.strictEqual(again[again.length - 1].ref, service.layers[service.layers.length - 1].ref);
                 assert.strictEqual(row('Renderer'), 'verbunden (id8)');
             });
+        }).then(() => {
+            // warm: Bereit for a few seconds, then the HUD is BMW's again
+            ANSWERS['58 22'] = '58 22 9C';           // 96 °C
+            return unit.wait(2000);
+        }).then(() => {
+            assert.ok(/^Bereit/.test(unit.text('htStatus')), unit.text('htStatus'));
+            assert.strictEqual(row('HUD'), 'angezeigt');
+            return unit.wait(5500);
+        }).then(() => {
+            assert.strictEqual(row('HUD'), 'aus', 'after Bereit: hidden');
+            assert.ok(/^Bereit/.test(unit.text('htStatus')), unit.text('htStatus'));
+            // the test shows every look though
+            app._action('test');
+            return unit.wait(1000);
+        }).then(() => {
+            assert.strictEqual(row('HUD'), 'angezeigt', 'the test shows');
+            assert.ok(/^Test im HUD/.test(unit.text('htStatus')), unit.text('htStatus'));
+            return unit.wait(9000);
+        }).then(() => {
+            assert.strictEqual(row('HUD'), 'aus', 'the test over');
         });
     }).then(() => {
         console.log(`test_app: ok (${asked} DME requests, ${service.frames.length} pictures, ${service.conns} connections)`);
