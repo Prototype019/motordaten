@@ -16,11 +16,12 @@
  * Copyright (c) 2026 Prototype019. All rights reserved (LICENSE).
  */
 const { ListApp, logger } = require('./screen.js');
-const { Tasu } = require('./tasu.js');
+const { Tasu, EGS } = require('./tasu.js');
 const D = require('./decode.js');
 const { HudLink } = require('./hud_link.js');
 const { Drawn } = require('./drawn.js');
 const S = require('./settings.js');
+const V = require('./values.js');
 const { Warmup, testView, TEST, TEST_STEP_MS } = require('./warmup.js');
 const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 
@@ -28,14 +29,20 @@ const LIST = 'ST_OnlineApps_HudTest';
 const LAYER = 'ST_OnlineApps_HudTestLayer';
 const PROXIES = 24;             // the host state's proxy buttons (spec.js PROXIES)
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
-/* CDS temperatures: raw - 48 = °C, 255 = no value (as Motordaten). */
+/* CDS temperatures: raw - 48 = °C, 255 = no value; engine speed raw * 0.25, 65535 = no value (as Motordaten). */
 const TEMP_INVALID = 255;
+const RPM_INVALID = 65535;
+const ENGINE_STOPPED_RPM = 200;
 /* At start, how long the signal gets for its first value before the DME is asked. */
 const CDS_FIRST_MS = 3000;
+/* One round through the gateway every POLL_MS at most, only for what the HUD needs from it (src/values.js src). */
 const POLL_MS = 1000;
 const TIMEOUT_MS = 1500;
 const REOPEN_MS = 5000;
-const ASK = [['oil', 0x5822]];
+/* A value read through the gateway keeps its last reading this long when an answer is missing. */
+const HOLD_MS = 4000;
+/* The DME's identifiers per value; boost and oil pressure come absolute, the ambient pressure (hPa) is taken off. */
+const DME_DIDS = { oil: [0x5822], boost: [0x4205, 0x4201], oilPress: [0x4436, 0x4201], intake: [0x580F] };
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
 const isTrue = (raw) => raw === true || raw === 'true' || raw === 1 || raw === '1';
@@ -50,7 +57,8 @@ class HudApp extends ListApp {
         this._warmup = new Warmup();
         this._view = null;              // what the HUD shows now (src/warmup.js)
         this._test = 0;                 // when "Im HUD testen" started (0: not testing)
-        this._v = {};                   // oil, coolant
+        this._v = {};                   // oil, coolant, rpm (the car's signal); boost, oilPress, intake, gearbox, voltage
+        this._at = {};                  // when each value read through the gateway last came
         this._gateway = 'wait';         // wait | open | failed
         this._gatewayError = '';
         this._lastOpen = 0;
@@ -149,6 +157,9 @@ class HudApp extends ListApp {
         this._drawn.on('mode', (mode) => this.useEntryState(mode === 'layer' ? LAYER : LIST));
         this._drawn.on('action', (id) => this._action(id));
         this._drawn.on('targets', (targets) => this._proxiesFor(targets));
+        // a value card dragged to another place on the Werte page
+        this._drawn.on('order', (order, key) => this._set(S.dropped(this._settings, order, key)));
+        this._extra();
         this._proxiesFor(require('./dash.js').targets('main'));
         this._drawn.connect();
     }
@@ -170,6 +181,8 @@ class HudApp extends ListApp {
         const d = this._drawn;
         if (id.indexOf('tab:') === 0) {
             if (d) d.setPage(id.slice(4));
+        } else if (id.indexOf('cell:') === 0) {
+            this._set(S.tapped(this._settings, id.slice(5)));
         } else if (id.indexOf('choose:') === 0) {
             const parts = id.split(':');
             this._choose(parts[1], parts[2]);
@@ -199,8 +212,17 @@ class HudApp extends ListApp {
     _set(s) {
         this._settings = s;
         if (!S.save(s)) logger.warn('settings not saved');
-        if (this._drawn) this._drawn.setLimits(s);
+        if (this._drawn) {
+            this._drawn.setLimits(s);
+            this._extra();
+        }
         this._tick();
+    }
+
+    /* What the Werte page's targets follow: the order, how many are shown, the mode. */
+    _extra() {
+        const s = this._settings;
+        this._drawn.setExtra({ order: S.cleanOrder(s.order), count: s.count, mode: s.mode });
     }
 
     /* ---- what the HUD shows ---- */
@@ -236,6 +258,15 @@ class HudApp extends ListApp {
             .then(() => someipBuilders.buildTypedProxy(IF_CDS, '1'))
             .then((p) => { proxy = p; return proxy.init(); })
             .then(() => proxy.waitUntilAvailable())
+            // the engine speed on its own: a car without it still gets its temperatures
+            .then(() => Promise.resolve().then(() => proxy.statusEngineSpeed2.subscribe((v) => {
+                if (this._stopped) return;
+                const raw = v && v.actualValueRPMEngineCrankshaft;
+                const rpm = isNum(raw) && raw !== RPM_INVALID ? raw * 0.25 : null;
+                this._v.rpm = rpm !== null && rpm < ENGINE_STOPPED_RPM ? 0 : rpm;
+                // the HUD's numbers follow at its own pace (src/hud_link.js draws at most every 250 ms)
+                if (this._view && this._view.mode === 'values') this._tick();
+            })).catch((e) => logger.warn(`engine speed: ${e && e.message}`)))
             .then(() => proxy.statusEngineTemperature.subscribe((v) => {
                 if (this._stopped) return;
                 const t = (raw) => (isNum(raw) && raw !== TEMP_INVALID ? raw - 48 : null);
@@ -271,41 +302,82 @@ class HudApp extends ListApp {
         });
     }
 
+    /* What the HUD needs through the gateway now: the oil when the signal has none (warm-up or shown), and the
+     * gateway values shown under Werte. */
+    _needs() {
+        const s = this._settings;
+        if (s.mode === 'off') return [];
+        const out = s.mode === 'values' ? S.shown(s).filter((k) => V.byKey(k).src !== 'cds') : [];
+        if (!this._cdsFresh() && (s.mode === 'warm' || S.shown(s).indexOf('oil') >= 0)) out.unshift('oil');
+        return out;
+    }
+
     _ask() {
-        // the signal has the value, or the HUD shows nothing anyway: the gateway stays free for Motordaten
-        if (this._cdsFresh() || this._settings.mode === 'off') return Promise.resolve();
+        const needs = this._needs();
+        // nothing needed: the gateway stays free for Motordaten
+        if (!needs.length) return Promise.resolve();
         if (!/^fehlt/.test(this._cds) && Date.now() - this._startedAt < CDS_FIRST_MS) return Promise.resolve();
         if (this._gateway !== 'open') {
             if (this._gateway === 'failed' && Date.now() - this._lastOpen < REOPEN_MS) return Promise.resolve();
             this._lastOpen = Date.now();
             return this._tasu.open()
-                .then(() => { this._gateway = 'open'; this._gatewayError = ''; return this._read(); },
+                .then(() => { this._gateway = 'open'; this._gatewayError = ''; return this._read(needs); },
                     (e) => { this._gateway = 'failed'; this._gatewayError = e.message; this._render(); });
         }
-        return this._read();
+        return this._read(needs);
     }
 
-    _read() {
-        const dids = ASK.map((kv) => D.didById(kv[1]));
-        const data = [].concat(...ASK.map((kv) => [kv[1] >> 8, kv[1] & 0xFF]));
-        return this._tasu.request(0x22, data, TIMEOUT_MS).then((u) => {
-            const got = D.didNumbers(dids, u) || {};
-            if (this._cdsFresh()) return;           // the signal came meanwhile: it wins
-            ASK.forEach((kv) => { this._v[kv[0]] = isNum(got[kv[1]]) ? got[kv[1]] : null; });
-            if (!u) {
-                this._gatewayError = 'keine Antwort';
-            } else if (u[0] === 0x7F) {
-                this._gatewayError = D.NRC[u[2]] || D.hex(u[2]);
-            } else if (Object.keys(got).length) {
-                this._gatewayError = '';
-                this._answers++;
-            }
-            this._tick();
-        }, (e) => {
-            if (!this._cdsFresh()) ASK.forEach((kv) => { this._v[kv[0]] = null; });
-            this._gatewayError = e.message;
-            this._tick();
-        });
+    /* One request to the DME for what it holds, then the gearbox and the supply voltage if wanted. */
+    _read(needs) {
+        const dids = [];
+        needs.forEach((k) => (DME_DIDS[k] || []).forEach((id) => { if (dids.indexOf(id) < 0) dids.push(id); }));
+        let p = Promise.resolve();
+        if (dids.length) {
+            p = p.then(() => this._tasu.request(0x22, [].concat(...dids.map((id) => [id >> 8, id & 0xFF])), TIMEOUT_MS)).then((u) => {
+                const got = D.didNumbers(dids.map((id) => D.didById(id)), u) || {};
+                const ambient = isNum(got[0x4201]) ? got[0x4201] / 1000 : null;          // hPa -> bar
+                const above = (abs) => (isNum(abs) && ambient !== null ? abs - ambient : null);
+                if (needs.indexOf('oil') >= 0 && !this._cdsFresh()) this._keep('oil', got[0x5822]);
+                if (needs.indexOf('boost') >= 0) this._keep('boost', above(got[0x4205]));
+                if (needs.indexOf('oilPress') >= 0) this._keep('oilPress', above(got[0x4436]));
+                if (needs.indexOf('intake') >= 0) this._keep('intake', got[0x580F]);
+                this._answer(u, Object.keys(got).length);
+            }, (e) => { needs.forEach((k) => { if (DME_DIDS[k]) this._keep(k, null); }); this._gatewayError = e.message; });
+        }
+        if (needs.indexOf('gearbox') >= 0) {
+            p = p.then(() => this._tasu.request(0x22, [0x60, 0x00], TIMEOUT_MS, EGS))
+                .then((u) => { this._keep('gearbox', D.didNumber(D.didById(0x6000), u)); this._answer(u, 1); },
+                    (e) => { this._keep('gearbox', null); this._gatewayError = e.message; });
+        }
+        if (needs.indexOf('voltage') >= 0) {
+            p = p.then(() => this._tasu.request(0x01, [0x42], TIMEOUT_MS))
+                .then((u) => { this._keep('voltage', D.obdNumber(D.pidById(0x42), u)); this._answer(u, 1); },
+                    (e) => { this._keep('voltage', null); this._gatewayError = e.message; });
+        }
+        return p.then(() => this._tick());
+    }
+
+    /* An answer: counted, or its refusal kept for the status line. */
+    _answer(u, n) {
+        if (!u) {
+            this._gatewayError = 'keine Antwort';
+        } else if (u[0] === 0x7F) {
+            this._gatewayError = D.NRC[u[2]] || D.hex(u[2]);
+        } else if (n) {
+            this._gatewayError = '';
+            this._answers++;
+        }
+    }
+
+    /* A new value, or none: then the last one stays for HOLD_MS. */
+    _keep(key, value) {
+        const now = Date.now();
+        if (isNum(value)) {
+            this._v[key] = value;
+            this._at[key] = now;
+        } else if (!(now - (this._at[key] || 0) < HOLD_MS)) {
+            this._v[key] = null;
+        }
     }
 
     /* ---- the screens ---- */
@@ -315,15 +387,17 @@ class HudApp extends ListApp {
         if (!h.installed() && h.conn !== 'verbunden') return 'Cluster renderer fehlt: HUD im Store neu installieren (bringt ihn mit), dann Neustart';
         if (h.conn !== 'verbunden') return h.why() || `Renderer: ${h.conn}`;
         if (h.backend && h.backend !== 'id8') return `Renderer läuft als ${h.backend}, erwartet id8`;
-        if (!this._cdsFresh() && this._settings.mode !== 'off') {
+        if (this._needs().length) {
             if (this._gateway === 'failed') return `Diagnose: ${this._gatewayError}`;
-            if (this._gatewayError) return `DME: ${this._gatewayError}`;
+            if (this._gatewayError) return `Motor antwortet nicht: ${this._gatewayError}`;
         }
         return '';
     }
 
     _source() {
-        return this._cdsFresh() ? 'Fahrzeugsignal' : this._gateway === 'wait' ? '–' : 'DME (Signal fehlt)';
+        const gw = this._needs().filter((k) => k !== 'oil');
+        const oil = this._cdsFresh() ? 'Fahrzeugsignal' : this._gateway === 'wait' ? '–' : 'Öl über Diagnose (Signal fehlt)';
+        return gw.length ? `${oil}; Diagnose: ${gw.map((k) => V.byKey(k).label).join(', ')}` : oil;
     }
 
     /* What the drawn screens show (src/dash.js draw's v). */
@@ -339,8 +413,7 @@ class HudApp extends ListApp {
             ['Fahrzeugsignal', `${this._cds}, ${this._cdsCount} Werte`],
             ['DME-Antworten', String(this._answers)]
         ]);
-        return { oil: this._v.oil, coolant: this._v.coolant, view: this._view, words, testing: !!this._test,
-            source: this._source(), rows };
+        return Object.assign({}, this._v, { view: this._view, words, testing: !!this._test, source: this._source(), rows });
     }
 
     _render() {
@@ -351,7 +424,8 @@ class HudApp extends ListApp {
         // the list screen (no drawn screens): where it stands first, iDrive 8 does not show the status line
         const stand = `${words.title}${words.text ? ` – ${words.text}` : ''}`;
         this.show(stand, [['Stand', stand], ['Öl', fmt(this._v.oil, '°C', 0)], ['Kühlmittel', fmt(this._v.coolant, '°C', 0)],
-            ['Anzeige', S.CHOICES.mode.words[this._settings.mode]]].concat(rows));
+            ['Anzeige', S.CHOICES.mode.words[this._settings.mode]],
+            ['Im HUD', S.shown(this._settings).map((k) => `${V.byKey(k).label} ${V.text(k, this._v[k])}`).join(', ')]].concat(rows));
     }
 }
 

@@ -34,16 +34,37 @@ const { Canvas } = require(path.join(APP, 'src/kit_canvas.js'));
 /* ---- the drive: oil (°C) and speed (km/h) at t seconds ---- */
 const lerp = (a, b, f) => a + (b - a) * Math.max(0, Math.min(1, f));
 const PHASES = [[8, 'Kaltstart'], [26, 'Warmfahren'], [34, 'Warm'], [42, 'Volllast, Öl zu heiß'], [48, 'Abkühlen']];
-function car(t) {
+function drive(t) {
     if (t < 8) return { oil: 24, speed: lerp(0, 30, t / 8) };
     if (t < 26) return { oil: lerp(24, 96, (t - 8) / 18), speed: lerp(30, 100, (t - 8) / 18) };
     if (t < 34) return { oil: 96 + Math.sin(t) * 0.6, speed: 128 };
     if (t < 42) return { oil: lerp(96, 136, (t - 34) / 6), speed: lerp(128, 210, (t - 34) / 8) };
     return { oil: lerp(136, 104, (t - 42) / 6), speed: lerp(210, 130, (t - 42) / 6) };
 }
+/* Everything else from the drive: engine speed with gear changes, boost on the pulls, the rest steady. */
+function car(t) {
+    const d = drive(t);
+    const pull = t >= 34 && t < 42;
+    const rpm = d.speed < 2 ? 850 : 1500 + ((d.speed * 55) % 3200) + (pull ? 1800 : 0);
+    return Object.assign(d, {
+        rpm: Math.min(7200, rpm), coolant: Math.min(92, d.oil + 18), boost: pull ? 1.6 + 0.3 * Math.sin(t * 3) : 0.1 + d.speed / 600,
+        oilPress: 1.2 + rpm / 2400, intake: 24 + d.speed / 40, gearbox: Math.min(92, d.oil - 4), voltage: 14.1 + 0.1 * Math.sin(t)
+    });
+}
+/* A value as the unit's bytes (src/decode.js scaling). */
+function encode(id, value) {
+    const d = D.didById(id);
+    const n = { u8: 1, s8: 1, u16: 2, s16: 2 }[d.t] || 1;
+    let raw = Math.round((value - d.o) / d.k);
+    raw = Math.max(0, Math.min(Math.pow(2, 8 * n) - 1, raw));
+    const out = [id >> 8, id & 0xFF];
+    for (let i = n - 1; i >= 0; i--) out.push((raw >> (8 * i)) & 0xFF);
+    return out;
+}
 
 /* ---- the fake cluster-render ---- */
 let cdsOn = true;
+const emu = { asked: 0 };
 let app = null;
 const screen = { page: 'main', pressed: null };
 const service = { conns: 0, backend: 'id8', layer: null, image: null, visible: true, frames: 0, refused: [] };
@@ -122,7 +143,9 @@ const REC = require(path.join(APP, 'src/kit_record.js'));
 /* The app's drawn screen, as mgu-render would show it. */
 function screenPng() {
     const rec = new REC.Recorder(dash.W, dash.H);
-    dash.draw(rec, screen.page, app ? app.screenValues() : {}, app ? app._settings : null, { pressed: screen.pressed });
+    const st = app ? app._settings : null;
+    dash.draw(rec, screen.page, app ? app.screenValues() : {}, st, { pressed: screen.pressed },
+        st ? { order: st.order, count: st.count, mode: st.mode } : {});
     const c = new Canvas(dash.W, dash.H);
     REC.play(rec.words(), c);
     return c.png();
@@ -146,12 +169,23 @@ function start() {
         sendTasuResponse: { subscribe: (cb) => { ev.on('r', cb); return Promise.resolve(); } },
         sendTasuRequest: (p) => {
             const req = Array.from(p.udsData);
+            const c = car(now());
+            const ambient = 1013;
+            const VALUE = { 0x5822: c.oil, 0x4205: (c.boost + ambient / 1000), 0x4201: ambient, 0x4436: c.oilPress + ambient / 1000,
+                0x580F: c.intake, 0x6000: c.gearbox };
             let body = [0x7F, p.serviceID, 0x31];
-            if (p.serviceID === 0x22 && req[0] === 0x58 && req[1] === 0x22) {
-                // 5822: u8, °C + 60
-                body = [0x62, 0x58, 0x22, Math.max(0, Math.min(255, Math.round(car(now()).oil + 60)))];
+            if (p.serviceID === 0x22) {
+                body = [0x62];
+                for (let i = 0; i + 1 < req.length; i += 2) {
+                    const id = (req[i] << 8) | req[i + 1];
+                    if (VALUE[id] !== undefined) body = body.concat(encode(id, VALUE[id]));
+                }
+            } else if (p.serviceID === 0x01 && req[0] === 0x42) {
+                const mv = Math.round(c.voltage * 1000);
+                body = [0x41, 0x42, mv >> 8, mv & 0xFF];
             }
-            setTimeout(() => ev.emit('r', frame(0x12, body)), 25);
+            emu.asked++;
+            setTimeout(() => ev.emit('r', frame(p.targetAddress, body)), 25);
             return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });
         }
     });
@@ -169,8 +203,11 @@ function start() {
     }, 250);
     const cds = () => ({
         init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
-        statusEngineTemperature: { subscribe: (cb) => { cdsEv.on('t', cb); return Promise.resolve(); } }
+        statusEngineTemperature: { subscribe: (cb) => { cdsEv.on('t', cb); return Promise.resolve(); } },
+        statusEngineSpeed2: { subscribe: (cb) => { cdsEv.on('rpm', cb); return Promise.resolve(); } }
     });
+    // the engine speed, ten times a second as the car sends it
+    setInterval(() => cdsEv.emit('rpm', { actualValueRPMEngineCrankshaft: cdsOn ? Math.round(car(now()).rpm * 4) : 65535 }), 100);
     const unit = require(path.join(APP, '../../tools/fake_unit.js')).install(require(path.join(APP, 'spec.js')),
         require(path.join(APP, 'package/rhmiData/application.json')),
         { 'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasu, 'de.bmw.infotainment.vehicle.CDS': cds });
@@ -196,7 +233,7 @@ function serve(unit, now) {
                 phase: (PHASES.find((p) => t < p[0]) || PHASES[PHASES.length - 1])[1],
                 speed: Math.round(car(t).speed), limit: car(t).speed <= 60 ? 50 : 130, cds: cdsOn,
                 oil: Math.round(car(t).oil), t: Math.round(t),
-                status: unit.text('htStatus') || '', rows: unit.rows('htList'),
+                status: unit.text('htStatus') || '', rows: unit.rows('htList'), asked: emu.asked,
                 frames: service.frames, conns: service.conns, refused: service.refused
             }));
         } else if (req.url.indexOf('/screen.png') === 0) {
@@ -206,7 +243,8 @@ function serve(unit, now) {
             const q = new URL(req.url, 'http://x').searchParams;
             const x = Number(q.get('x')) * dash.W;
             const y = Number(q.get('y')) * dash.H;
-            const t = dash.targets(screen.page).find((k) => x >= k.x && x <= k.x + k.w && y >= k.y && y <= k.y + k.h);
+            const st = app && app._settings;
+            const t = dash.targets(screen.page, st ? { order: st.order, count: st.count, mode: st.mode } : {}).find((k) => x >= k.x && x <= k.x + k.w && y >= k.y && y <= k.y + k.h);
             if (t && app) {
                 if (t.id.indexOf('tab:') === 0) screen.page = t.id.slice(4);
                 else app._action(t.id);
@@ -214,6 +252,21 @@ function serve(unit, now) {
                 setTimeout(() => { screen.pressed = null; }, 150);
             }
             res.end(t ? t.id : '');
+        } else if (req.url.indexOf('/drag') === 0) {
+            // a card held and moved on the Werte page: as src/drawn.js would report it ('order', order, key)
+            const q = new URL(req.url, 'http://x').searchParams;
+            const x0 = Number(q.get('x0')) * dash.W;
+            const y0 = Number(q.get('y0')) * dash.H;
+            const x1 = Number(q.get('x1')) * dash.W;
+            const S = require(path.join(APP, 'src/settings.js'));
+            const cell = screen.page === dash.DRAG_PAGE && app &&
+                dash.tempCellBoxes(app._settings).find((b) => x0 >= b.x && x0 <= b.x + b.w && y0 >= b.y && y0 <= b.y + b.h);
+            if (cell) {
+                const order = dash.tempCellBoxes(app._settings).map((b) => b.key).filter((k) => k !== cell.key);
+                order.splice(dash.tempSlotAt(x1 - (x0 - cell.x)), 0, cell.key);
+                app._set(S.dropped(app._settings, order, cell.key));
+            }
+            res.end(cell ? cell.key : '');
         } else if (req.url.indexOf('/cds') === 0) {
             cdsOn = !cdsOn;
             res.end('ok');

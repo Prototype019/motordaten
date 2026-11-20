@@ -3,9 +3,10 @@
  * What the head-up display shows (src/hud_draw.js draws it), for the temperatures v { oil, coolant } and the
  * settings s (src/settings.js); null: nothing (BMW's own HUD as it is).
  *
- * - mode off: nothing.  Oil not known: nothing.
- * - hot (any mode but off): the oil at or over oilMax, in red, while it lasts.
- * - mode always: the oil, blue while under its ready value.
+ * - mode off: nothing.  Warm-up with the oil not known: nothing.
+ * - hot (any mode but off): the oil at or over oilMax, in red, while it lasts (in values mode only when the
+ *   oil is not one of the values shown: there it turns red itself).
+ * - mode values: the chosen values (settings shown(), v holds them), each with its tone (cold / hot / normal).
  * - mode warm:
  *     warm:  the first temperature switched on that is still under its value (one not known does not hold
  *            it up: the car may not send it);
@@ -16,6 +17,7 @@
  * Copyright (c) 2026 Prototype019. All rights reserved (LICENSE).
  */
 const S = require('./settings.js');
+const V = require('./values.js');
 
 const READY_SHOW_MS = 5000;
 const AGAIN_BELOW = 15;
@@ -30,9 +32,16 @@ class Warmup {
 
     view(v, s, now) {
         const oil = isNum(v.oil) ? v.oil : null;
-        if (s.mode === 'off' || oil === null) return null;
-        if (oil >= s.oilMax) return { mode: 'hot', label: 'Öl', value: oil };
-        if (s.mode === 'always') return { mode: 'oil', label: 'Öl', value: oil, cold: s.oilReadyOn ? oil < s.oilReady : false };
+        if (s.mode === 'off') return null;
+        const shown = S.shown(s);
+        const hot = oil !== null && oil >= s.oilMax;
+        if (s.mode === 'values') {
+            if (hot && shown.indexOf('oil') < 0) return { mode: 'hot', label: 'Öl', value: oil };
+            return { mode: 'values', items: shown.map((key) => ({ key, label: V.byKey(key).hud, text: V.text(key, v[key]),
+                unit: V.byKey(key).unit, tone: V.tone(key, v[key], s) })) };
+        }
+        if (oil === null) return null;
+        if (hot) return { mode: 'hot', label: 'Öl', value: oil };
         const r = S.readiness(s, v);
         if (!r.on) return null;
         const missing = r.items.filter((i) => i.value !== null && !i.reached);
@@ -56,6 +65,9 @@ class Warmup {
     /* Where it stands, in words for the screen: { title, text }. */
     words(view, s, v) {
         if (s.mode === 'off') return { title: 'HUD aus', text: 'Die App zeigt nichts im HUD.' };
+        if (view && view.mode === 'values') {
+            return { title: 'Werte im HUD', text: `${view.items.map((i) => V.byKey(i.key).label).join(', ')}. Ändern unter „Werte“.` };
+        }
         if (!isNum(v.oil)) return { title: 'Warte auf Werte', text: 'Noch keine Öltemperatur vom Fahrzeug.' };
         if (!view) {
             const r = S.readiness(s, v);
@@ -64,7 +76,6 @@ class Warmup {
         }
         if (view.mode === 'hot') return { title: 'Öl zu heiß', text: `Ab ${s.oilMax} °C zeigt das HUD die Öltemperatur in Rot.` };
         if (view.mode === 'ready') return { title: 'Bereit', text: 'Kurz im HUD, dann wird es frei.' };
-        if (view.mode === 'oil') return { title: 'Öltemperatur', text: 'Im HUD, solange die Anzeige auf „Immer“ steht.' };
         return { title: 'Warmfahren', text: `${view.label} noch unter ${view.label === 'Öl' ? s.oilReady : s.coolantReady} °C. Schonend fahren.` };
     }
 }

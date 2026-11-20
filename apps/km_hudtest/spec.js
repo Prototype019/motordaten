@@ -1,7 +1,7 @@
 'use strict';
 /* HUD: package and screen description (tools/gen.js). */
 /* Proxy buttons of the drawn screens' host state (src/dash.js targets: the most on a page, the ready page, 13). */
-const PROXIES = 24;
+const PROXIES = 24;          // the most targets on a page: Werte, 5 tabs + 8 cards + 1
 
 module.exports = {
     PROXIES,
@@ -38,9 +38,9 @@ module.exports = {
         components: Array.from({ length: PROXIES }, (x, i) => ({ id: 30 + i, kind: 'button', name: `htLayerP${i}`, text: '' }))
     }],
     proxies: {
-        // oil and coolant (statusEngineTemperature: temperatureEngineOilDrive, temperatureEngineDrive); the DME only
-        // for the oil when the signal has none
-        'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineTemperature: 's' } },
+        // engine speed, oil and coolant (statusEngineSpeed2, statusEngineTemperature: as Motordaten); the gateway for
+        // the oil when the signal has none, and for the values shown under Werte that only the units have
+        'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineSpeed2: 's', statusEngineTemperature: 's' } },
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
             instances: 'SystemFunctionsInternalTasuInst1',
             methods: ['sendTasuRequest'],

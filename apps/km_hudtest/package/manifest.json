@@ -110,6 +110,7 @@
     "de.bmw.infotainment.vehicle.CDS": {
       "instances": "1",
       "attributes": {
+        "statusEngineSpeed2": "s",
         "statusEngineTemperature": "s"
       }
     },

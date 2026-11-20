@@ -6,7 +6,7 @@
   "modules": ["src/hudtest.js", "src/hud_link.js", "src/hud_draw.js", "src/cluster_render_client.js",
     "src/screen.js", "src/tasu.js", "src/decode.js", "src/kit_canvas.js", "src/kit_fonts.js",
     "src/font_label.js", "src/font_scale.js", "src/font_num.js",
-    "src/drawn.js", "src/dash.js", "src/settings.js", "src/warmup.js", "src/mgu_render_client.js", "src/kit_record.js"],
+    "src/drawn.js", "src/dash.js", "src/settings.js", "src/warmup.js", "src/values.js", "src/mgu_render_client.js", "src/kit_record.js"],
   "sdk": [
     "oap-sdk/src/core/OnlineApp.js",
     "oap-sdk/src/logging/logging",

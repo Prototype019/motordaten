@@ -50,8 +50,41 @@ assert.strictEqual(w.view({ oil: 132 }, def, 9000).mode, 'hot', 'too hot: whatev
 assert.strictEqual(w.view({ oil: 60 }, def, 9000).mode, 'warm', 'far under again: a cold start');
 assert.strictEqual(new Warmup().view({ oil: 40 }, S.chosen(def, 'mode', 'off'), 0), null, 'off: nothing');
 assert.strictEqual(new Warmup().view({ oil: 140 }, S.chosen(def, 'mode', 'off'), 0), null, 'off: not even hot');
-assert.deepStrictEqual(new Warmup().view({ oil: 60 }, S.chosen(def, 'mode', 'always'), 0), { mode: 'oil', label: 'Öl', value: 60, cold: true });
-assert.strictEqual(new Warmup().view({ oil: 96 }, S.chosen(def, 'mode', 'always'), 0).cold, false);
+// Werte: the chosen values with their tones; the oil red itself when shown, else the hot look over all
+let vs = Object.assign(S.chosen(def, 'mode', 'values'), { order: ['oil', 'boost', 'coolant'], count: 3 });
+assert.deepStrictEqual(new Warmup().view({ oil: 60, boost: 1.234, coolant: 120 }, vs, 0), { mode: 'values', items: [
+    { key: 'oil', label: 'ÖL', text: '60', unit: '°C', tone: 'cold' },
+    { key: 'boost', label: 'LADEDRUCK', text: '1,23', unit: 'bar', tone: 'normal' },
+    { key: 'coolant', label: 'WASSER', text: '120', unit: '°C', tone: 'hot' }] });
+assert.strictEqual(new Warmup().view({ oil: 140 }, vs, 0).items[0].tone, 'hot', 'shown: red there');
+assert.strictEqual(new Warmup().view({}, vs, 0).items[1].text, '–', 'not known yet: a dash, still shown');
+assert.strictEqual(new Warmup().view({ oil: 140 }, Object.assign({}, vs, { order: ['boost'], count: 1 }), 0).mode, 'hot',
+    'not shown: the hot look');
+assert.strictEqual(S.clean({ mode: 'always' }).mode, 'values', '0.3.0 kept "always"');
+assert.strictEqual(new Warmup().words(new Warmup().view({ oil: 60 }, vs, 0), vs, { oil: 60 }).title, 'Werte im HUD');
+
+// choosing the values: tap in and out, drag in, out and around; never none, never more than three
+let c = S.defaults();
+assert.deepStrictEqual(S.shown(c), ['oil']);
+assert.strictEqual(S.tapped(c, 'oil'), c, 'the last one stays');
+c = S.tapped(c, 'boost');
+assert.deepStrictEqual(S.shown(c), ['oil', 'boost']);
+c = S.tapped(c, 'rpm');
+c = S.tapped(c, 'voltage');
+assert.deepStrictEqual(S.shown(c), ['oil', 'boost', 'voltage'], 'full: the last one out for the new one');
+c = S.tapped(c, 'oil');
+assert.deepStrictEqual(S.shown(c), ['boost', 'voltage']);
+const move = (st, key, to) => { const o = S.cleanOrder(st.order).filter((k) => k !== key); o.splice(to, 0, key); return S.dropped(st, o, key); };
+c = move(c, 'intake', 0);
+assert.deepStrictEqual(S.shown(c), ['intake', 'boost', 'voltage'], 'dragged in at the front');
+c = move(c, 'intake', 6);
+assert.deepStrictEqual(S.shown(c), ['boost', 'voltage'], 'dragged out');
+c = move(c, 'voltage', 0);
+assert.deepStrictEqual(S.shown(c), ['voltage', 'boost'], 'reordered inside');
+c = move(c, 'boost', 5);
+c = move(c, 'voltage', 5);
+assert.deepStrictEqual(S.shown(c).length, 1, 'the last one cannot be dragged out');
+assert.deepStrictEqual(S.cleanOrder(['x', 'oil', 'oil']).length, 8, 'every value once');
 const none = Object.assign({}, def, { oilReadyOn: 0, coolantReadyOn: 0 });
 assert.strictEqual(new Warmup().view({ oil: 40 }, none, 0), null, 'nothing counts: nothing');
 assert.strictEqual(new Warmup().words(null, none, { oil: 40 }).title, 'Nichts eingestellt');
@@ -60,8 +93,12 @@ TEST.forEach((t, i) => assert.deepStrictEqual(testView(100, 100 + i * TEST_STEP_
 assert.strictEqual(testView(100, 100 + TEST.length * TEST_STEP_MS), null, 'the test ends');
 
 /* ---- the HUD's picture: every look, every place and size, inside the area, something drawn ---- */
+const item = (key, text, unit, tone) => ({ key, label: require('../src/values.js').byKey(key).hud, text, unit, tone });
 const looks = [{ mode: 'warm', label: 'Kühlmittel', value: 62 }, { mode: 'ready', label: 'Öl', value: 82 },
-    { mode: 'hot', label: 'Öl', value: 133 }, { mode: 'oil', label: 'Öl', value: 96, cold: false }];
+    { mode: 'hot', label: 'Öl', value: 133 },
+    { mode: 'values', items: [item('oil', '96', '°C', 'normal')] },
+    { mode: 'values', items: [item('oil', '58', '°C', 'cold'), item('rpm', '6.450', 'U/min', 'hot')] },
+    { mode: 'values', items: [item('intake', '31', '°C', 'normal'), item('rpm', '7.600', 'U/min', 'hot'), item('gearbox', '120', '°C', 'normal')] }];
 looks.forEach((look) => S.CHOICES.pos.all.forEach((pos) => S.CHOICES.size.all.forEach((size) => {
     const c = hud.drawHud(Object.assign({ pos, size }, look));
     let x0 = Infinity;
@@ -75,7 +112,7 @@ looks.forEach((look) => S.CHOICES.pos.all.forEach((pos) => S.CHOICES.size.all.fo
             }
         }
     }
-    const what = `${look.mode} ${pos} ${size}`;
+    const what = `${look.mode}${look.items ? look.items.length : ''} ${pos} ${size}`;
     assert.ok(x1 >= 0, `${what}: something drawn`);
     assert.ok(x0 >= 2 && x1 <= hud.HUD.w - 3 && y0 >= 2 && y1 <= hud.HUD.h - 3, `${what}: inside (${x0}-${x1}, ${y0}-${y1})`);
     if (pos === 'left') assert.ok(x0 < 40, `${what}: at the left`);
@@ -84,16 +121,18 @@ looks.forEach((look) => S.CHOICES.pos.all.forEach((pos) => S.CHOICES.size.all.fo
 assert.notStrictEqual(hud.key({ mode: 'warm', value: 40, pos: 'left' }), hud.key({ mode: 'warm', value: 40, pos: 'right' }), 'a move draws again');
 
 /* ---- the screens ---- */
-['main', 'display', 'ready', 'status'].forEach((page) => {
-    const v = { oil: 47, coolant: 58, view: looks[0], words: { title: 'T', text: 't' }, rows: [['a', 'b']] };
-    dash.draw(new Recorder(dash.W, dash.H), page, v, def, { focus: null });
-    dash.draw(new Recorder(dash.W, dash.H), page, {}, def, null);
-    const ts = dash.targets(page);
+const extra = { order: S.cleanOrder(), count: 1, mode: 'warm' };
+['main', 'values', 'display', 'ready', 'status'].forEach((page) => {
+    const v = { oil: 47, coolant: 58, rpm: 3450, boost: 1.2, view: looks[0], words: { title: 'T', text: 't' }, rows: [['a', 'b']] };
+    dash.draw(new Recorder(dash.W, dash.H), page, v, def, { focus: null }, extra);
+    dash.draw(new Recorder(dash.W, dash.H), page, {}, def, null, extra);
+    const ts = dash.targets(page, extra);
     assert.ok(ts.length <= spec.PROXIES, `${page}: ${ts.length} targets, ${spec.PROXIES} proxies`);
     assert.strictEqual(new Set(ts.map((t) => t.id)).size, ts.length, `${page}: every id once`);
     ts.forEach((t) => {
         assert.ok(t.x >= 0 && t.y >= 0 && t.x + t.w <= dash.W && t.y + t.h <= dash.H, `${page} ${t.id} on the screen`);
         assert.ok(t.h >= 84 || t.page, `${page} ${t.id}: large enough to press (${t.h})`);
+        assert.ok(t.w >= 84, `${page} ${t.id}: wide enough to press (${t.w})`);
     });
     for (let i = 0; i < ts.length; i++) {
         for (let j = i + 1; j < ts.length; j++) {
@@ -115,5 +154,18 @@ assert.notStrictEqual(hud.key({ mode: 'warm', value: 40, pos: 'left' }), hud.key
         }
     });
 });
+
+// the Werte page: a card per value, each a drag target, in the settings' order; the drag's slots
+const cards = dash.targets('values', extra).filter((t) => t.drag);
+assert.deepStrictEqual(cards.map((t) => t.id.slice(5)), S.cleanOrder(), 'every value a card, in order');
+assert.strictEqual(dash.DRAG_PAGE, 'values');
+assert.deepStrictEqual(dash.tempCellBoxes(def).map((b) => b.key), S.cleanOrder());
+cards.forEach((t, i) => assert.strictEqual(dash.tempSlotAt(t.x + 5), i, `${t.id}: its own slot`));
+assert.strictEqual(dash.tempSlotAt(-500), 0);
+assert.strictEqual(dash.tempSlotAt(99999), cards.length - 1);
+assert.ok(dash.targets('values', Object.assign({}, extra, { mode: 'values' })).every((t) => t.id !== 'choose:mode:values'),
+    'Werte anzeigen only while another mode is on');
+// a card lifted and moved draws
+dash.draw(new Recorder(dash.W, dash.H), 'values', { oil: 50 }, def, { drag: { key: 'boost', x: 900, dx: 40 } }, extra);
 
 console.log('test_screens: ok');

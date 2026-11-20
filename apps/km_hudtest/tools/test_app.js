@@ -91,6 +91,10 @@ const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 
 const bytes = (s) => s.split(' ').map((x) => parseInt(x, 16));
 /* Measured on the car (engine off): oil 29 °C. */
 const ANSWERS = { '58 22': '58 22 59' };
+/* Werte through the gateway: boost 2.863 bar absolute, ambient 1013 hPa -> 1.85 bar above. */
+ANSWERS['42 05'] = '42 05 8F 26';
+ANSWERS['42 01'] = '42 01 65 4D';
+const ASKED_DIDS = new Set();
 let asked = 0;
 const services = new Set();
 
@@ -103,8 +107,9 @@ function tasuProxy() {
             asked++;
             services.add(p.serviceID);
             assert.strictEqual(p.targetAddress, 0x12, 'only the DME');
+            assert.strictEqual(p.serviceID, 0x22, 'only reads');
             const req = Array.from(p.udsData);
-            assert.deepStrictEqual(req, [0x58, 0x22], 'only the oil temperature');
+            for (let i = 0; i < req.length; i += 2) ASKED_DIDS.add(`${D.hex(req[i])} ${D.hex(req[i + 1])}`);
             let body = [];
             for (let i = 0; i < req.length; i += 2) {
                 const one = ANSWERS[`${D.hex(req[i])} ${D.hex(req[i + 1])}`];
@@ -123,7 +128,8 @@ function cdsProxy() {
     return {
         init: () => Promise.resolve(),
         waitUntilAvailable: () => Promise.resolve(),
-        statusEngineTemperature: { subscribe: (cb) => { cdsEvents.on('t', cb); return Promise.resolve(); } }
+        statusEngineTemperature: { subscribe: (cb) => { cdsEvents.on('t', cb); return Promise.resolve(); } },
+        statusEngineSpeed2: { subscribe: (cb) => { cdsEvents.on('rpm', cb); return Promise.resolve(); } }
     };
 }
 const cdsOil = (c) => cdsEvents.emit('t', { temperatureEngineOilDrive: c + 48, temperatureEngineDrive: 255 });
@@ -175,8 +181,32 @@ function cdsRun() {
     }).then(() => {
         assert.ok(asked >= 1, 'the DME asked once the signal is gone');
         assert.deepStrictEqual(Array.from(services), [0x22], 'read only');
-        assert.strictEqual(row('Quelle'), 'DME (Signal fehlt)');
+        assert.strictEqual(row('Quelle'), 'Öl über Diagnose (Signal fehlt)');
         assert.strictEqual(row('Öl'), '96 °C');
+        assert.deepStrictEqual(Array.from(ASKED_DIDS), ['58 22'], 'warming up: only the oil');
+        // Werte: oil (the signal again), engine speed (the signal), boost (the gateway, once a second)
+        cdsOil(90);
+        cdsEvents.emit('rpm', { actualValueRPMEngineCrankshaft: 3450 * 4 });
+        app._action('choose:mode:values');
+        app._action('cell:rpm');
+        app._action('cell:boost');
+        return unit.wait(2500);
+    }).then(() => {
+        assert.strictEqual(row('Anzeige'), 'Werte');
+        assert.strictEqual(row('Im HUD'), 'Öl 90, Drehzahl 3.450, Ladedruck 1,85', row('Im HUD'));
+        assert.ok(ASKED_DIDS.has('42 05') && ASKED_DIDS.has('42 01'), 'boost and ambient asked');
+        assert.strictEqual(row('HUD'), 'angezeigt');
+        // boost out again: the gateway left alone
+        app._action('cell:boost');
+        return unit.wait(600);
+    }).then(() => {
+        const before = asked;
+        return unit.wait(2500).then(() => assert.strictEqual(asked, before, 'nothing through the gateway any more'));
+    }).then(() => {
+        app._action('choose:mode:off');
+        return unit.wait(800);
+    }).then(() => {
+        assert.strictEqual(row('HUD'), 'aus', 'Aus: hidden');
     });
 }
 

@@ -74,7 +74,7 @@
     <p class="note">Gestrichelt: der Bereich der App (353 × 203). Die blaue Leiste darunter ist BMWs eigene, nach dem Foto vom G87 nachgebaut (Lage und Größe gemessen). Schwarz ist im HUD unsichtbar.</p>
   </section>
   <section class="screen">
-    <h1>Die App auf dem iDrive-Bildschirm · klicken wie tippen</h1>
+    <h1>Die App auf dem iDrive-Bildschirm · klicken wie tippen, Karten mit der Maus ziehen</h1>
     <img id="screen" src="/screen.png" alt="Der Bildschirm der HUD-App">
   </section>
   <aside>
@@ -123,9 +123,15 @@
   }
   $('press').onclick = () => fetch('/press').then(tick);
   $('cds').onclick = () => fetch('/cds').then(tick);
-  $('screen').onclick = (e) => {
+  // a click is a tap; pressed, moved and let go is a drag (the Werte page's cards)
+  let down = null;
+  $('screen').onmousedown = (e) => { e.preventDefault(); const r = e.target.getBoundingClientRect(); down = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };
+  $('screen').onmouseup = (e) => {
     const r = e.target.getBoundingClientRect();
-    fetch('/tap?x=' + ((e.clientX - r.left) / r.width) + '&y=' + ((e.clientY - r.top) / r.height)).then(tick);
+    const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    if (down && Math.abs(x - down.x) > 0.01) fetch('/drag?x0=' + down.x + '&y0=' + down.y + '&x1=' + x).then(tick);
+    else fetch('/tap?x=' + x + '&y=' + y).then(tick);
+    down = null;
   };
   $('frame').onclick = () => {
     const on = $('hud').classList.toggle('noframe');

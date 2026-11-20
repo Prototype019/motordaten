@@ -6,19 +6,23 @@
  * Page 'main' (Live): left, the HUD as it is now (src/hud_draw.js, the same drawing, larger) above a stand-in
  *   for BMW's own bar; right, where it stands in words, oil and coolant against their ready values, what the
  *   HUD shows (Warmfahren / Immer / Aus) and "Im HUD testen".
+ * Page 'values' (Werte): every value as a card in one row, the first ones (up to three) shown in the HUD; held
+ *   and dragged a card takes another place (in the HUD or out of it), tapped it goes in or out (src/drawn.js drag:
+ *   DRAG_PAGE, tempCellBoxes, tempSlotAt; extra.order / extra.count the settings' order and count).
  * Page 'display' (Anzeige): what, where and how large, with a small HUD beside it.
- * Page 'ready' (Bereit): which temperatures count, from where; when the oil is too hot.
+ * Page 'ready' (Bereit): which temperatures count, from where; when oil, coolant and engine speed turn red.
  * Page 'status': the cluster renderer and where the values come from.
  *
  * draw(rec, page, v, cfg, ui, extra) records one frame into a kit_record Recorder (or a kit_canvas Canvas):
  * v { oil, coolant, view (what the HUD shows, src/warmup.js), words { title, text }, source, testing,
  * rows (the renderer's status rows) }, cfg the settings (src/settings.js), ui { focus, pressed }.
  * targets(page) lists the page's pressable boxes in controller order: { id, x, y, w, h, label }.
- * tempCellBoxes / tempSlotAt: none here (src/drawn.js asks every app's screens for them).
+ * tempCellBoxes / tempSlotAt / DRAG_PAGE: the value cards' drag (src/drawn.js).
  *
  * Copyright (c) 2026 Prototype019. All rights reserved (LICENSE).
  */
 const S = require('./settings.js');
+const V = require('./values.js');
 const hud = require('./hud_draw.js');
 
 const W = 2880;
@@ -38,6 +42,7 @@ const isNum = (v) => typeof v === 'number' && isFinite(v);
 
 const TABS = [
     { id: 'tab:main', page: 'main', label: 'Live' },
+    { id: 'tab:values', page: 'values', label: 'Werte' },
     { id: 'tab:display', page: 'display', label: 'Anzeige' },
     { id: 'tab:ready', page: 'ready', label: 'Bereit' },
     { id: 'tab:status', page: 'status', label: 'Status' }
@@ -61,36 +66,59 @@ const MAIN_TARGETS = segments('mode', LIVE.x, 520, LIVE.w, BTN).concat([
 const ROW_X = 1060;
 const ROW_W = 1000;
 const DISPLAY_ROWS = [
-    { key: 'mode', label: 'Was', text: 'Warmfahren: bis alles bereit ist. Immer: das Öl.' },
+    { key: 'mode', label: 'Was', text: 'Warmfahren: bis alles bereit ist. Werte: die unter „Werte“ gewählten.' },
     { key: 'pos', label: 'Wo', text: 'Im Feld über BMWs Leiste' },
     { key: 'size', label: 'Wie groß', text: 'Groß: ein Viertel größer' }
 ].map((r, i) => Object.assign(r, { y: 210 + i * 170 }));
 const DISPLAY_TARGETS = [].concat(...DISPLAY_ROWS.map((r) => segments(r.key, ROW_X, r.y, ROW_W, BTN)));
 
-/* Bereit: per temperature its switch and its value; then the oil's hot limit. */
-const READY_ROW_H = 150;
-const READY_TOP = 216;
+/* Bereit: per temperature its switch and its ready value; then where oil, coolant and engine speed turn red. */
+const READY_ROW_H = 104;
+const READY_TOP = 200;
+const CTRL = 84;
 const STEP_RIGHT = W - PAD;
+const READY_ROWS = S.READY.map((r) => ({ kind: 'ready', r, key: r.at, label: r.label }))
+    .concat([{ kind: 'max', key: 'oilMax', label: 'Öl zu heiß', note: 'das Öl rot im HUD, in jeder Anzeige außer Aus' },
+        { kind: 'max', key: 'coolantMax', label: 'Kühlmittel zu heiß', note: 'rot, wenn es unter „Werte“ im HUD steht' },
+        { kind: 'max', key: 'rpmMax', label: 'Drehzahl rot', note: 'rot, wenn sie unter „Werte“ im HUD steht' }])
+    .map((row, i) => Object.assign(row, { y: READY_TOP + i * READY_ROW_H }));
 function readyTargets() {
     const out = [];
-    S.READY.forEach((r, i) => {
-        const y = READY_TOP + i * READY_ROW_H;
-        out.push({ id: `toggle:${r.on}`, x: X0, y: y + 10, w: 220, h: BTN, label: '' });
-        out.push({ id: `dec:${r.at}`, x: STEP_RIGHT - 2 * BTN - 24, y: y + 10, w: BTN, h: BTN, label: '−' });
-        out.push({ id: `inc:${r.at}`, x: STEP_RIGHT - BTN, y: y + 10, w: BTN, h: BTN, label: '+' });
+    READY_ROWS.forEach((row) => {
+        const y = row.y + (READY_ROW_H - CTRL) / 2 - 6;
+        if (row.kind === 'ready') out.push({ id: `toggle:${row.r.on}`, x: X0, y, w: 200, h: CTRL, label: '' });
+        out.push({ id: `dec:${row.key}`, x: STEP_RIGHT - 2 * CTRL - 24, y, w: CTRL, h: CTRL, label: '−' });
+        out.push({ id: `inc:${row.key}`, x: STEP_RIGHT - CTRL, y, w: CTRL, h: CTRL, label: '+' });
     });
-    const y = READY_TOP + 2 * READY_ROW_H;
-    out.push({ id: 'dec:oilMax', x: STEP_RIGHT - 2 * BTN - 24, y: y + 10, w: BTN, h: BTN, label: '−' });
-    out.push({ id: 'inc:oilMax', x: STEP_RIGHT - BTN, y: y + 10, w: BTN, h: BTN, label: '+' });
     out.push({ id: 'defaults', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Standard' });
     return out;
 }
 const READY_TARGETS = readyTargets();
 
+/* Werte: one card per value in one row, in the settings' order; the first count are in the HUD. */
+const DRAG_PAGE = 'values';
+const CELL = { y: 200, h: 236, gap: 20 };
+CELL.w = Math.floor((W - PAD - X0 - CELL.gap * (V.KEYS.length - 1)) / V.KEYS.length);
+const CELL_STEP = CELL.w + CELL.gap;
+function tempCellBoxes(cfg) {
+    return S.cleanOrder(cfg && cfg.order).map((key, i) => ({ key, x: X0 + i * CELL_STEP, y: CELL.y, w: CELL.w, h: CELL.h }));
+}
+/* Where a card dragged to x lands: its place in the row. */
+function tempSlotAt(x) {
+    return Math.max(0, Math.min(V.KEYS.length - 1, Math.round((x - X0) / CELL_STEP)));
+}
+const SHOW_VALUES = { id: 'choose:mode:values', key: 'mode', word: 'values', x: X0, y: 650, w: 460, h: 84, label: 'Werte anzeigen' };
+function valuesTargets(extra) {
+    const cells = tempCellBoxes({ order: extra && extra.order }).map((b) => Object.assign({ id: `cell:${b.key}`, drag: true,
+        label: V.byKey(b.key).label }, b));
+    return extra && extra.mode !== 'values' ? cells.concat([SHOW_VALUES]) : cells;
+}
+
 const STATUS_TARGETS = [{ id: 'reconnect', x: W - PAD - 420, y: 64, w: 420, h: 84, label: 'Neu verbinden' }];
 
-function targets(page) {
-    const own = page === 'display' ? DISPLAY_TARGETS : page === 'ready' ? READY_TARGETS : page === 'status' ? STATUS_TARGETS : MAIN_TARGETS;
+function targets(page, extra) {
+    const own = page === 'values' ? valuesTargets(extra) : page === 'display' ? DISPLAY_TARGETS : page === 'ready' ? READY_TARGETS
+        : page === 'status' ? STATUS_TARGETS : MAIN_TARGETS;
     return TABS.concat(own);
 }
 
@@ -214,26 +242,83 @@ function displayPage(rec, v, cfg, ui) {
 
 function readyPage(rec, v, cfg, ui) {
     title(rec, 'Bereit', 'Warmfahren endet, sobald alle eingeschalteten Temperaturen ihren Wert erreicht haben.');
-    S.READY.forEach((r, i) => {
-        const y = READY_TOP + i * READY_ROW_H;
-        const on = !!cfg[r.on];
-        toggleSwitch(rec, READY_TARGETS.find((t) => t.id === `toggle:${r.on}`), on, ui);
-        rec.text(r.label, X0 + 220 + 56, y + 76, 44, on ? C.text : C.dim, { font: 'label' });
-        const it = S.ITEMS.find((x) => x.key === r.at);
-        rec.text('bereit ab', STEP_RIGHT - 2 * BTN - 330, y + 76, 30, C.dim, { font: 'label' });
-        valueUnit(rec, String(cfg[r.at]), it.unit, STEP_RIGHT - 2 * BTN - 56, y + 82, 54, !on ? C.dim : cfg[r.at] !== it.def ? C.ice : C.text, 28, 'right');
-        rec.fillRect(X0, y + READY_ROW_H - 14, STEP_RIGHT - X0, 2, C.line);
+    READY_ROWS.forEach((row) => {
+        const it = S.ITEMS.find((x) => x.key === row.key);
+        const mid = row.y + READY_ROW_H / 2 - 6;
+        let on = true;
+        if (row.kind === 'ready') {
+            on = !!cfg[row.r.on];
+            toggleSwitch(rec, READY_TARGETS.find((t) => t.id === `toggle:${row.r.on}`), on, ui);
+            rec.text(row.label, X0 + 200 + 48, mid + 15, 40, on ? C.text : C.dim, { font: 'label' });
+            rec.text('bereit ab', STEP_RIGHT - 2 * CTRL - 330, mid + 11, 30, C.dim, { font: 'label' });
+        } else {
+            rec.text(row.label, X0, mid + 15, 40, C.text, { font: 'label' });
+            rec.text(row.note, X0 + 448, mid + 11, 28, C.dim, { font: 'label' });
+            rec.text('ab', STEP_RIGHT - 2 * CTRL - 330, mid + 11, 30, C.dim, { font: 'label' });
+        }
+        const val = it.key === 'rpmMax' ? String(cfg[it.key]).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : String(cfg[it.key]);
+        valueUnit(rec, val, it.unit, STEP_RIGHT - 2 * CTRL - 56, mid + 18, 50, !on ? C.dim : cfg[it.key] !== it.def ? C.ice : C.text, 26, 'right');
+        rec.fillRect(X0, row.y + READY_ROW_H - 4, STEP_RIGHT - X0, 2, C.line);
     });
-    const y = READY_TOP + 2 * READY_ROW_H;
-    const hot = S.ITEMS.find((x) => x.key === 'oilMax');
-    rec.text('Öl zu heiß', X0, y + 76, 44, C.text, { font: 'label' });
-    rec.text('dann zeigt das HUD das Öl in Rot, in jeder Anzeige außer Aus', X0 + 330, y + 74, 28, C.dim, { font: 'label' });
-    rec.text('ab', STEP_RIGHT - 2 * BTN - 330, y + 76, 30, C.dim, { font: 'label' });
-    valueUnit(rec, String(cfg.oilMax), '°C', STEP_RIGHT - 2 * BTN - 56, y + 82, 54, cfg.oilMax !== hot.def ? C.ice : C.text, 28, 'right');
     READY_TARGETS.filter((t) => t.id.indexOf('toggle:') !== 0).forEach((t) => {
         const step = t.id.indexOf('dec:') === 0 || t.id.indexOf('inc:') === 0;
-        button(rec, t, ui, { size: step ? 52 : 32 });
+        button(rec, t, ui, { size: step ? 48 : 32 });
     });
+}
+
+/* A value's card: its place in the HUD (or none), name, value now, where it comes from. */
+function valueCard(rec, b, i, cfg, v, ui, lifted) {
+    const it = V.byKey(b.key);
+    const inHud = i < cfg.count;
+    const id = `cell:${b.key}`;
+    if (!lifted && ui && ui.focus === id) rec.strokeRoundRect(b.x - 8, b.y - 8, b.w + 16, b.h + 16, 30, 5, C.ice);
+    rec.roundRect(b.x, b.y, b.w, b.h, 24, lifted ? '#1E2935' : ui && ui.pressed === id ? C.line : inHud ? '#17283A' : C.card);
+    rec.strokeRoundRect(b.x, b.y, b.w, b.h, 24, inHud || lifted ? 3 : 2, inHud || lifted ? C.cold : C.line);
+    if (inHud) {
+        rec.roundRect(b.x + 24, b.y + 22, 112, 40, 20, C.cold);
+        rec.text(`HUD ${i + 1}`, b.x + 80, b.y + 51, 24, C.asphalt, { font: 'label', align: 'center' });
+    } else {
+        rec.text('nicht im HUD', b.x + 24, b.y + 51, 24, C.dim, { font: 'label' });
+    }
+    rec.text(it.label, b.x + 24, b.y + 112, 34, C.text, { font: 'label' });
+    const val = v ? v[b.key] : null;
+    const tone = V.tone(b.key, val, cfg);
+    const colour = tone === 'hot' ? C.limit : tone === 'cold' ? C.cold : tone === 'none' ? C.dim : C.text;
+    let size = 60;
+    while (size > 36 && rec.textWidth(V.text(b.key, val), size, { font: 'num' }) + rec.textWidth(it.unit, 24, { font: 'label' }) + 10 > b.w - 48) size -= 4;
+    valueUnit(rec, V.text(b.key, val), it.unit, b.x + 24, b.y + 180, size, colour, 24, 'left');
+    rec.text(it.src === 'cds' ? 'Fahrzeugsignal' : 'Diagnose', b.x + 24, b.y + 218, 22, it.src === 'cds' ? C.dim : '#C9A35A', { font: 'label' });
+}
+
+function valuesPage(rec, v, cfg, ui, extra) {
+    title(rec, 'Werte im HUD', 'Halten und ziehen: an eine andere Stelle, ins HUD oder heraus. Tippen: ins HUD oder heraus. Bis zu drei.');
+    const boxes = tempCellBoxes(cfg);
+    const drag = ui && ui.drag;
+    if (drag) {
+        // the others make room where the lifted one would land
+        const rest = boxes.filter((b) => b.key !== drag.key).map((b) => b.key);
+        rest.splice(tempSlotAt(drag.x - drag.dx), 0, drag.key);
+        rest.forEach((key, i) => {
+            if (key !== drag.key) valueCard(rec, { key, x: X0 + i * CELL_STEP, y: CELL.y, w: CELL.w, h: CELL.h }, i, cfg, v, ui);
+        });
+        const at = Math.max(X0 - 40, Math.min(W - PAD - CELL.w + 40, drag.x - drag.dx));
+        valueCard(rec, { key: drag.key, x: at, y: CELL.y - 16, w: CELL.w, h: CELL.h }, rest.indexOf(drag.key), cfg, v, ui, true);
+    } else {
+        boxes.forEach((b, i) => valueCard(rec, b, i, cfg, v, ui));
+    }
+    // the line between what the HUD shows and the rest
+    const edge = X0 + cfg.count * CELL_STEP - CELL.gap / 2;
+    rec.fillRect(edge - 2, CELL.y - 24, 4, CELL.h + 48, C.ice);
+    // below: what it means, and the HUD with these values
+    const lines = cfg.mode === 'values'
+        ? ['Das HUD zeigt die Werte mit „HUD“-Marke, in dieser Reihenfolge.', 'Blau: noch kalt. Rot: zu heiß oder zu hoch (Grenzen unter „Bereit“).']
+        : ['Diese Werte zeigt das HUD in der Anzeige „Werte“.', `Jetzt steht die Anzeige auf „${S.CHOICES.mode.words[cfg.mode]}“.`];
+    lines.push('Diagnose-Werte fragt die App einmal pro Sekunde beim Motor an, nur solange sie im HUD stehen.');
+    lines.forEach((l, i) => rec.text(l, X0, 520 + i * 42, 28, i === 2 ? '#C9A35A' : C.dim, { font: 'label' }));
+    if (cfg.mode !== 'values') button(rec, SHOW_VALUES, ui);
+    const shown = S.shown(cfg).map((key) => ({ key, label: V.byKey(key).hud, text: V.text(key, v[key]), unit: V.byKey(key).unit,
+        tone: V.tone(key, v[key], cfg) }));
+    hudMirror(rec, 2440 - hud.HUD.w * 0.86 / 2, 494, 0.86, { mode: 'values', items: shown }, cfg);
 }
 
 function statusPage(rec, v, cfg, ui) {
@@ -253,19 +338,17 @@ function statusPage(rec, v, cfg, ui) {
     STATUS_TARGETS.forEach((t) => button(rec, t, ui));
 }
 
-function draw(rec, page, v, cfg, ui) {
+function draw(rec, page, v, cfg, ui, extra) {
     v = v || {};
-    cfg = cfg || S.defaults();
+    cfg = S.clean(cfg || S.defaults());
     rec.clear(C.asphalt);
     rail(rec, page, ui);
-    if (page === 'display') displayPage(rec, v, cfg, ui);
+    if (page === 'values') valuesPage(rec, v, cfg, ui, extra);
+    else if (page === 'display') displayPage(rec, v, cfg, ui);
     else if (page === 'ready') readyPage(rec, v, cfg, ui);
     else if (page === 'status') statusPage(rec, v, cfg, ui);
     else mainPage(rec, v, cfg, ui);
     return rec;
 }
 
-const tempCellBoxes = () => [];
-const tempSlotAt = () => 0;
-
-module.exports = { draw, targets, tempCellBoxes, tempSlotAt, W, H, C, TABS };
+module.exports = { draw, targets, tempCellBoxes, tempSlotAt, DRAG_PAGE, W, H, C, TABS };

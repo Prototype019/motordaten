@@ -464,21 +464,28 @@ class Drawn extends EventEmitter {
     }
 
     /*
-     * Reordering the temperature cells on the live page: held LIFT_MS without moving, a cell lifts (ui.drag), follows
-     * the finger and, let go, takes the slot under it ('order' with the new order). True while it has the touch.
+     * Reordering cells (Motordaten: the temperature cells on the live page; dash.DRAG_PAGE names another page): held
+     * LIFT_MS without moving, a cell lifts (ui.drag), follows the finger and, let go, takes the slot under it ('order'
+     * with the new order and the moved key). True while it has the touch.
      */
     _drag(phase, x, y) {
         const ui = this.ui;
         if (phase === 'down') {
             clearTimeout(this.liftTimer);
             this.lift = null;
-            const cell = this.page === 'main' && !this._hit(x, y) &&
+            // the page whose cells drag (dash.DRAG_PAGE, else the live page); a cell may be a target too (t.drag):
+            // a tap presses it, a hold lifts it
+            const hit = dash.targets(this.page, this.extra).find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+            const cell = this.page === (dash.DRAG_PAGE || 'main') && (!hit || hit.drag) &&
                 dash.tempCellBoxes(this.limits).find((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
             if (cell) {
                 this.lift = { key: cell.key, x0: x, y0: y, dx: x - cell.x };
                 this.liftTimer = setTimeout(() => {
                     if (this.lift) {
                         ui.drag = { key: this.lift.key, x: this.lift.x0, dx: this.lift.dx };
+                        // lifted, it is no press any more
+                        this.touchOn = null;
+                        ui.pressed = null;
                         this.invalidate();
                     }
                 }, LIFT_MS);
@@ -489,11 +496,12 @@ class Drawn extends EventEmitter {
             if (phase === 'move') {
                 ui.drag.x = x;
             } else if (phase === 'up') {
-                const order = dash.tempCellBoxes(this.limits).map((c) => c.key).filter((k) => k !== ui.drag.key);
-                order.splice(dash.tempSlotAt(x - ui.drag.dx), 0, ui.drag.key);
+                const key = ui.drag.key;
+                const order = dash.tempCellBoxes(this.limits).map((c) => c.key).filter((k) => k !== key);
+                order.splice(dash.tempSlotAt(x - ui.drag.dx), 0, key);
                 ui.drag = null;
                 this.lift = null;
-                this.emit('order', order);
+                this.emit('order', order, key);
             }
             this.invalidate();
             return true;
