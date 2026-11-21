@@ -103,7 +103,13 @@ class ListApp extends OnlineApp {
         const rhmi = this.rhmiApplication;
         logger.info(`${this.getAppId()} starting`);
         if (!rhmi) {
-            return Promise.resolve(this.initialized());
+            // a start without screens (as an app the head unit starts by itself may get): the app runs all the same,
+            // its signals and links working (the HUD), only nothing to show
+            logger.info(`${this.getAppId()}: no screens for this start, running without them`);
+            return Promise.resolve(this.initialized()).then(() => {
+                this._frame.started = true;
+                setImmediate(() => this.run());
+            });
         }
         const root = rhmi.getByName(f.screen.root);
         if (!root) {

@@ -127,16 +127,32 @@ const BTN = 96;
 const LIMIT_ITEMS = L.ITEMS.filter((it) => it.group === 'limits');
 const BACK_SET = { id: 'settings:back', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Zurück' };
 
-/* The settings menu: one card per sub-page. */
-const MENU = [
-    { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann die Werte rot werden' },
-    { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen' },
-    { id: 'menu:mhd', page: 'mhd', label: 'MHD-Tuning', text: 'Max Cooling und Klappe aus der App' }
-].map((m, i, all) => {
-    const gap = 52;
-    const w = Math.floor((W - PAD - X0 - gap * (all.length - 1)) / all.length);
-    return Object.assign(m, { x: X0 + i * (w + gap), y: 220, w, h: 300 });
-});
+/*
+ * The settings menu: a list of sub-pages in two sections, Fahrzeug (what the values and the tune do) and App (how
+ * the app itself behaves); each row its name, what it holds and, at the right, how it is set now (summary(cfg)).
+ */
+const MENU_SECTIONS = [
+    { label: 'Fahrzeug', rows: [
+        { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann die Werte rot werden' },
+        { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen' },
+        { id: 'menu:mhd', page: 'mhd', label: 'MHD-Tuning', text: 'Max Cooling und Abgasklappe aus der App' }] },
+    { label: 'App', rows: [
+        { id: 'menu:app', page: 'app', label: 'App', text: 'Beim Motorstart öffnen, Reihenfolge der Temperaturen' }] }
+];
+const MENU_ROW_H = 120;
+const MENU = [];
+(() => {
+    let y = 168;
+    MENU_SECTIONS.forEach((sec) => {
+        sec.y = y;
+        y += 26;
+        sec.rows.forEach((r) => {
+            MENU.push(Object.assign(r, { x: X0, y, w: W - PAD - X0, h: MENU_ROW_H - 8 }));
+            y += MENU_ROW_H;
+        });
+        y += 22;
+    });
+})();
 
 function settingsTargets() {
     const out = [];
@@ -174,6 +190,11 @@ const READY_TARGETS = readyTargets();
 const MHD_SWITCH = { id: 'toggle:mhdCoolingOn', x: X0, y: SET_TOP + 30, w: 220, h: BTN, label: '' };
 const MHD_FLAP_SWITCH = { id: 'toggle:mhdFlapOn', x: X0, y: SET_TOP + 30 + BTN + 30, w: 220, h: BTN, label: '' };
 const MHD_TARGETS = [MHD_SWITCH, MHD_FLAP_SWITCH, BACK_SET];
+
+/* The app page: opening by itself at the engine start; the temperature cells' order back to the start. */
+const START_SWITCH = { id: 'toggle:autoOpenOn', x: X0, y: SET_TOP + 30, w: 220, h: BTN, label: '' };
+const ORDER_RESET = { id: 'order:reset', x: X0, y: SET_TOP + 330, w: 520, h: 84, label: 'Reihenfolge zurücksetzen' };
+const START_TARGETS = [START_SWITCH, ORDER_RESET, BACK_SET];
 
 /* ---- the logs pages ---- */
 
@@ -281,6 +302,8 @@ function targets(page, extra) {
         own = READY_TARGETS;
     } else if (page === 'mhd') {
         own = MHD_TARGETS;
+    } else if (page === 'app') {
+        own = START_TARGETS;
     } else if (page === 'records') {
         own = recordsTargets(extra);
     } else if (page === 'logs') {
@@ -299,7 +322,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' || page === 'mhd' ? 'settings' : page;
+    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' || page === 'mhd' || page === 'app' ? 'settings' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) {
@@ -606,18 +629,41 @@ function health(rec, v, cfg, ui, extra) {
 /* ---- the settings page ---- */
 
 /* The settings menu: a card per sub-page, with what it holds now. */
+/* How a sub-page is set now, in a few words for its row. */
+function summary(id, cfg) {
+    if (id === 'menu:limits') {
+        const changed = LIMIT_ITEMS.filter((it) => cfg[it.key] !== it.def).length;
+        return `Öl ab ${cfg.oilMax} °C · Drehzahl ab ${thousands(cfg.rpmRed)}${changed ? ` · ${changed} geändert` : ''}`;
+    }
+    if (id === 'menu:ready') {
+        const on = L.READY.filter((r) => cfg[r.on]).map((r) => `${r.short} ab ${cfg[r.at]} °C`);
+        return on.length ? on.join(' · ') : 'Nichts eingeschaltet';
+    }
+    if (id === 'menu:mhd') {
+        return `Max Cooling ${cfg.mhdCoolingOn ? 'ein' : 'aus'} · Klappe ${cfg.mhdFlapOn ? 'ein' : 'aus'}`;
+    }
+    if (id === 'menu:app') {
+        return cfg.autoOpenOn ? 'Öffnet beim Motorstart' : 'Öffnet nur per Kachel';
+    }
+    return '';
+}
+
 function settingsMenu(rec, cfg, ui) {
     rec.text('Einstellungen', X0, 120, 56, C.text, { font: 'label' });
+    MENU_SECTIONS.forEach((sec) => rec.text(sec.label.toUpperCase(), X0 + 8, sec.y + 14, 24, C.dim, { font: 'label', spacing: 2 }));
     MENU.forEach((m) => {
         const focus = ui && ui.focus === m.id;
-        rec.roundRect(m.x, m.y, m.w, m.h, 24, ui && ui.pressed === m.id ? C.line : '#151D26');
-        rec.strokeRoundRect(m.x, m.y, m.w, m.h, 24, focus ? 5 : 2, focus ? C.ice : C.line);
-        // title and what it holds, centred on the card's height
-        rec.text(m.label, m.x + 56, m.y + m.h / 2 - 8, 52, C.text, { font: 'label' });
-        rec.text(m.text, m.x + 56, m.y + m.h / 2 + 52, 30, C.dim, { font: 'label' });
-        const cx = m.x + m.w - 72;
+        rec.roundRect(m.x, m.y, m.w, m.h, 20, ui && ui.pressed === m.id ? C.line : '#151D26');
+        if (focus) {
+            rec.strokeRoundRect(m.x, m.y, m.w, m.h, 20, 5, C.ice);
+        }
+        rec.text(m.label, m.x + 40, m.y + 52, 40, C.text, { font: 'label' });
+        rec.text(m.text, m.x + 40, m.y + 92, 26, C.dim, { font: 'label' });
+        // how it is set now, right before the arrow
+        rec.text(summary(m.id, cfg), m.x + m.w - 110, m.y + m.h / 2 + 11, 30, C.ice, { font: 'label', align: 'right' });
+        const cx = m.x + m.w - 52;
         const cy = m.y + m.h / 2;
-        rec.polyline([[cx - 18, cy - 30], [cx + 12, cy], [cx - 18, cy + 30]], 6, C.dim);
+        rec.polyline([[cx - 14, cy - 24], [cx + 10, cy], [cx - 14, cy + 24]], 5, C.dim);
     });
 }
 
@@ -711,6 +757,24 @@ function mhdPage(rec, cfg, ui) {
         'MHD meldet den Zustand nicht zurück: die App zeigt den zuletzt bestätigten Befehl.'
     ];
     lines.forEach((l, i) => rec.text(l, X0, MHD_FLAP_SWITCH.y + 170 + i * 50, 30, C.dim, { font: 'label' }));
+    button(rec, BACK_SET, ui);
+}
+
+function appPage(rec, cfg, ui) {
+    rec.text('App', X0, 120, 56, C.text, { font: 'label' });
+    rec.text('Wie sich die App selbst verhält.', X0, 166, 30, C.dim, { font: 'label' });
+    const on = !!cfg.autoOpenOn;
+    toggleSwitch(rec, START_SWITCH, on, ui);
+    rec.text('Beim Motorstart öffnen', START_SWITCH.x + START_SWITCH.w + 56, START_SWITCH.y + 64, 44, on ? C.text : C.dim, { font: 'label' });
+    const lines = [
+        'Einmal pro Fahrt: beim ersten Motorstart, nachdem der Motor mindestens drei Minuten aus war. Ein Neustart durch die',
+        'Start-Stopp-Automatik öffnet sie nicht noch einmal. Das geht, sobald die App seit dem Hochfahren der Headunit einmal lief.'
+    ];
+    lines.forEach((l, i) => rec.text(l, X0, START_SWITCH.y + 150 + i * 44, 28, C.dim, { font: 'label' }));
+    rec.fillRect(X0, ORDER_RESET.y - 40, W - PAD - X0, 2, C.line);
+    button(rec, ORDER_RESET, ui);
+    rec.text('Die Temperatur-Kacheln der Live-Seite wieder in der ersten Reihenfolge (sonst: gedrückt halten und ziehen).',
+        ORDER_RESET.x + ORDER_RESET.w + 40, ORDER_RESET.y + 52, 28, C.dim, { font: 'label' });
     button(rec, BACK_SET, ui);
 }
 
@@ -1111,6 +1175,10 @@ function draw(rec, page, v, cfg, ui, extra) {
     }
     if (page === 'mhd') {
         mhdPage(rec, cfg, ui);
+        return rec;
+    }
+    if (page === 'app') {
+        appPage(rec, cfg, ui);
         return rec;
     }
     if (page === 'records') {

@@ -60,6 +60,7 @@ fs.mkdirSync(out, { recursive: true });
 SCENES.settings = {};
 SCENES.records = {};
 SCENES.mhd = {};
+SCENES.app = {};
 SCENES.warming = Object.assign({}, SCENES.cold, { rpm: 2400, rpmPeak: 3100, oil: 86, coolant: 64, gearbox: 41, exhaust: 520 });
 SCENES.limits = {};
 SCENES.ready = {};
@@ -130,8 +131,8 @@ SCENES.logbattery = {};
 SCENES.logcooling = {};
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
-    const page = name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' || name === 'records' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
-    const cfg = /^(settings|limits|ready|mhd)$/.test(name) ? Object.assign(Limits.defaults(), { rpmRed: 6800, gearboxReadyOn: 1, gearboxReady: 60 }) :
+    const page = name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' || name === 'app' || name === 'records' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
+    const cfg = /^(settings|limits|ready|mhd|app)$/.test(name) ? Object.assign(Limits.defaults(), { rpmRed: 6800, gearboxReadyOn: 1, gearboxReady: 60 }) :
         name === 'cold' || name === 'pull' || name === 'warming' ? Object.assign(Limits.defaults(), { gearboxReadyOn: 1 }) : Limits.defaults();
     if (name === 'warnings') cfg.oilMax = 125;
     dash.draw(rec, page, SCENES[name], cfg, { focus: name === 'pull' ? 'reset' : name === 'limits' ? 'inc:oilMax' : name === 'ready' ? 'toggle:gearboxReadyOn' : null },

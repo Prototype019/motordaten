@@ -219,7 +219,7 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.on('targets', (t) => told.push(t.length));
     d.setPage('settings');
     assert.deepStrictEqual(told, [dash.targets('settings', d.extra).length]);
-    assert.deepStrictEqual(dash.targets('settings').slice(5).map((t) => t.id), ['menu:limits', 'menu:ready', 'menu:mhd']);
+    assert.deepStrictEqual(dash.targets('settings').slice(5).map((t) => t.id), ['menu:limits', 'menu:ready', 'menu:mhd', 'menu:app']);
     assert.deepStrictEqual(dash.targets('mhd').slice(5).map((t) => t.id), ['toggle:mhdCoolingOn', 'toggle:mhdFlapOn', 'settings:back']);
     // the flap's button only while switched on (extra.flap), its state in its words; with Max Cooling both share the place
     assert.strictEqual(Limits.defaults().mhdFlapOn, 0, 'the flap starts off');

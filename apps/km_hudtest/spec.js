@@ -6,6 +6,8 @@ const PROXIES = 24;
 module.exports = {
     PROXIES,
     description: 'HUD: Warmfahren und Öltemperatur im Head-up-Display',
+    // started with the head unit (and again should it stop): the HUD shows without the app being opened first
+    startType: 'autostart',
     loggingId: 'KMHT',
     diskBytes: 10485760,
     // Node 8 with the oap-sdk and SOME/IP, the drawn screens (fonts, the recorder) and the HUD's 353x203 canvas

@@ -105,7 +105,10 @@ function packageJson(app, spec) {
             userLoginRequired: false, backgroundPriority: 150, someipManifest: 'manifest.json' },
         files: ['config', 'rhmiData', 'package.json', 'npm-shrinkwrap.json', 'permissions.json', 'javascript', 'manifest.json'],
         dependencies: { 'oap-sdk': '24.10.2' }, engines: { node: '>=8.7.0' }, author: 'owner',
-        license: 'SEE LICENSE IN LICENSE', mguLocalOnly: true, mguHmi: ['ID8'] };
+        license: 'SEE LICENSE IN LICENSE', mguLocalOnly: true, mguHmi: ['ID8'],
+        // spec.startType 'autostart': the head unit starts the app by itself and again when it stops (the Store's
+        // deploy tool, package.json mguAppStartType); without it the app starts when its tile is pressed
+        ...(spec.startType ? { mguAppStartType: spec.startType } : {}) };
 }
 
 function manifest(spec) {

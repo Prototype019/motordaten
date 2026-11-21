@@ -98,6 +98,9 @@ const RPM_INVALID = 65535;
 const TEMP_INVALID = 255;
 const ENGINE_STOPPED_RPM = 200;
 const ENGINE_RUNNING_RPM = 400;   // from here the engine counts as started
+/* Opening by itself (Einstellungen › Start): at an engine start after the engine was off this long (a new drive;
+ * the auto start-stop's restarts are shorter), and not again within it. */
+const AUTO_OPEN_OFF_MS = 3 * 60 * 1000;
 const PEAK_AFTER_START_MS = 5000;
 const COOLING_MIN_RPM = 500;
 /* MHD's exhaust flap: Zu is handed to the DME (2F 02 00) above FLAP_OPEN_RPM and closed again under FLAP_CLOSE_RPM,
@@ -189,6 +192,8 @@ class Motordaten extends ListApp {
         this._summaries = new Map(); // recording name -> its summary (files do not change once written)
         this._logs = [];
         this._v = {};
+        this._engineOn = undefined;         // the engine running (the car's signal); undefined: not known yet
+        this._engineOffAt = 0;              // when it last stopped
         this._proxies = [];
         this._timer = setInterval(() => this._render(), 1000);
     }
@@ -340,7 +345,7 @@ class Motordaten extends ListApp {
             this._toggleRecording();
         } else if (id === 'reset') {
             this.run();
-        } else if (id === 'menu:limits' || id === 'menu:ready' || id === 'menu:mhd') {
+        } else if (id === 'menu:limits' || id === 'menu:ready' || id === 'menu:mhd' || id === 'menu:app') {
             d.setPage(id.slice(5));
         } else if (id === 'records:clear') {
             d.setExtra({ maxima: Object.assign({}, d.extra.maxima, { confirm: true }) });
@@ -355,6 +360,8 @@ class Motordaten extends ListApp {
             this._sendCooling(true);
         } else if (id === 'flap') {
             this._flapPressed();
+        } else if (id === 'order:reset') {
+            this._setLimits(Object.assign({}, this._limits, { tempOrder: Limits.tempOrder([]) }));
         } else if (id === 'settings:back') {
             d.setPage('settings');
         } else if (id.indexOf('toggle:') === 0) {
@@ -868,6 +875,45 @@ class Motordaten extends ListApp {
         this._drawn.connect();
     }
 
+    /*
+     * The engine from the car's signal (it comes while the app is not in front too, the app running from the head
+     * unit's start): at the first start of a drive the app opens by itself (Einstellungen › Start), once.
+     */
+    _engineWatch(rpm) {
+        if (rpm === null || rpm === undefined) {
+            return;
+        }
+        const now = Date.now();
+        const running = rpm >= ENGINE_RUNNING_RPM;
+        const was = this._engineOn;
+        this._engineOn = running;
+        if (!running) {
+            if (was) {
+                this._engineOffAt = now;
+            }
+            return;
+        }
+        if (was !== false && was !== undefined) {
+            return;                             // still running
+        }
+        // a start: a new drive when the engine was off long enough (or this is the first the app sees)
+        const newDrive = !this._engineOffAt || now - this._engineOffAt >= AUTO_OPEN_OFF_MS;
+        if (newDrive && this._limits.autoOpenOn && !this.isVisible()) {
+            this._autoOpen();
+        }
+    }
+
+    /* Opens the app's screen as its tile would (the drawn screen when the renderer is there). */
+    _autoOpen() {
+        const tile = this._frame && this._frame.tile;
+        if (!tile) {
+            return;
+        }
+        logger.info('engine started: opening the app');
+        Diag.note('Motorstart: App öffnet sich');
+        this._openTile(tile);
+    }
+
     /* ---- the car's signals ---- */
 
     _subscribe() {
@@ -881,6 +927,7 @@ class Motordaten extends ListApp {
                     const raw = v && v.actualValueRPMEngineCrankshaft;
                     const rpm = isNum(raw) && raw !== RPM_INVALID ? raw * 0.25 : null;
                     this._cds.rpm = rpm !== null && rpm < ENGINE_STOPPED_RPM ? 0 : rpm;
+                    this._engineWatch(this._cds.rpm);
                     this._render();
                 }),
                 proxy.statusEngineTemperature.subscribe((v) => {

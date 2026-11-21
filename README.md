@@ -5,8 +5,8 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 
 | App | Was sie tut |
 |---|---|
-| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche über `mgu-render`. Live aus Motor und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10-mal pro Sekunde: Drehzahl, Ladedruck mit Soll, Leistung aus der gemessenen Luftmasse und Drehmoment, Öldruck, Öl-, Kühlmittel-, Ansaugluft-, Getriebeöl- und Abgastemperatur mit Temperaturbalken, Klopfregelung mit Zylinder, Bordnetz. Bereit-Anzeige für Volllast. Aufzeichnungen mit Diagrammen (auch Lambda, Raildruck, Klopfen je Zylinder) und USB-Export, Fehlerspeicher aller Steuergeräte mit Klartext, alle Grenzwerte einstellbar. |
-| **HUD** (`km_hudtest`) | Warmfahren und Werte im Head-up-Display, über den Cluster renderer von `robertnisipeanu/idrive-apps` (der Store installiert ihn mit). Warmfahren: Öl bzw. Kühlmittel in Blau, bis alles bereit ist, dann kurz „Bereit“ und das HUD ist wieder frei; Öl zu heiß in Rot. Werte: bis zu drei frei gewählte Werte nebeneinander (Öl, Kühlmittel, Drehzahl, Ladedruck, Öldruck, Ansaugluft, Getriebeöl, Bordnetz), Reihenfolge per Ziehen. Position und Größe einstellbar, „Im HUD testen“. Eigene Oberfläche im Motordaten-Look (Live, Werte, Anzeige, Bereit, Status). Nur lesend: Öl, Kühlmittel und Drehzahl aus dem Fahrzeugsignal (CDS); die übrigen über die Diagnose, nur solange sie im HUD stehen, einmal pro Sekunde. |
+| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche über `mgu-render`. Live aus Motor und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10-mal pro Sekunde: Drehzahl, Ladedruck mit Soll, Leistung aus der gemessenen Luftmasse und Drehmoment, Öldruck, Öl-, Kühlmittel-, Ansaugluft-, Getriebeöl- und Abgastemperatur mit Temperaturbalken, Klopfregelung mit Zylinder, Bordnetz. Bereit-Anzeige für Volllast. Aufzeichnungen mit Diagrammen (auch Lambda, Raildruck, Klopfen je Zylinder) und USB-Export, Fehlerspeicher aller Steuergeräte mit Klartext. Einstellungen als Liste: Fahrzeug (Grenzwerte, Bereit für Volllast, MHD-Tuning) und App (beim ersten Motorstart einer Fahrt von selbst öffnen, Reihenfolge der Temperaturen zurücksetzen). |
+| **HUD** (`km_hudtest`) | Warmfahren und Werte im Head-up-Display, über den Cluster renderer von `robertnisipeanu/idrive-apps` (der Store installiert ihn mit). Warmfahren: Öl bzw. Kühlmittel in Blau, bis alles bereit ist, dann kurz „Bereit“ und das HUD ist wieder frei; Öl zu heiß in Rot. Werte: bis zu drei frei gewählte Werte nebeneinander (Öl, Kühlmittel, Drehzahl, Ladedruck, Öldruck, Ansaugluft, Getriebeöl, Bordnetz), Reihenfolge per Ziehen. Position und Größe einstellbar, „Im HUD testen“. Startet mit der Headunit (`mguAppStartType: autostart`), das HUD kommt also ohne die App zu öffnen; läuft auch, wenn die Headunit sie ohne Bildschirm startet. Eigene Oberfläche im Motordaten-Look (Live, Werte, Anzeige, Bereit, Status). Nur lesend: Öl, Kühlmittel und Drehzahl aus dem Fahrzeugsignal (CDS); die übrigen über die Diagnose, nur solange sie im HUD stehen, einmal pro Sekunde. |
 
 Jede App zeigt oben eine Statuszeile, worauf sie wartet oder was fehlschlug.
 
@@ -17,6 +17,11 @@ Im Store: **Settings → Add source** → `Prototype019/motordaten`, Kanal
 **Branch main**. Dann die Apps installieren und die Headunit neu starten
 (auf iDrive 8 wird eine Installation erst nach dem Neustart aktiv).
 Mit Zündung an öffnen.
+
+Von selbst öffnen (Motordaten › Einstellungen › App): beim ersten Motorstart einer Fahrt (Motor vorher mindestens drei
+Minuten aus; Start-Stopp öffnet nicht erneut), sobald die App seit dem Hochfahren der Headunit lief. Mit der Headunit
+startet zunächst nur die HUD-App; Motordaten folgt, wenn sich gezeigt hat, dass ein so gestarteter Prozess seine
+Oberfläche behält.
 
 ### HUD
 
