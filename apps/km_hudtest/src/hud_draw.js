@@ -13,7 +13,7 @@
  *   grid:  the alignment picture (Ausrichten): a frame, the middle lines, a circle
  *
  * v also carries pos (left / center / right: where in the 353 px the block sits), size (normal / large) and cal
- * { tilt, shift, height } (settings correction()): the HUD sets the picture slanted, aside and flatter, so the
+ * { tilt, shift, height, width } (settings correction()): the HUD sets the picture slanted, aside and flatter, so the
  * picture for the HUD is drawn the other way round (warp); the app's own screen shows it straight.
  * drawHud(v, c) draws into a Canvas (src/kit_canvas.js) for the HUD itself; drawHud(v, rec, { x, y, s })
  * draws the same into a Recorder at x, y, s times as large, for the app's own screen (nothing cleared).
@@ -76,17 +76,19 @@ function drawGrid(c, o) {
 
 /*
  * The picture for the HUD drawn the other way round from how the HUD sets it: each row moved aside against the slant
- * (tilt degrees about the middle row), the whole moved by shift, and taller by height % about the middle (sampled,
- * rows and columns blended). Nothing to do: the canvas as it is.
+ * (tilt degrees about the middle row), the whole moved by shift, taller by height % and narrower to width % about the
+ * middle (sampled, rows and columns blended). Nothing to do: the canvas as it is.
  */
 function warp(c, cal) {
-    if (!cal || (!cal.tilt && !cal.shift && (!cal.height || cal.height === 100))) return c;
+    if (!cal || (!cal.tilt && !cal.shift && (!cal.height || cal.height === 100) && (!cal.width || cal.width === 100))) return c;
     const w = c.w;
     const h = c.h;
     const src = Buffer.from(c.d);
     const d = c.d;
     const k = Math.tan((cal.tilt || 0) * Math.PI / 180);
     const scale = 100 / (cal.height || 100);
+    const wide = 100 / (cal.width || 100);
+    const cx = w / 2;
     const cy = h / 2;
     const at = (x, y, ch) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : src[(y * w + x) * 4 + ch]);
     for (let y = 0; y < h; y++) {
@@ -96,7 +98,8 @@ function warp(c, cal) {
         // + tilt leans the top to the left: rows above the middle come from further right
         const off = k * (cy - y - 0.5) - (cal.shift || 0);
         for (let x = 0; x < w; x++) {
-            const sx = x + off;
+            // narrower about the middle: each column from further out
+            const sx = cx + (x + 0.5 + off - cx) * wide - 0.5;
             const x0 = Math.floor(sx);
             const fx = sx - x0;
             const i = (y * w + x) * 4;
@@ -171,7 +174,7 @@ function drawValues(v, c, o) {
 function key(v) {
     if (!v || !v.mode) return '';
     const items = (v.items || []).map((i) => [i.key, i.text, i.tone].join(':')).join(',');
-    const cal = v.cal ? [v.cal.tilt, v.cal.shift, v.cal.height].join(',') : '';
+    const cal = v.cal ? [v.cal.tilt, v.cal.shift, v.cal.height, v.cal.width].join(',') : '';
     return [v.mode, v.label, deg(v.value), items, v.pos, v.size, cal].join('|');
 }
 

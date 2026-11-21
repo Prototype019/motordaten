@@ -33,7 +33,9 @@ const ITEMS = Object.freeze([
     // first: the slant taken back (degrees, + leans the top to the left), moved aside (px, + to the right), taller (%)
     { key: 'tilt', label: 'Neigung', unit: '°', def: 0, min: -45, max: 45, step: 1 },
     { key: 'shiftX', label: 'Versatz', unit: 'px', def: 0, min: -80, max: 80, step: 2 },
-    { key: 'height', label: 'Höhe', unit: '%', def: 100, min: 70, max: 160, step: 5 }
+    { key: 'height', label: 'Höhe', unit: '%', def: 100, min: 70, max: 160, step: 5 },
+    // narrower about the middle (%): the HUD shows less than the 353 px, wide content (three values) is cut at the sides
+    { key: 'width', label: 'Breite', unit: '%', def: 100, min: 50, max: 100, step: 5 }
 ]);
 
 /* The temperatures that can count for "ready": the value, its threshold, its switch. */
@@ -166,9 +168,9 @@ function readiness(s, v) {
 }
 
 /* The alignment items (Ausrichten) and the picture's correction from the settings. */
-const ALIGN = Object.freeze(['tilt', 'shiftX', 'height']);
+const ALIGN = Object.freeze(['tilt', 'shiftX', 'height', 'width']);
 function correction(s) {
-    return { tilt: s.tilt || 0, shift: s.shiftX || 0, height: s.height || 100 };
+    return { tilt: s.tilt || 0, shift: s.shiftX || 0, height: s.height || 100, width: s.width || 100 };
 }
 
 module.exports = { ALIGN, correction, CHOICES, ITEMS, READY, defaults, clean, cleanOrder, load, save, chosen, stepped, toggled, readiness, shown, tapped, dropped, file };

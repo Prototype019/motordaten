@@ -176,7 +176,7 @@ assert.ok(dash.targets('values', Object.assign({}, extra, { mode: 'values' })).e
 dash.draw(new Recorder(dash.W, dash.H), 'values', { oil: 50 }, def, { drag: { key: 'boost', x: 900, dx: 40 } }, extra);
 
 // Ausrichten: the correction from the settings, the picture drawn the other way round
-assert.deepStrictEqual(S.correction(def), { tilt: 0, shift: 0, height: 100 });
+assert.deepStrictEqual(S.correction(def), { tilt: 0, shift: 0, height: 100, width: 100 });
 const plain = hud.drawHud({ mode: 'grid' });
 assert.strictEqual(hud.warp(plain, S.correction(def)), plain, 'nothing to correct: as it is');
 const alpha = (c, x, y) => c.d[(y * c.w + x) * 4 + 3];
@@ -190,7 +190,12 @@ assert.strictEqual(column(moved, 100), column(straight, 100) + 20, '+ shift move
 assert.notStrictEqual(hud.key({ mode: 'warm', value: 50, cal: { tilt: 10, shift: 0, height: 100 } }),
     hud.key({ mode: 'warm', value: 50, cal: { tilt: 12, shift: 0, height: 100 } }), 'a new correction draws again');
 const st = S.stepped(S.stepped(def, 'tilt', 1), 'height', 1);
-assert.deepStrictEqual(S.correction(st), { tilt: 1, shift: 0, height: 105 });
+assert.deepStrictEqual(S.correction(st), { tilt: 1, shift: 0, height: 105, width: 100 });
+const span = (c) => { let a = 999; let b = -1; for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) if (alpha(c, x, y) > 40) { a = Math.min(a, x); b = Math.max(b, x); } return [a, b]; };
+const full = span(hud.drawHud({ mode: 'grid' }));
+const narrow = span(hud.drawHud({ mode: 'grid', cal: { tilt: 0, shift: 0, height: 100, width: 70 } }));
+assert.ok(narrow[0] > full[0] + 40 && narrow[1] < full[1] - 40, `narrower about the middle: ${full} -> ${narrow}`);
+assert.ok(Math.abs((narrow[0] + narrow[1]) / 2 - (full[0] + full[1]) / 2) <= 2, 'still in the middle');
 assert.strictEqual(S.clean({ tilt: 99 }).tilt, 45, 'in its range');
 ['align'].forEach((page) => {
     dash.draw(new Recorder(dash.W, dash.H), page, {}, st, null, extra);

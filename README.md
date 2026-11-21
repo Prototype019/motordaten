@@ -28,7 +28,7 @@ Oberfläche behält.
 1. Im Store **HUD** installieren (bringt den **Cluster renderer** von `robertnisipeanu/idrive-apps` mit), Headunit neu starten, App öffnen.
 2. **Live**: was gerade im HUD steht, Öl und Kühlmittel, Anzeige Warmfahren / Werte / Aus, „Im HUD testen“ (zeigt jede Ansicht ein paar Sekunden).
 3. **Werte**: halten und ziehen ändert die Reihenfolge und was im HUD steht, tippen nimmt einen Wert hinein oder heraus (bis zu drei).
-4. **Anzeige**: was, wo (links / Mitte / rechts) und wie groß. **Ausrichten** (Knopf oben): das HUD des G87 stellt unser Bild schräg (etwa 30°) und flacher; solange die Seite offen ist, zeigt das HUD ein Raster – Neigung, Versatz und Höhe einstellen, bis Linien gerade und der Kreis rund ist. **Bereit**: welche Temperaturen fürs Warmfahren zählen, ab wann Öl, Kühlmittel und Drehzahl rot werden.
+4. **Anzeige**: was, wo (links / Mitte / rechts) und wie groß. **Ausrichten** (Knopf oben): das HUD des G87 stellt unser Bild schräg (etwa 30°) und flacher; solange die Seite offen ist, zeigt das HUD ein Raster – Neigung, Versatz, Höhe und Breite einstellen, bis Linien gerade, der Kreis rund und der Rahmen ganz zu sehen ist. **Bereit**: welche Temperaturen fürs Warmfahren zählen, ab wann Öl, Kühlmittel und Drehzahl rot werden.
 
 Werte über die Diagnose (Ladedruck, Öldruck, Ansaugluft, Getriebeöl, Bordnetz) fragt die App beim Motor bzw. Getriebe an, solange sie im HUD stehen. Läuft gleichzeitig Motordaten, teilen sich beide die Diagnose-Leitung; wer keine Aussetzer in Motordaten will, nimmt im HUD nur Werte aus dem Fahrzeugsignal.
 

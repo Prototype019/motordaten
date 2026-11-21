@@ -76,18 +76,19 @@ const DISPLAY_TARGETS = [].concat(...DISPLAY_ROWS.map((r) => segments(r.key, ROW
     .concat([{ id: 'page:align', x: W - PAD - 360, y: 64, w: 360, h: 84, label: 'Ausrichten' }]);
 
 /* Ausrichten: a row per correction, − and + at the right; Standard and Zurück at the top. */
-const ALIGN_ROW_H = 150;
-const ALIGN_TOP = 210;
+const ALIGN_ROW_H = 132;
+const ALIGN_TOP = 196;
 const ALIGN_TARGETS = [].concat(...S.ALIGN.map((key, i) => {
-    const y = ALIGN_TOP + i * ALIGN_ROW_H + 10;
-    return [{ id: `dec:${key}`, x: 1500 - 2 * BTN - 24, y, w: BTN, h: BTN, label: '−' },
-        { id: `inc:${key}`, x: 1500 - BTN, y, w: BTN, h: BTN, label: '+' }];
+    const y = ALIGN_TOP + i * ALIGN_ROW_H + 14;
+    return [{ id: `dec:${key}`, x: 1500 - 2 * 88 - 24, y, w: 88, h: 88, label: '−' },
+        { id: `inc:${key}`, x: 1500 - 88, y, w: 88, h: 88, label: '+' }];
 })).concat([{ id: 'align:defaults', x: W - PAD - 300 - 24 - 300, y: 64, w: 300, h: 84, label: 'Standard' },
     { id: 'page:display', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Zurück' }]);
 const ALIGN_TEXT = {
     tilt: 'bis die senkrechte Linie senkrecht steht (+ kippt nach links)',
     shiftX: 'bis die Linie über der Mitte von BMWs Leiste steht (+ nach rechts)',
-    height: 'bis der Kreis rund ist'
+    height: 'bis der Kreis rund ist',
+    width: 'bis der Rahmen links und rechts ganz zu sehen ist'
 };
 
 /* Bereit: per temperature its switch and its ready value; then where oil, coolant and engine speed turn red. */
@@ -265,10 +266,10 @@ function alignPage(rec, v, cfg, ui) {
     S.ALIGN.forEach((key, i) => {
         const it = S.ITEMS.find((x) => x.key === key);
         const y = ALIGN_TOP + i * ALIGN_ROW_H;
-        rec.text(it.label, X0, y + 66, 44, C.text, { font: 'label' });
-        rec.text(ALIGN_TEXT[key], X0, y + 108, 28, C.dim, { font: 'label' });
+        rec.text(it.label, X0, y + 60, 40, C.text, { font: 'label' });
+        rec.text(ALIGN_TEXT[key], X0, y + 98, 26, C.dim, { font: 'label' });
         const val = String(cfg[key]);          // (the number font has no plus sign; the line under says which way)
-        valueUnit(rec, val, it.unit, 1500 - 2 * BTN - 56, y + 76, 54, cfg[key] !== it.def ? C.ice : C.text, 28, 'right');
+        valueUnit(rec, val, it.unit, 1500 - 2 * 88 - 56, y + 74, 50, cfg[key] !== it.def ? C.ice : C.text, 26, 'right');
         rec.fillRect(X0, y + ALIGN_ROW_H - 12, 1500 - X0, 2, C.line);
     });
     ALIGN_TARGETS.forEach((t) => {
