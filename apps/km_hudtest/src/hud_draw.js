@@ -10,7 +10,11 @@
  *   values: one to three values (src/values.js), each its label over its number and unit; blue while cold,
  *           red when hot. One: large; two or three: side by side.
  *
- * v also carries pos (left / center / right: where in the 353 px the block sits) and size (normal / large).
+ *   grid:  the alignment picture (Ausrichten): a frame, the middle lines, a circle
+ *
+ * v also carries pos (left / center / right: where in the 353 px the block sits), size (normal / large) and cal
+ * { tilt, shift, height } (settings correction()): the HUD sets the picture slanted, aside and flatter, so the
+ * picture for the HUD is drawn the other way round (warp); the app's own screen shows it straight.
  * drawHud(v, c) draws into a Canvas (src/kit_canvas.js) for the HUD itself; drawHud(v, rec, { x, y, s })
  * draws the same into a Recorder at x, y, s times as large, for the app's own screen (nothing cleared).
  *
@@ -51,7 +55,63 @@ function drawHud(v, c, at) {
     }
     if (!v || !v.mode) return c;
     const o = at || { x: 0, y: 0, s: 1 };
-    if (v.mode === 'values') return drawValues(v, c, o);
+    if (v.mode === 'grid') drawGrid(c, o);
+    else if (v.mode === 'values') drawValues(v, c, o);
+    else drawLines(v, c, o);
+    return at ? c : warp(c, v.cal);
+}
+
+/* The alignment picture: straight lines and a round circle show how the HUD sets the picture. */
+function drawGrid(c, o) {
+    const X = (x) => o.x + x * o.s;
+    const Y = (y) => o.y + y * o.s;
+    const w = 2 * o.s;
+    c.strokeRoundRect(X(6), Y(6), (HUD.w - 12) * o.s, (HUD.h - 12) * o.s, 8 * o.s, w, ICE);
+    c.line(X(HUD.w / 2), Y(6), X(HUD.w / 2), Y(HUD.h - 6), w, WHITE);
+    c.line(X(6), Y(HUD.h / 2), X(HUD.w - 6), Y(HUD.h / 2), w, WHITE);
+    c.arc(X(HUD.w / 2), Y(HUD.h / 2), 54 * o.s, 58 * o.s, 0, 360, WHITE);
+    const t = 'AUSRICHTEN';
+    c.text(t, X(HUD.w / 2) - c.textWidth(t, 16 * o.s) / 2, Y(30), 16 * o.s, ICE);
+}
+
+/*
+ * The picture for the HUD drawn the other way round from how the HUD sets it: each row moved aside against the slant
+ * (tilt degrees about the middle row), the whole moved by shift, and taller by height % about the middle (sampled,
+ * rows and columns blended). Nothing to do: the canvas as it is.
+ */
+function warp(c, cal) {
+    if (!cal || (!cal.tilt && !cal.shift && (!cal.height || cal.height === 100))) return c;
+    const w = c.w;
+    const h = c.h;
+    const src = Buffer.from(c.d);
+    const d = c.d;
+    const k = Math.tan((cal.tilt || 0) * Math.PI / 180);
+    const scale = 100 / (cal.height || 100);
+    const cy = h / 2;
+    const at = (x, y, ch) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : src[(y * w + x) * 4 + ch]);
+    for (let y = 0; y < h; y++) {
+        const sy = cy + (y + 0.5 - cy) * scale - 0.5;
+        const y0 = Math.floor(sy);
+        const fy = sy - y0;
+        // + tilt leans the top to the left: rows above the middle come from further right
+        const off = k * (cy - y - 0.5) - (cal.shift || 0);
+        for (let x = 0; x < w; x++) {
+            const sx = x + off;
+            const x0 = Math.floor(sx);
+            const fx = sx - x0;
+            const i = (y * w + x) * 4;
+            for (let ch = 0; ch < 4; ch++) {
+                const top = at(x0, y0, ch) * (1 - fx) + at(x0 + 1, y0, ch) * fx;
+                const bottom = at(x0, y0 + 1, ch) * (1 - fx) + at(x0 + 1, y0 + 1, ch) * fx;
+                d[i + ch] = Math.round(top * (1 - fy) + bottom * fy);
+            }
+        }
+    }
+    return c;
+}
+
+/* The looks of one block of lines (warm, ready, hot). */
+function drawLines(v, c, o) {
     const k = v.size === 'large' ? 1.25 : 1;
     const ls = lines(v);
     const width = (l) => l.parts.reduce((n, p) => n + c.textWidth(p[0], p[1] * k, { font: p[3] }) + p[4] * k, 0);
@@ -111,7 +171,8 @@ function drawValues(v, c, o) {
 function key(v) {
     if (!v || !v.mode) return '';
     const items = (v.items || []).map((i) => [i.key, i.text, i.tone].join(':')).join(',');
-    return [v.mode, v.label, deg(v.value), items, v.pos, v.size].join('|');
+    const cal = v.cal ? [v.cal.tilt, v.cal.shift, v.cal.height].join(',') : '';
+    return [v.mode, v.label, deg(v.value), items, v.pos, v.size, cal].join('|');
 }
 
-module.exports = { HUD, drawHud, key, lines };
+module.exports = { HUD, drawHud, key, lines, warp };

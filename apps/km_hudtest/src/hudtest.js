@@ -72,6 +72,7 @@ class HudApp extends ListApp {
         this._poll = null;
         this._drawn = null;
         this._lastMode = null;           // the mode before Aus (the list button brings it back)
+        this._page = 'main';             // the drawn page open (Ausrichten shows the alignment picture)
         this._layerState = null;
         this._proxies = [];
         this._hud.on('change', () => this._render());
@@ -181,8 +182,14 @@ class HudApp extends ListApp {
     /* A press on the drawn screens. */
     _action(id) {
         const d = this._drawn;
-        if (id.indexOf('tab:') === 0) {
-            if (d) d.setPage(id.slice(4));
+        if (id.indexOf('tab:') === 0 || id.indexOf('page:') === 0) {
+            this._page = id.slice(id.indexOf(':') + 1);
+            if (d) d.setPage(this._page);
+        } else if (id === 'align:defaults') {
+            const def = S.defaults();
+            const back = {};
+            S.ALIGN.forEach((k) => { back[k] = def[k]; });
+            this._set(Object.assign({}, this._settings, back));
         } else if (id.indexOf('cell:') === 0) {
             // the controller's focus stays on the place it was pressed at (its proxy button), not on the card
             // that moved away from it
@@ -244,7 +251,10 @@ class HudApp extends ListApp {
         if (this._stopped) return;
         const now = Date.now();
         let view = this._warmup.view(this._v, this._settings, now);
-        if (this._test) {
+        // Ausrichten open (and the app in front): the alignment picture, whatever else
+        if (this._page === 'align' && this.isVisible()) {
+            view = { mode: 'grid' };
+        } else if (this._test) {
             const t = testView(this._test, now);
             if (t) {
                 view = t;
@@ -256,7 +266,8 @@ class HudApp extends ListApp {
         if (view) {
             // coming on: drawn at once, so the HUD never shows what it had before
             const on = this._hud.isOn();
-            this._hud.update(Object.assign({}, view, { pos: this._settings.pos, size: this._settings.size }), !on);
+            this._hud.update(Object.assign({}, view, { pos: this._settings.pos, size: this._settings.size,
+                cal: S.correction(this._settings) }), !on);
             if (!on) this._hud.show(true);
         } else if (this._hud.isOn()) {
             this._hud.show(false);

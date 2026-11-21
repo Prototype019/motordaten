@@ -64,6 +64,7 @@ class Warmup {
 
     /* Where it stands, in words for the screen: { title, text }. */
     words(view, s, v) {
+        if (view && view.mode === 'grid') return { title: 'Ausrichten', text: 'Das HUD zeigt das Raster, bis die Seite Ausrichten zu ist.' };
         if (s.mode === 'off') return { title: 'HUD aus', text: 'Die App zeigt nichts im HUD.' };
         if (view && view.mode === 'values') {
             return { title: 'Werte im HUD', text: `${view.items.map((i) => V.byKey(i.key).label).join(', ')}. Ändern unter „Werte“.` };

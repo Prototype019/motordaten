@@ -27,6 +27,8 @@
   .hud img { display: block; width: 100%; aspect-ratio: 353 / 203; mix-blend-mode: screen; image-rendering: auto; }
   .hud .area { position: absolute; inset: 0; border: 1px dashed rgba(255,255,255,.18); border-radius: 4px; pointer-events: none; }
   .hud.noframe .area { display: none; }
+  /* how the G87's HUD sets our picture (estimated from a photo): slanted to the right, flatter */
+  .hud.carwarp img { transform: skewX(-30deg) scaleY(0.82); transform-origin: 50% 50%; }
   /* BMW's own HUD bar, measured on the G87's HUD (photo 2026-11-20): right under the app's area,
      centred, 559 x 67 in the HUD's pixels (the area is 353 x 203); speed limit, speed, km/h */
   .bmw { position: absolute; left: -28.33%; width: 158.36%; top: 100%; display: block; mix-blend-mode: screen; }
@@ -50,7 +52,7 @@
   <section>
     <h1>HUD · echte App, nachgebauter Renderer</h1>
     <div class="road">
-      <div class="hud" id="hud">
+      <div class="hud carwarp" id="hud">
         <div class="app">
           <img id="img" src="/hud.png" alt="Was die App ins HUD zeichnet">
           <div class="area" title="Der Bereich der App, 353 × 203"></div>
@@ -71,7 +73,7 @@
       </div>
     </div>
     <div class="phase"><span>Fahrt: <b id="phase">–</b></span><span>Öl im simulierten Auto: <b id="oil">–</b></span><span id="t"></span></div>
-    <p class="note">Gestrichelt: der Bereich der App (353 × 203). Die blaue Leiste darunter ist BMWs eigene, nach dem Foto vom G87 nachgebaut (Lage und Größe gemessen). Schwarz ist im HUD unsichtbar.</p>
+    <p class="note">Gestrichelt: der Bereich der App (353 × 203). Die blaue Leiste darunter ist BMWs eigene, nach dem Foto vom G87 nachgebaut (Lage und Größe gemessen). Schwarz ist im HUD unsichtbar. Die Schräglage (etwa 30°, flacher) ahmt nach, wie das HUD im G87 unser Bild einbettet: unter Anzeige › Ausrichten so einstellen, dass das Raster gerade steht.</p>
   </section>
   <section class="screen">
     <h1>Die App auf dem iDrive-Bildschirm · klicken wie tippen, Karten mit der Maus ziehen</h1>
@@ -84,6 +86,7 @@
       <button id="press" type="button">Anzeige aus / an</button>
       <button id="frame" type="button">Rahmen aus</button>
       <button id="cds" type="button">Fahrzeugsignal aus</button>
+      <button id="warp" type="button">HUD-Verzerrung aus</button>
     </div>
     <table id="rows"></table>
   </aside>
@@ -123,6 +126,10 @@
   }
   $('press').onclick = () => fetch('/press').then(tick);
   $('cds').onclick = () => fetch('/cds').then(tick);
+  $('warp').onclick = () => {
+    const on = $('hud').classList.toggle('carwarp');
+    $('warp').textContent = on ? 'HUD-Verzerrung aus' : 'HUD-Verzerrung an';
+  };
   // a click is a tap; pressed, moved and let go is a drag (the Werte page's cards)
   let down = null;
   $('screen').onmousedown = (e) => { e.preventDefault(); const r = e.target.getBoundingClientRect(); down = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; };

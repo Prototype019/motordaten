@@ -175,4 +175,29 @@ assert.ok(dash.targets('values', Object.assign({}, extra, { mode: 'values' })).e
 // a card lifted and moved draws
 dash.draw(new Recorder(dash.W, dash.H), 'values', { oil: 50 }, def, { drag: { key: 'boost', x: 900, dx: 40 } }, extra);
 
+// Ausrichten: the correction from the settings, the picture drawn the other way round
+assert.deepStrictEqual(S.correction(def), { tilt: 0, shift: 0, height: 100 });
+const plain = hud.drawHud({ mode: 'grid' });
+assert.strictEqual(hud.warp(plain, S.correction(def)), plain, 'nothing to correct: as it is');
+const alpha = (c, x, y) => c.d[(y * c.w + x) * 4 + 3];
+const column = (c, y) => { let best = -1; let bx = -1; for (let x = 100; x < 253; x++) { if (alpha(c, x, y) > best) { best = alpha(c, x, y); bx = x; } } return bx; };
+const straight = hud.drawHud({ mode: 'grid' });
+assert.ok(Math.abs(column(straight, 40) - column(straight, 160)) <= 1, 'the middle line upright');
+const tilted = hud.drawHud({ mode: 'grid', cal: { tilt: 30, shift: 0, height: 100 } });
+assert.ok(column(tilted, 40) < column(tilted, 160) - 40, '+ tilt leans the top to the left');
+const moved = hud.drawHud({ mode: 'grid', cal: { tilt: 0, shift: 20, height: 100 } });
+assert.strictEqual(column(moved, 100), column(straight, 100) + 20, '+ shift moves right');
+assert.notStrictEqual(hud.key({ mode: 'warm', value: 50, cal: { tilt: 10, shift: 0, height: 100 } }),
+    hud.key({ mode: 'warm', value: 50, cal: { tilt: 12, shift: 0, height: 100 } }), 'a new correction draws again');
+const st = S.stepped(S.stepped(def, 'tilt', 1), 'height', 1);
+assert.deepStrictEqual(S.correction(st), { tilt: 1, shift: 0, height: 105 });
+assert.strictEqual(S.clean({ tilt: 99 }).tilt, 45, 'in its range');
+['align'].forEach((page) => {
+    dash.draw(new Recorder(dash.W, dash.H), page, {}, st, null, extra);
+    const ts = dash.targets(page, extra);
+    assert.ok(ts.length <= spec.PROXIES);
+    assert.ok(ts.some((t) => t.id === 'inc:tilt') && ts.some((t) => t.id === 'page:display') && ts.some((t) => t.id === 'align:defaults'));
+});
+assert.ok(dash.targets('display', extra).some((t) => t.id === 'page:align'), 'Anzeige opens Ausrichten');
+
 console.log('test_screens: ok');

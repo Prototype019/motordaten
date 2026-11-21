@@ -28,7 +28,12 @@ const ITEMS = Object.freeze([
     { key: 'coolantMax', label: 'Kühlmittel zu heiß ab', unit: '°C', def: 115, min: 100, max: 125, step: 1 },
     { key: 'rpmMax', label: 'Drehzahl rot ab', unit: 'U/min', def: 6400, min: 4000, max: 7600, step: 100 },
     // how many of the order's first values the HUD shows (Werte)
-    { key: 'count', def: 1, min: 1, max: V.MAX_SHOWN, step: 1 }
+    { key: 'count', def: 1, min: 1, max: V.MAX_SHOWN, step: 1 },
+    // Ausrichten: the HUD sets our picture slanted, aside and flatter (seen on the G87); drawn the other way round
+    // first: the slant taken back (degrees, + leans the top to the left), moved aside (px, + to the right), taller (%)
+    { key: 'tilt', label: 'Neigung', unit: '°', def: 0, min: -45, max: 45, step: 1 },
+    { key: 'shiftX', label: 'Versatz', unit: 'px', def: 0, min: -80, max: 80, step: 2 },
+    { key: 'height', label: 'Höhe', unit: '%', def: 100, min: 70, max: 160, step: 5 }
 ]);
 
 /* The temperatures that can count for "ready": the value, its threshold, its switch. */
@@ -160,4 +165,10 @@ function readiness(s, v) {
     return { on: items.length > 0, ready: items.length > 0 && items.every((i) => i.reached), items };
 }
 
-module.exports = { CHOICES, ITEMS, READY, defaults, clean, cleanOrder, load, save, chosen, stepped, toggled, readiness, shown, tapped, dropped, file };
+/* The alignment items (Ausrichten) and the picture's correction from the settings. */
+const ALIGN = Object.freeze(['tilt', 'shiftX', 'height']);
+function correction(s) {
+    return { tilt: s.tilt || 0, shift: s.shiftX || 0, height: s.height || 100 };
+}
+
+module.exports = { ALIGN, correction, CHOICES, ITEMS, READY, defaults, clean, cleanOrder, load, save, chosen, stepped, toggled, readiness, shown, tapped, dropped, file };

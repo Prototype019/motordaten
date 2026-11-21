@@ -9,7 +9,9 @@
  * Page 'values' (Werte): every value as a card in one row, the first ones (up to three) shown in the HUD; held
  *   and dragged a card takes another place (in the HUD or out of it), tapped it goes in or out (src/drawn.js drag:
  *   DRAG_PAGE, tempCellBoxes, tempSlotAt; extra.order / extra.count the settings' order and count).
- * Page 'display' (Anzeige): what, where and how large, with a small HUD beside it.
+ * Page 'display' (Anzeige): what, where and how large, with a small HUD beside it; its button Ausrichten opens
+ * Page 'align' (under Anzeige): the HUD shows the alignment picture while it is open; slant, aside and height taken
+ *   back (settings ALIGN), each with − and +.
  * Page 'ready' (Bereit): which temperatures count, from where; when oil, coolant and engine speed turn red.
  * Page 'status': the cluster renderer and where the values come from.
  *
@@ -70,7 +72,23 @@ const DISPLAY_ROWS = [
     { key: 'pos', label: 'Wo', text: 'Im Feld über BMWs Leiste' },
     { key: 'size', label: 'Wie groß', text: 'Groß: ein Viertel größer' }
 ].map((r, i) => Object.assign(r, { y: 210 + i * 170 }));
-const DISPLAY_TARGETS = [].concat(...DISPLAY_ROWS.map((r) => segments(r.key, ROW_X, r.y, ROW_W, BTN)));
+const DISPLAY_TARGETS = [].concat(...DISPLAY_ROWS.map((r) => segments(r.key, ROW_X, r.y, ROW_W, BTN)))
+    .concat([{ id: 'page:align', x: W - PAD - 360, y: 64, w: 360, h: 84, label: 'Ausrichten' }]);
+
+/* Ausrichten: a row per correction, − and + at the right; Standard and Zurück at the top. */
+const ALIGN_ROW_H = 150;
+const ALIGN_TOP = 210;
+const ALIGN_TARGETS = [].concat(...S.ALIGN.map((key, i) => {
+    const y = ALIGN_TOP + i * ALIGN_ROW_H + 10;
+    return [{ id: `dec:${key}`, x: 1500 - 2 * BTN - 24, y, w: BTN, h: BTN, label: '−' },
+        { id: `inc:${key}`, x: 1500 - BTN, y, w: BTN, h: BTN, label: '+' }];
+})).concat([{ id: 'align:defaults', x: W - PAD - 300 - 24 - 300, y: 64, w: 300, h: 84, label: 'Standard' },
+    { id: 'page:display', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Zurück' }]);
+const ALIGN_TEXT = {
+    tilt: 'bis die senkrechte Linie senkrecht steht (+ kippt nach links)',
+    shiftX: 'bis die Linie über der Mitte von BMWs Leiste steht (+ nach rechts)',
+    height: 'bis der Kreis rund ist'
+};
 
 /* Bereit: per temperature its switch and its ready value; then where oil, coolant and engine speed turn red. */
 const READY_ROW_H = 104;
@@ -117,7 +135,8 @@ function valuesTargets(extra) {
 const STATUS_TARGETS = [{ id: 'reconnect', x: W - PAD - 420, y: 64, w: 420, h: 84, label: 'Neu verbinden' }];
 
 function targets(page, extra) {
-    const own = page === 'values' ? valuesTargets(extra) : page === 'display' ? DISPLAY_TARGETS : page === 'ready' ? READY_TARGETS
+    const own = page === 'values' ? valuesTargets(extra) : page === 'display' ? DISPLAY_TARGETS : page === 'align' ? ALIGN_TARGETS
+        : page === 'ready' ? READY_TARGETS
         : page === 'status' ? STATUS_TARGETS : MAIN_TARGETS;
     return TABS.concat(own);
 }
@@ -127,8 +146,9 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
+    const current = page === 'align' ? 'display' : page;
     TABS.forEach((t) => {
-        const on = t.page === page;
+        const on = t.page === current;
         if (ui && ui.pressed === t.id) rec.fillRect(t.x, t.y, t.w, t.h, C.line);
         if (on) rec.fillRect(0, t.y + 24, 8, t.h - 48, C.ice);
         if (ui && ui.focus === t.id) rec.strokeRoundRect(t.x + 10, t.y + 6, t.w - 20, t.h - 12, 14, 4, C.ice);
@@ -233,11 +253,32 @@ function displayPage(rec, v, cfg, ui) {
         rec.text(r.text, X0, r.y + 102, 28, C.dim, { font: 'label' });
         rec.fillRect(X0, r.y + BTN + 40, ROW_X + ROW_W - X0, 2, C.line);
     });
-    DISPLAY_TARGETS.forEach((t) => button(rec, Object.assign({}, t, { on: cfg[t.key] === t.word }), ui));
+    DISPLAY_TARGETS.forEach((t) => button(rec, Object.assign({}, t, { on: t.key ? cfg[t.key] === t.word : false }), ui));
     // beside the rows: how it would look (the test's warm-up look when the HUD shows nothing now)
     const sample = v.view || { mode: 'warm', label: 'Öl', value: 47 };
     rec.text(v.view ? 'So sieht es jetzt aus' : 'Beispiel', 2450, 236, 28, C.dim, { font: 'label', align: 'center' });
     hudMirror(rec, 2450 - hud.HUD.w / 2, 300, 1, cfg.mode === 'off' ? null : sample, cfg);
+}
+
+function alignPage(rec, v, cfg, ui) {
+    title(rec, 'Ausrichten', 'Das HUD stellt das Bild schräg und versetzt. Solange diese Seite offen ist, zeigt es ein Raster: so einstellen, dass es gerade sitzt.');
+    S.ALIGN.forEach((key, i) => {
+        const it = S.ITEMS.find((x) => x.key === key);
+        const y = ALIGN_TOP + i * ALIGN_ROW_H;
+        rec.text(it.label, X0, y + 66, 44, C.text, { font: 'label' });
+        rec.text(ALIGN_TEXT[key], X0, y + 108, 28, C.dim, { font: 'label' });
+        const val = String(cfg[key]);          // (the number font has no plus sign; the line under says which way)
+        valueUnit(rec, val, it.unit, 1500 - 2 * BTN - 56, y + 76, 54, cfg[key] !== it.def ? C.ice : C.text, 28, 'right');
+        rec.fillRect(X0, y + ALIGN_ROW_H - 12, 1500 - X0, 2, C.line);
+    });
+    ALIGN_TARGETS.forEach((t) => {
+        const step = t.id.indexOf('dec:') === 0 || t.id.indexOf('inc:') === 0;
+        button(rec, t, ui, { size: step ? 52 : 32 });
+    });
+    // beside: what the HUD shows meanwhile, as it should look once set
+    rec.text('Im HUD jetzt: das Raster', 2200, 236, 28, C.dim, { font: 'label', align: 'center' });
+    hudMirror(rec, 2200 - hud.HUD.w * 1.3 / 2, 290, 1.3, { mode: 'grid' }, cfg);
+    rec.text('Gerade Linien, runder Kreis, mittig über der Leiste: fertig.', 2200, 690, 28, C.dim, { font: 'label', align: 'center' });
 }
 
 function readyPage(rec, v, cfg, ui) {
@@ -345,6 +386,7 @@ function draw(rec, page, v, cfg, ui, extra) {
     rail(rec, page, ui);
     if (page === 'values') valuesPage(rec, v, cfg, ui, extra);
     else if (page === 'display') displayPage(rec, v, cfg, ui);
+    else if (page === 'align') alignPage(rec, v, cfg, ui);
     else if (page === 'ready') readyPage(rec, v, cfg, ui);
     else if (page === 'status') statusPage(rec, v, cfg, ui);
     else mainPage(rec, v, cfg, ui);

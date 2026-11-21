@@ -246,8 +246,8 @@ function serve(unit, now) {
             const st = app && app._settings;
             const t = dash.targets(screen.page, st ? { order: st.order, count: st.count, mode: st.mode } : {}).find((k) => x >= k.x && x <= k.x + k.w && y >= k.y && y <= k.y + k.h);
             if (t && app) {
-                if (t.id.indexOf('tab:') === 0) screen.page = t.id.slice(4);
-                else app._action(t.id);
+                app._action(t.id);
+                screen.page = app._page;
                 screen.pressed = t.id;
                 setTimeout(() => { screen.pressed = null; }, 150);
             }

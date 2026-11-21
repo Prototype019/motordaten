@@ -221,6 +221,20 @@ function cdsRun() {
         assert.notStrictEqual(dash.targets('values', fake.extra)[at].id, 'cell:voltage', 'the card moved');
         assert.strictEqual(fake.ui.focus, dash.targets('values', fake.extra)[at].id, 'the focus stayed on its place');
         app._drawn = null;
+        // Ausrichten open with the app in front: the HUD shows the alignment picture; in the background: not
+        app._action('page:align');
+        assert.strictEqual(app._page, 'align');
+        unit.rhmi.emit('applicationStackChanged', { ROOT_APP: 1 });
+        app._tick();
+        assert.strictEqual(app._view.mode, 'grid', 'the alignment picture');
+        app._action('inc:tilt');
+        assert.strictEqual(app._settings.tilt, 1);
+        app._action('align:defaults');
+        assert.strictEqual(app._settings.tilt, 0, 'Standard: straight again');
+        unit.rhmi.emit('applicationStackChanged', { SOME_OTHER_APP: 1 });
+        app._tick();
+        assert.notStrictEqual(app._view && app._view.mode, 'grid', 'not while the app is in the background');
+        app._action('page:display');
         // the list button: Aus, then back to Werte (not to Warmfahren)
         unit.press('htRun');
         return unit.wait(800);
