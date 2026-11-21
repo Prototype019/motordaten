@@ -109,6 +109,25 @@ const away = () => unit.rhmi.emit('applicationStackChanged', { SOME_OTHER_APP: 1
     dash.draw(new (require('../src/kit_record.js').Recorder)(dash.W, dash.H), 'settings', {}, app._limits, null, {});
     dash.draw(new (require('../src/kit_record.js').Recorder)(dash.W, dash.H), 'app', {}, app._limits, null, {});
 
+    // the app (re)started mid-drive, the engine running at its first value: not over the navigation
+    const realUptime = process.uptime;
+    app._engineOn = undefined;
+    app._limits.autoOpenOn = 1;
+    away();
+    await unit.wait(100);
+    unit.opened = undefined;
+    process.uptime = () => 600;
+    rpm(2500);
+    await unit.wait(100);
+    assert.strictEqual(unit.opened, undefined, 'restarted mid-drive: not opened');
+    // ... but with the head unit just up and the engine already running: opened
+    app._engineOn = undefined;
+    process.uptime = () => 20;
+    rpm(900);
+    await unit.wait(100);
+    assert.strictEqual(unit.opened, unit.uuid, 'head unit just up: opened');
+    process.uptime = realUptime;
+
     Date.now = realNow;
     console.log('test_start: ok');
     realExit(0);

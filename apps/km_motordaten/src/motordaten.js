@@ -101,6 +101,8 @@ const ENGINE_RUNNING_RPM = 400;   // from here the engine counts as started
 /* Opening by itself (Einstellungen › Start): at an engine start after the engine was off this long (a new drive;
  * the auto start-stop's restarts are shorter), and not again within it. */
 const AUTO_OPEN_OFF_MS = 3 * 60 * 1000;
+/* The engine already running at the first value: opened only if the app started this recently (with the head unit). */
+const AUTO_OPEN_FRESH_MS = 2 * 60 * 1000;
 const PEAK_AFTER_START_MS = 5000;
 const COOLING_MIN_RPM = 500;
 /* MHD's exhaust flap: Zu is handed to the DME (2F 02 00) above FLAP_OPEN_RPM and closed again under FLAP_CLOSE_RPM,
@@ -896,8 +898,11 @@ class Motordaten extends ListApp {
         if (was !== false && was !== undefined) {
             return;                             // still running
         }
-        // a start: a new drive when the engine was off long enough (or this is the first the app sees)
-        const newDrive = !this._engineOffAt || now - this._engineOffAt >= AUTO_OPEN_OFF_MS;
+        // a start: a new drive when the engine was off long enough; the engine already running at the first value only
+        // just after the app started (the head unit coming up with the engine), not when the app restarts mid-drive
+        const first = was === undefined;
+        const newDrive = first ? process.uptime() * 1000 < AUTO_OPEN_FRESH_MS
+            : !this._engineOffAt || now - this._engineOffAt >= AUTO_OPEN_OFF_MS;
         if (newDrive && this._limits.autoOpenOn && !this.isVisible()) {
             this._autoOpen();
         }
