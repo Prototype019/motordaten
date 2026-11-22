@@ -22,7 +22,11 @@
  */
 const { Canvas } = require('./kit_canvas.js');
 
-const HUD = Object.freeze({ w: 353, h: 203 });
+/* Our picture: 352 x 200, not the target's whole 353 x 203. On the G87 the picture now and then showed sheared
+ * about one pixel per row and wrapped at the sides, as a texture whose rows are read with the wrong width; an odd
+ * width is the usual cause, so both sides are multiples of 8 (the layer sits at TARGET_AT in the target). */
+const HUD = Object.freeze({ w: 352, h: 200 });
+const TARGET_AT = Object.freeze({ x: 0, y: 1 });
 const EDGE = 10;                // the block's distance from the side it sits at
 
 const WHITE = [240, 244, 248, 255];
@@ -178,4 +182,4 @@ function key(v) {
     return [v.mode, v.label, deg(v.value), items, v.pos, v.size, cal].join('|');
 }
 
-module.exports = { HUD, drawHud, key, lines, warp };
+module.exports = { HUD, drawHud, key, lines, warp, TARGET_AT };

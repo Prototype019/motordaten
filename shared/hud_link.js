@@ -84,7 +84,7 @@ class HudLink extends EventEmitter {
         const cr = new this._Client('km_hudtest', this._path);
         this._cr = cr;
         this.conn = 'verbinde';
-        this.ref = cr.image({ target: 'hud', klass: 'overlay', x: 0, y: 0, w: draw.HUD.w, h: draw.HUD.h,
+        this.ref = cr.image({ target: 'hud', klass: 'overlay', x: (draw.TARGET_AT || {}).x || 0, y: (draw.TARGET_AT || {}).y || 0, w: draw.HUD.w, h: draw.HUD.h,
             iw: draw.HUD.w, ih: draw.HUD.h, fps: 5, visible: this._on ? 1 : 0 });
         cr.on('ready', () => {
             this.conn = 'verbunden';

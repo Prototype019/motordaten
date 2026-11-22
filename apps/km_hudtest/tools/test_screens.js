@@ -186,7 +186,7 @@ assert.ok(Math.abs(column(straight, 40) - column(straight, 160)) <= 1, 'the midd
 const tilted = hud.drawHud({ mode: 'grid', cal: { tilt: 30, shift: 0, height: 100 } });
 assert.ok(column(tilted, 40) < column(tilted, 160) - 40, '+ tilt leans the top to the left');
 const moved = hud.drawHud({ mode: 'grid', cal: { tilt: 0, shift: 20, height: 100 } });
-assert.strictEqual(column(moved, 100), column(straight, 100) + 20, '+ shift moves right');
+assert.strictEqual(column(moved, 80), column(straight, 80) + 20, '+ shift moves right');
 assert.notStrictEqual(hud.key({ mode: 'warm', value: 50, cal: { tilt: 10, shift: 0, height: 100 } }),
     hud.key({ mode: 'warm', value: 50, cal: { tilt: 12, shift: 0, height: 100 } }), 'a new correction draws again');
 const st = S.stepped(S.stepped(def, 'tilt', 1), 'height', 1);

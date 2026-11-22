@@ -268,10 +268,10 @@ server.listen(SOCK, () => {
         const hud = service.layers[0];
         assert.strictEqual(hud.target, 'hud');
         assert.strictEqual(hud.kind, 'image');
-        assert.deepStrictEqual([hud.x, hud.y, hud.w, hud.h, hud.iw, hud.ih], [0, 0, draw.HUD.w, draw.HUD.h, 353, 203]);
+        assert.deepStrictEqual([hud.x, hud.y, hud.w, hud.h, hud.iw, hud.ih], [0, 1, draw.HUD.w, draw.HUD.h, 352, 200]);
         // pixels sent whole
         assert.ok(framesOf(hud.ref).length >= 1);
-        assert.strictEqual(framesOf(hud.ref)[0].bytes, 353 * 203 * 4);
+        assert.strictEqual(framesOf(hud.ref)[0].bytes, 352 * 200 * 4);
         // the list
         assert.strictEqual(row('Renderer'), 'verbunden (id8)');
         assert.strictEqual(row('HUD'), 'angezeigt');
@@ -323,7 +323,7 @@ server.listen(SOCK, () => {
                 assert.strictEqual(service.conns, 2);
                 assert.strictEqual(service.hellos, 2);
                 assert.strictEqual(service.layers.length, layersBefore + 1);
-                const again = service.frames.filter((f) => f.rects === 0 && f.bytes === 353 * 203 * 4);
+                const again = service.frames.filter((f) => f.rects === 0 && f.bytes === 352 * 200 * 4);
                 assert.ok(again.length >= 2, 'the HUD sent whole again');
                 assert.strictEqual(again[again.length - 1].ref, service.layers[service.layers.length - 1].ref);
                 assert.strictEqual(row('Renderer'), 'verbunden (id8)');
