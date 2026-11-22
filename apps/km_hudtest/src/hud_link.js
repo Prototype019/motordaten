@@ -54,6 +54,7 @@ class HudLink extends EventEmitter {
         this.targets = null;                // the service's targets with sizes: "map:874x749,hud:353x203,..."
         this.layer = 'noch nicht';
         this.target = '';
+        this.targetState = '';             // the hud target's state as the service says it: shown, parked, ...
         this.refused = '';
         this.frames = 0;
         /* Why no hello came (the client itself keeps this to itself): the socket's last
@@ -99,6 +100,7 @@ class HudLink extends EventEmitter {
         });
         cr.on('disconnected', () => {
             this.conn = 'getrennt';
+            this.targetState = '';
             this.emit('change');
         });
         cr.on('layer', (ref, state, reason) => {
@@ -108,6 +110,7 @@ class HudLink extends EventEmitter {
         });
         cr.on('target', (t, state, holder, reason) => {
             if (t !== 'hud') return;
+            this.targetState = state || '';
             this.target = [TARGET_DE[state] || state, holder ? `hält: ${holder === 'us' ? 'wir' : holder}` : '', reason || ''].filter(Boolean).join(', ');
             this.emit('change');
         });

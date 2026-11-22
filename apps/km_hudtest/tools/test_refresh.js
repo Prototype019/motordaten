@@ -18,7 +18,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'km-refresh-'));
 process.env.KM_CR_SOCKET = path.join(dir, 'render.sock');
 process.env.KM_DATA_DIR = dir;
 
-const service = { layers: [], sets: [], frames: 0 };
+const service = { layers: [], sets: [], frames: 0, sock: null, taken: false };
 const send = (sock, obj) => {
     const body = Buffer.from(JSON.stringify(obj));
     const head = Buffer.alloc(5);
@@ -40,8 +40,11 @@ const server = net.createServer((sock) => {
             if (type !== 0x4a) { service.frames++; continue; }
             const m = JSON.parse(body.toString());
             if (m.op === 'hello') send(sock, { ev: 'hello', proto: 1, backend: 'id8', targets: 'hud:353x203' });
-            if (m.op === 'layer') service.layers.push(m);
-            if (m.op === 'set') service.sets.push(m);
+            service.sock = sock;
+            // the display: shows what is offered, unless it has taken the place for its own content (taken)
+            const place = (on) => send(sock, { ev: 'target', target: 'hud', state: !on ? 'lingering' : service.taken ? 'parked' : 'shown', holder: '', reason: '' });
+            if (m.op === 'layer') { service.layers.push(m); place(m.visible !== 0); }
+            if (m.op === 'set') { service.sets.push(m); if ('visible' in m) place(m.visible !== 0); }
         }
     });
 });
@@ -118,9 +121,28 @@ server.listen(process.env.KM_CR_SOCKET, () => {
         kmh(40); await unit.wait(200); kmh(0);
         await unit.wait(5000);
         assert.strictEqual(hides(), n, 'off: never');
+        // BMW takes the place (route guidance) and never gives it back by itself: offered anew until it shows
+        kmh(60);
+        service.taken = true;
+        send(service.sock, { ev: 'target', target: 'hud', state: 'parked', holder: '', reason: '' });
+        await unit.wait(3000);
+        assert.strictEqual(hides(), n, 'not at once: BMW may give it back');
+        await unit.wait(3500);
+        assert.strictEqual(hides(), n + 1, 'parked 5 s: away');
+        await unit.wait(4500);
+        assert.strictEqual(visible(), 1, 'offered anew');
+        service.taken = false;          // the guidance ended; the display shows the next offer
+        await unit.wait(11500);
+        assert.strictEqual(hides(), n + 2, 'the second time 10 s later');
+        await unit.wait(5000);
+        assert.strictEqual(visible(), 1, 'and shown');
+        assert.strictEqual(app._hud.targetState, 'shown');
+        await unit.wait(12000);
+        assert.strictEqual(hides(), n + 2, 'shown: left alone');
         await new Promise((r) => require('../src/diag.js').flush(r));
         const log = fs.readFileSync(path.join(dir, 'diag.log'), 'utf8');
         assert.ok(/starkes Bremsen \(-6\.0/.test(log) && /neu übergeben \(Halt\)/.test(log) && /neu übergeben \(alle 5 min\)/.test(log), log);
+        assert.ok(/BMW zeigt unser Bild nicht mehr/.test(log) && /neu angeboten \(2\. Mal\)/.test(log) && /Bild wieder zu sehen/.test(log), log);
         console.log('test_refresh: ok');
         realExit(0);
     })().catch((e) => { console.error(e); realExit(1); });

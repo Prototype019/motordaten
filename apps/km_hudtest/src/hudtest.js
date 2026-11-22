@@ -45,6 +45,11 @@ const STOP_MS = 1500;            // standing this long
 const REFRESH_HIDE_MS = 4000;    // the picture away this long: the renderer gives the HUD back (linger 3 s), then offers anew
 const REFRESH_GAP_MS = 20000;    // at most this often
 const REFRESH_EVERY_MS = 5 * 60 * 1000;   // refresh 'timed': also this often while driving
+/* BMW takes our picture off the HUD for its own (route guidance, lists) and on the G87 does not show it again by
+ * itself afterwards: the renderer then says "parked" (offered, not shown) for good. Parked this long, the picture
+ * is offered anew (away REFRESH_HIDE_MS, then back), as switching Anzeige off and on by hand does: after 5 s,
+ * then 10, 20 and every 30 s for as long as BMW keeps its own content there. */
+const LOST_LADDER_MS = [5000, 10000, 20000, 30000];
 /* CDS temperatures: raw - 48 = °C, 255 = no value; engine speed raw * 0.25, 65535 = no value (as Motordaten). */
 const TEMP_INVALID = 255;
 const RPM_INVALID = 65535;
@@ -85,6 +90,7 @@ class HudApp extends ListApp {
         this._v = {};                   // oil, coolant, rpm (the car's signal); boost, oilPress, intake, gearbox, voltage
         this._drive = { kmh: null, moved: false, stillSince: 0, brakeAt: 0, braking: false };
         this._refresh = { due: 0, why: '', until: 0, last: 0 };
+        this._lost = { since: 0, tries: 0 };     // the picture offered but not shown: since when, offered anew how often
         this._at = {};                  // when each value read through the gateway last came
         this._gateway = 'wait';         // wait | open | failed
         this._gatewayError = '';
@@ -307,6 +313,11 @@ class HudApp extends ListApp {
             this._noted.link = linkKey;
             if (!first || h.conn !== 'aus') Diag.note(`HUD-Verbindung: ${link}${why ? `: ${why}` : ''}`);
         }
+        const place = `${h.targetState}|${h.isOn() ? 'an' : 'aus'}`;
+        if (this._noted.place !== place) {
+            if (h.targetState && this._noted.place !== undefined) Diag.note(`HUD-Platz: ${h.target || h.targetState}`);
+            this._noted.place = place;
+        }
         const diagKey = this._needs().length ? `${this._gateway}|${this._gatewayError}` : 'nicht gebraucht';
         if (this._noted.diag !== diagKey) {
             const before = this._noted.diag;
@@ -374,6 +385,30 @@ class HudApp extends ListApp {
             r.due = 0;
         } else if (r.due && now >= r.due) {
             r.due = 0;
+        }
+        // BMW took the picture and does not give the place back: offered anew
+        const lost = this._lost;
+        const state = this._hud.targetState;
+        if (state === 'shown') {
+            if (lost.tries || lost.noted) Diag.note('HUD: Bild wieder zu sehen');
+            lost.tries = 0;
+            lost.since = 0;
+            lost.noted = false;
+        } else if (view && this._hud.isOn() && state === 'parked' && now >= r.until) {
+            const wait = LOST_LADDER_MS[Math.min(lost.tries, LOST_LADDER_MS.length - 1)];
+            if (!lost.since) {
+                lost.since = now;
+            } else if (now - lost.since >= wait) {
+                if (!lost.noted) Diag.note('HUD: BMW zeigt unser Bild nicht mehr (eigener Inhalt, z. B. Navigation)');
+                lost.noted = true;
+                lost.tries++;
+                lost.since = 0;
+                r.until = now + REFRESH_HIDE_MS;
+                r.last = now;
+                if (lost.tries <= 5 || lost.tries % 10 === 0) Diag.note(`HUD: Bild neu angeboten (${lost.tries}. Mal)`);
+            }
+        } else {
+            lost.since = 0;
         }
         if (now < r.until && view && view.mode !== 'grid') {
             view = null;
