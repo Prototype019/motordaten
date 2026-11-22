@@ -204,6 +204,9 @@ class Motordaten extends ListApp {
     run() {
         if (!this._started) {
             this._started = true;
+            // started by the head unit (autostart) or by the tile, and whether the platform gave screens and a tile
+            Diag.note(`Läuft: ${this.rhmiApplication ? 'mit Bildschirmen' : 'ohne Bildschirme'}, ` +
+                `Kachel ${this._frame && this._frame.tile ? 'da' : 'fehlt'}, ${this.isVisible() ? 'vorne' : 'im Hintergrund'}`);
             this._subscribe();
             this._startDrawn();
         }
@@ -912,6 +915,7 @@ class Motordaten extends ListApp {
     _autoOpen() {
         const tile = this._frame && this._frame.tile;
         if (!tile) {
+            Diag.note('Motorstart: keine Kachel, App kann sich nicht öffnen');
             return;
         }
         logger.info('engine started: opening the app');

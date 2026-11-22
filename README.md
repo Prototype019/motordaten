@@ -19,9 +19,9 @@ Im Store: **Settings → Add source** → `Prototype019/motordaten`, Kanal
 Mit Zündung an öffnen.
 
 Von selbst öffnen (Motordaten › Einstellungen › App): beim ersten Motorstart einer Fahrt (Motor vorher mindestens drei
-Minuten aus; Start-Stopp öffnet nicht erneut), sobald die App seit dem Hochfahren der Headunit lief. Mit der Headunit
-startet zunächst nur die HUD-App; Motordaten folgt, wenn sich gezeigt hat, dass ein so gestarteter Prozess seine
-Oberfläche behält.
+Minuten aus; Start-Stopp öffnet nicht erneut). Motordaten startet dafür mit der Headunit (`mguAppStartType: autostart`,
+seit 0.27.0, nachdem die HUD-App gezeigt hat, dass das im G87 geht). Im Hintergrund liest die App nur das Fahrzeugsignal,
+nichts über die Diagnose. Ins Protokoll (diag.log) kommt bei jedem Start, ob die Headunit Bildschirme und Kachel mitgab.
 
 ### HUD
 

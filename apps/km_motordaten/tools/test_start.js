@@ -38,8 +38,8 @@ const rpm = (n) => cds.emit('rpm', { actualValueRPMEngineCrankshaft: n * 4 });
 const away = () => unit.rhmi.emit('applicationStackChanged', { SOME_OTHER_APP: 1 });
 
 (async () => {
-    // stage one: Motordaten not yet started with the head unit (the HUD app first, to see a start without screens)
-    assert.strictEqual(require('../package/package.json').mguAppStartType, undefined, 'not yet started with the head unit');
+    // started with the head unit, so it is running when the engine starts (the HUD app showed autostart works)
+    assert.strictEqual(require('../package/package.json').mguAppStartType, 'autostart', 'starts with the head unit');
     await unit.wait(1500);
     assert.ok(app);
     assert.strictEqual(app._limits.autoOpenOn, 1, 'on by default');
