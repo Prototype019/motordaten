@@ -114,6 +114,18 @@
         "statusEngineTemperature": "s"
       }
     },
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "instances": "1",
+      "attributes": {
+        "statusCarSpeed2": "s"
+      }
+    },
+    "de.bmw.infotainment.vehicle.CDS2": {
+      "instances": "1",
+      "attributes": {
+        "statusLongitudinalAccelerationMassCenter": "s"
+      }
+    },
     "com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu": {
       "instances": "SystemFunctionsInternalTasuInst1",
       "methods": [

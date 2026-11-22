@@ -43,6 +43,9 @@ module.exports = {
         // engine speed, oil and coolant (statusEngineSpeed2, statusEngineTemperature: as Motordaten); the gateway for
         // the oil when the signal has none, and for the values shown under Werte that only the units have
         'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineSpeed2: 's', statusEngineTemperature: 's' } },
+        // the car's speed and braking (read only): when to hand the HUD picture over anew (settings refresh)
+        'de.bmw.infotainment.vehicle.Vehicle2': { instances: '1', attributes: { statusCarSpeed2: 's' } },
+        'de.bmw.infotainment.vehicle.CDS2': { instances: '1', attributes: { statusLongitudinalAccelerationMassCenter: 's' } },
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
             instances: 'SystemFunctionsInternalTasuInst1',
             methods: ['sendTasuRequest'],

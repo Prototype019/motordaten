@@ -72,10 +72,11 @@ const MAIN_TARGETS = segments('mode', LIVE.x, 520, LIVE.w, BTN).concat([
 const ROW_X = 1060;
 const ROW_W = 1000;
 const DISPLAY_ROWS = [
-    { key: 'mode', label: 'Was', text: 'Warmfahren: bis alles bereit ist. Werte: die unter „Werte“ gewählten.' },
+    { key: 'mode', label: 'Was', text: 'Warmfahren: bis alles bereit ist. Werte: wie gewählt.' },
     { key: 'pos', label: 'Wo', text: 'Im Feld über BMWs Leiste' },
-    { key: 'size', label: 'Wie groß', text: 'Groß: ein Viertel größer' }
-].map((r, i) => Object.assign(r, { y: 210 + i * 170 }));
+    { key: 'size', label: 'Wie groß', text: 'Groß: ein Viertel größer' },
+    { key: 'refresh', label: 'Gerade halten', text: 'Kippt BMW das Bild (nach Bremsen), kurz neu ans HUD' }
+].map((r, i) => Object.assign(r, { y: 196 + i * 128 }));
 const DISPLAY_TARGETS = [].concat(...DISPLAY_ROWS.map((r) => segments(r.key, ROW_X, r.y, ROW_W, BTN)))
     .concat([{ id: 'page:align', x: W - PAD - 360, y: 64, w: 360, h: 84, label: 'Ausrichten' }]);
 
@@ -298,7 +299,7 @@ function displayPage(rec, v, cfg, ui) {
     DISPLAY_ROWS.forEach((r) => {
         rec.text(r.label, X0, r.y + 58, 44, C.text, { font: 'label' });
         rec.text(r.text, X0, r.y + 102, 28, C.dim, { font: 'label' });
-        rec.fillRect(X0, r.y + BTN + 40, ROW_X + ROW_W - X0, 2, C.line);
+        rec.fillRect(X0, r.y + BTN + 18, ROW_X + ROW_W - X0, 2, C.line);
     });
     DISPLAY_TARGETS.forEach((t) => button(rec, Object.assign({}, t, { on: t.key ? cfg[t.key] === t.word : false }), ui));
     // beside the rows: how it would look (the test's warm-up look when the HUD shows nothing now)

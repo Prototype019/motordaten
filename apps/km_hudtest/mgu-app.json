@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "km_hudtest",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "tree": "package",
   "internet": true,
   "modules": ["src/hudtest.js", "src/hud_link.js", "src/hud_draw.js", "src/cluster_render_client.js",

@@ -16,7 +16,11 @@ const CHOICES = Object.freeze({
     // (cold ones blue, hot ones red); off: nothing
     mode: { def: 'warm', all: ['warm', 'values', 'off'], words: { warm: 'Warmfahren', values: 'Werte', off: 'Aus' } },
     pos: { def: 'center', all: ['left', 'center', 'right'], words: { left: 'Links', center: 'Mitte', right: 'Rechts' } },
-    size: { def: 'normal', all: ['normal', 'large'], words: { normal: 'Normal', large: 'Groß' } }
+    size: { def: 'normal', all: ['normal', 'large'], words: { normal: 'Normal', large: 'Groß' } },
+    // Gerade halten: the G87's HUD lays our picture slanted after it showed something of its own (seen after harder
+    // braking, kept even parked) and straight again when the picture is handed over anew. auto: handed over anew a
+    // moment after harder braking and at each stop after driving; stop: only at a stop; off: never
+    refresh: { def: 'auto', all: ['auto', 'stop', 'off'], words: { auto: 'Bremsen + Halt', stop: 'Nur beim Halt', off: 'Aus' } }
 });
 
 const ITEMS = Object.freeze([

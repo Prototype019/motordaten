@@ -31,6 +31,20 @@ const LIST = 'ST_OnlineApps_HudTest';
 const LAYER = 'ST_OnlineApps_HudTestLayer';
 const PROXIES = 24;             // the host state's proxy buttons (spec.js PROXIES)
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
+const IF_VEHICLE2 = 'de.bmw.infotainment.vehicle.Vehicle2';
+const IF_CDS2 = 'de.bmw.infotainment.vehicle.CDS2';
+const SPEED_FACTOR = 0.015625;   // statusCarSpeed2.speedVehicleCentreOfGravity -> km/h (65535 invalid)
+const ACCEL_FACTOR = 0.002;      // statusLongitudinalAccelerationMassCenter -> m/s², offset ACCEL_OFFSET
+const ACCEL_OFFSET = -65;
+const SIGNAL_INVALID = 65535;
+/* Handing the HUD picture over anew (settings refresh): BMW keeps a picture slanted until it comes anew. */
+const BRAKE_MS2 = -3.5;          // braking harder than this (about a third of g) ...
+const AFTER_BRAKE_MS = 2500;     // ... then this long after the last of it: the picture anew
+const MOVED_KMH = 10;            // a stop counts after the car went faster than this
+const STOP_KMH = 1;
+const STOP_MS = 1500;            // standing this long
+const REFRESH_HIDE_MS = 4000;    // the picture away this long: the renderer gives the HUD back (linger 3 s), then offers anew
+const REFRESH_GAP_MS = 20000;    // at most this often
 /* CDS temperatures: raw - 48 = °C, 255 = no value; engine speed raw * 0.25, 65535 = no value (as Motordaten). */
 const TEMP_INVALID = 255;
 const RPM_INVALID = 65535;
@@ -69,6 +83,8 @@ class HudApp extends ListApp {
         this._view = null;              // what the HUD shows now (src/warmup.js)
         this._test = 0;                 // when "Im HUD testen" started (0: not testing)
         this._v = {};                   // oil, coolant, rpm (the car's signal); boost, oilPress, intake, gearbox, voltage
+        this._drive = { kmh: null, moved: false, stillSince: 0, brakeAt: 0, braking: false };
+        this._refresh = { due: 0, why: '', until: 0, last: 0 };
         this._at = {};                  // when each value read through the gateway last came
         this._gateway = 'wait';         // wait | open | failed
         this._gatewayError = '';
@@ -109,6 +125,7 @@ class HudApp extends ListApp {
             this._hud.show(false);
             this._hud.start();
             this._subscribe();
+            this._subscribeDrive();
             this._loop();
             this._startDrawn();
         } else {
@@ -342,6 +359,22 @@ class HudApp extends ListApp {
                 this._test = 0;
             }
         }
+        // the speed may come only when it changes: a stop is also seen by the time standing
+        const d = this._drive;
+        if (d.moved && d.kmh !== null && d.kmh < STOP_KMH) this._speed(d.kmh, now);
+        // Gerade halten: the picture away for a moment, so the HUD takes it anew (straight)
+        const r = this._refresh;
+        if (r.due && now >= r.due && view && this._hud.isOn() && now - r.last >= REFRESH_GAP_MS && this._settings.refresh !== 'off') {
+            r.until = now + REFRESH_HIDE_MS;
+            r.last = now;
+            Diag.note(`HUD-Bild neu übergeben (${r.why})`);
+            r.due = 0;
+        } else if (r.due && now >= r.due) {
+            r.due = 0;
+        }
+        if (now < r.until && view && view.mode !== 'grid') {
+            view = null;
+        }
         this._view = view;
         if (view) {
             // coming on: drawn at once, so the HUD never shows what it had before
@@ -353,6 +386,68 @@ class HudApp extends ListApp {
             this._hud.show(false);
         }
         this._render();
+    }
+
+    /* ---- the car's speed and braking: when to hand the picture over anew ---- */
+
+    _subscribeDrive() {
+        const watch = (iface, attr, fn) => {
+            let proxy;
+            new Promise((resolve) => setImmediate(resolve))
+                .then(() => someipBuilders.buildTypedProxy(iface, '1'))
+                .then((p) => { proxy = p; return proxy.init(); })
+                .then(() => proxy.waitUntilAvailable())
+                .then(() => proxy[attr].subscribe((v) => { if (!this._stopped) fn(v); }))
+                .catch((e) => logger.warn(`${attr}: ${e && e.message}`));
+        };
+        watch(IF_VEHICLE2, 'statusCarSpeed2', (v) => {
+            const raw = v && v.speedVehicleCentreOfGravity;
+            this._speed(isNum(raw) && raw !== SIGNAL_INVALID ? raw * SPEED_FACTOR : null, Date.now());
+        });
+        watch(IF_CDS2, 'statusLongitudinalAccelerationMassCenter', (v) => {
+            const raw = v && v.longitudinalAccelerationCentreOfGravity;
+            this._accel(isNum(raw) && raw !== SIGNAL_INVALID ? raw * ACCEL_FACTOR + ACCEL_OFFSET : null, Date.now());
+        });
+    }
+
+    _speed(kmh, now) {
+        const d = this._drive;
+        if (kmh === null) return;
+        d.kmh = kmh;
+        if (kmh > MOVED_KMH) {
+            if (!d.moved) Diag.note('Fahrt: losgefahren');
+            d.moved = true;
+            d.stillSince = 0;
+        } else if (kmh < STOP_KMH && d.moved) {
+            d.stillSince = d.stillSince || now;
+            if (now - d.stillSince >= STOP_MS) {
+                d.moved = false;
+                d.stillSince = 0;
+                Diag.note('Fahrt: angehalten');
+                this._refreshDue('Halt', now);
+            }
+        } else {
+            d.stillSince = 0;
+        }
+    }
+
+    _accel(ms2, now) {
+        const d = this._drive;
+        if (ms2 === null) return;
+        if (ms2 <= BRAKE_MS2) {
+            if (!d.braking) Diag.note(`Fahrt: starkes Bremsen (${ms2.toFixed(1)} m/s²)`);
+            d.braking = true;
+            d.brakeAt = now;
+            if (this._settings.refresh === 'auto') this._refreshDue('Bremsen', now + AFTER_BRAKE_MS);
+        } else if (d.braking && now - d.brakeAt > 1000) {
+            d.braking = false;
+        }
+    }
+
+    _refreshDue(why, at) {
+        if (this._settings.refresh === 'off') return;
+        this._refresh.due = Math.max(this._refresh.due, at);
+        this._refresh.why = why;
     }
 
     /* ---- the values ---- */

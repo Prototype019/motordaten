@@ -30,6 +30,8 @@ installieren. Dann reicht „Logs senden“: je Druck eine Datei `<app>/<Datum_U
 Repositories schreiben, auf denen der Nutzer sie installiert hat; kein Passwort und kein Schlüssel im Code, der
 Zugang bleibt im Datenordner der App im Auto (`shared/github_logs.js`, `shared/qr.js`).
 
+HUD „Gerade halten“ (Anzeige): Das G87-HUD legt unser Bild nach stärkerem Bremsen schräg und behält das, bis das Bild neu übergeben wird. Die App liest dafür Tempo (Vehicle2 statusCarSpeed2) und Längsbeschleunigung (CDS2), nur lesend, und übergibt das Bild kurz nach starkem Bremsen und bei jedem Halt nach der Fahrt neu (etwa 4 s weg, höchstens alle 20 s; einstellbar: Bremsen + Halt, Nur beim Halt, Aus).
+
 ### HUD
 
 1. Im Store **HUD** installieren (bringt den **Cluster renderer** von `robertnisipeanu/idrive-apps` mit), Headunit neu starten, App öffnen.
