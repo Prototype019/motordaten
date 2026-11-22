@@ -196,7 +196,7 @@ const full = span(hud.drawHud({ mode: 'grid' }));
 const narrow = span(hud.drawHud({ mode: 'grid', cal: { tilt: 0, shift: 0, height: 100, width: 70 } }));
 assert.ok(narrow[0] > full[0] + 40 && narrow[1] < full[1] - 40, `narrower about the middle: ${full} -> ${narrow}`);
 assert.ok(Math.abs((narrow[0] + narrow[1]) / 2 - (full[0] + full[1]) / 2) <= 2, 'still in the middle');
-assert.strictEqual(S.clean({ tilt: 99 }).tilt, 45, 'in its range');
+assert.strictEqual(S.clean({ tilt: 99 }).tilt, 60, 'in its range');
 ['align'].forEach((page) => {
     dash.draw(new Recorder(dash.W, dash.H), page, {}, st, null, extra);
     const ts = dash.targets(page, extra);

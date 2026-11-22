@@ -31,8 +31,8 @@ const ITEMS = Object.freeze([
     { key: 'count', def: 1, min: 1, max: V.MAX_SHOWN, step: 1 },
     // Ausrichten: the HUD sets our picture slanted, aside and flatter (seen on the G87); drawn the other way round
     // first: the slant taken back (degrees, + leans the top to the left), moved aside (px, + to the right), taller (%)
-    { key: 'tilt', label: 'Neigung', unit: '°', def: 0, min: -45, max: 45, step: 1 },
-    { key: 'shiftX', label: 'Versatz', unit: 'px', def: 0, min: -80, max: 80, step: 2 },
+    { key: 'tilt', label: 'Neigung', unit: '°', def: 0, min: -60, max: 60, step: 1 },
+    { key: 'shiftX', label: 'Versatz', unit: 'px', def: 0, min: -200, max: 200, step: 4 },
     { key: 'height', label: 'Höhe', unit: '%', def: 100, min: 70, max: 160, step: 5 },
     // narrower about the middle (%): the HUD shows less than the 353 px, wide content (three values) is cut at the sides
     { key: 'width', label: 'Breite', unit: '%', def: 100, min: 50, max: 100, step: 5 }
