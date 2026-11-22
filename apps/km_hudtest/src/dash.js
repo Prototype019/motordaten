@@ -75,7 +75,7 @@ const DISPLAY_ROWS = [
     { key: 'mode', label: 'Was', text: 'Warmfahren: bis alles bereit ist. Werte: wie gewählt.' },
     { key: 'pos', label: 'Wo', text: 'Im Feld über BMWs Leiste' },
     { key: 'size', label: 'Wie groß', text: 'Groß: ein Viertel größer' },
-    { key: 'refresh', label: 'Gerade halten', text: 'Kippt BMW das Bild (nach Bremsen), kurz neu ans HUD' }
+    { key: 'refresh', label: 'Gerade halten', text: 'Kippt BMW das Bild, kurz neu ans HUD (4 s weg)' }
 ].map((r, i) => Object.assign(r, { y: 196 + i * 128 }));
 const DISPLAY_TARGETS = [].concat(...DISPLAY_ROWS.map((r) => segments(r.key, ROW_X, r.y, ROW_W, BTN)))
     .concat([{ id: 'page:align', x: W - PAD - 360, y: 64, w: 360, h: 84, label: 'Ausrichten' }]);

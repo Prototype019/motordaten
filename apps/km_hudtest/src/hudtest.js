@@ -38,13 +38,13 @@ const ACCEL_FACTOR = 0.002;      // statusLongitudinalAccelerationMassCenter -> 
 const ACCEL_OFFSET = -65;
 const SIGNAL_INVALID = 65535;
 /* Handing the HUD picture over anew (settings refresh): BMW keeps a picture slanted until it comes anew. */
-const BRAKE_MS2 = -3.5;          // braking harder than this (about a third of g) ...
-const AFTER_BRAKE_MS = 2500;     // ... then this long after the last of it: the picture anew
+const BRAKE_MS2 = -3.5;          // braking harder than this (about a third of g): noted, to compare with
 const MOVED_KMH = 10;            // a stop counts after the car went faster than this
 const STOP_KMH = 1;
 const STOP_MS = 1500;            // standing this long
 const REFRESH_HIDE_MS = 4000;    // the picture away this long: the renderer gives the HUD back (linger 3 s), then offers anew
 const REFRESH_GAP_MS = 20000;    // at most this often
+const REFRESH_EVERY_MS = 5 * 60 * 1000;   // refresh 'timed': also this often while driving
 /* CDS temperatures: raw - 48 = °C, 255 = no value; engine speed raw * 0.25, 65535 = no value (as Motordaten). */
 const TEMP_INVALID = 255;
 const RPM_INVALID = 65535;
@@ -364,6 +364,9 @@ class HudApp extends ListApp {
         if (d.moved && d.kmh !== null && d.kmh < STOP_KMH) this._speed(d.kmh, now);
         // Gerade halten: the picture away for a moment, so the HUD takes it anew (straight)
         const r = this._refresh;
+        if (this._settings.refresh === 'timed' && d.moved && now - Math.max(r.last, this._hudSince || 0) >= REFRESH_EVERY_MS) {
+            this._refreshDue('alle 5 min', now);
+        }
         if (r.due && now >= r.due && view && this._hud.isOn() && now - r.last >= REFRESH_GAP_MS && this._settings.refresh !== 'off') {
             r.until = now + REFRESH_HIDE_MS;
             r.last = now;
@@ -381,7 +384,10 @@ class HudApp extends ListApp {
             const on = this._hud.isOn();
             this._hud.update(Object.assign({}, view, { pos: this._settings.pos, size: this._settings.size,
                 cal: S.correction(this._settings) }), !on);
-            if (!on) this._hud.show(true);
+            if (!on) {
+                this._hud.show(true);
+                this._hudSince = now;
+            }
         } else if (this._hud.isOn()) {
             this._hud.show(false);
         }
@@ -438,7 +444,7 @@ class HudApp extends ListApp {
             if (!d.braking) Diag.note(`Fahrt: starkes Bremsen (${ms2.toFixed(1)} m/s²)`);
             d.braking = true;
             d.brakeAt = now;
-            if (this._settings.refresh === 'auto') this._refreshDue('Bremsen', now + AFTER_BRAKE_MS);
+            // braking turned out not to be the cause: only noted (diag.log), to compare with when it slants
         } else if (d.braking && now - d.brakeAt > 1000) {
             d.braking = false;
         }

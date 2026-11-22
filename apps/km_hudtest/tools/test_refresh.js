@@ -1,8 +1,8 @@
 'use strict';
 /**
- * Gerade halten (settings refresh): the G87's HUD keeps our picture slanted after harder braking until it is handed
- * over anew. From the car's speed (Vehicle2) and braking (CDS2) signals: a moment after harder braking and at a stop
- * after driving, the picture goes away for REFRESH_HIDE_MS (the renderer gives the HUD back) and comes again; at most
+ * Gerade halten (settings refresh): the G87's HUD now and then keeps our picture slanted until it is handed over
+ * anew. From the car's speed signal (Vehicle2; braking from CDS2 only noted): at a stop after driving, with 'timed'
+ * also every 5 min while driving, the picture goes away for REFRESH_HIDE_MS (the renderer gives the HUD back) and comes again; at most
  * every REFRESH_GAP_MS; never with the setting off; noted in diag.log.
  *
  *   node apps/km_hudtest/tools/test_refresh.js
@@ -78,42 +78,48 @@ server.listen(process.env.KM_CR_SOCKET, () => {
     (async () => {
         await unit.wait(1200);
         assert.ok(app && app._started);
-        assert.strictEqual(app._settings.refresh, 'auto', 'on by default');
+        assert.strictEqual(app._settings.refresh, 'stop', 'at each stop by default');
         cds.emit('t', { temperatureEngineOilDrive: 40 + 48, temperatureEngineDrive: 50 + 48 });
         await unit.wait(1200);
         assert.strictEqual(visible(), 1, 'shown (warming up)');
         const before = hides();
-        // driving, then braking hard: a moment after, the picture away and back
+        // driving and braking hard: only noted, the picture stays
         kmh(50); ms2(-0.5);
         await unit.wait(300);
         ms2(-6); await unit.wait(200); ms2(-1);
-        await unit.wait(2000);
-        assert.strictEqual(hides(), before, 'not while braking');
-        await unit.wait(1500);
-        assert.strictEqual(visible(), 0, 'away a moment after the braking');
-        await unit.wait(4500);
-        assert.strictEqual(visible(), 1, 'back');
-        // a stop right after: not again within REFRESH_GAP_MS
+        await unit.wait(3500);
+        assert.strictEqual(hides(), before, 'braking alone: nothing');
+        // a stop after driving: away for a moment, then back
         kmh(0);
         await unit.wait(2500);
-        assert.strictEqual(hides(), before + 1, 'not twice within 20 s');
-        // later, the next stop after driving: again
-        app._refresh.last -= 20000;
+        assert.strictEqual(visible(), 0, 'away at the stop');
+        await unit.wait(4500);
+        assert.strictEqual(visible(), 1, 'back');
+        // the next stop within 20 s: not again
         kmh(40); await unit.wait(200); kmh(0);
         await unit.wait(2500);
-        assert.strictEqual(visible(), 0, 'away at the stop');
+        assert.strictEqual(hides(), before + 1, 'not twice within 20 s');
+        // timed: also every 5 min while driving
+        app._set(Object.assign({}, app._settings, { refresh: 'timed' }));
+        kmh(80);
+        await unit.wait(1200);
+        assert.strictEqual(hides(), before + 1, 'not before its time');
+        app._refresh.last -= 6 * 60 * 1000;
+        app._hudSince -= 6 * 60 * 1000;
+        await unit.wait(1200);
+        assert.strictEqual(visible(), 0, 'away after 5 min of driving');
         await unit.wait(4500);
         assert.strictEqual(visible(), 1, 'back');
         // setting off: nothing
         app._refresh.last -= 20000;
         app._set(Object.assign({}, app._settings, { refresh: 'off' }));
         const n = hides();
-        kmh(40); await unit.wait(200); ms2(-6); await unit.wait(200); ms2(0); kmh(0);
+        kmh(40); await unit.wait(200); kmh(0);
         await unit.wait(5000);
         assert.strictEqual(hides(), n, 'off: never');
         await new Promise((r) => require('../src/diag.js').flush(r));
         const log = fs.readFileSync(path.join(dir, 'diag.log'), 'utf8');
-        assert.ok(/starkes Bremsen \(-6\.0/.test(log) && /neu übergeben \(Bremsen\)/.test(log) && /neu übergeben \(Halt\)/.test(log), log);
+        assert.ok(/starkes Bremsen \(-6\.0/.test(log) && /neu übergeben \(Halt\)/.test(log) && /neu übergeben \(alle 5 min\)/.test(log), log);
         console.log('test_refresh: ok');
         realExit(0);
     })().catch((e) => { console.error(e); realExit(1); });
