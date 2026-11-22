@@ -36,7 +36,11 @@ const RED = [255, 84, 72, 255];
 
 const TONE = { cold: ICE, hot: RED, normal: WHITE, none: DIM };
 /* values: per count the number's size, the label's, and the gap between columns */
-const COLS = { 1: { big: 72, label: 24, gap: 0 }, 2: { big: 56, label: 20, gap: 28 }, 3: { big: 44, label: 17, gap: 18 } };
+const COLS = { 1: { big: 96, label: 26, gap: 0 }, 2: { big: 72, label: 20, gap: 24 }, 3: { big: 56, label: 16, gap: 14 } };
+/* size: how much larger than the sizes written here. Larger since 0.5.6 (on the G87 the old "large" still read
+ * small); what gets too wide for the HUD is drawn as large as fits. */
+const LINES_K = { normal: 1.2, large: 1.45 };
+const VALUES_K = { normal: 1, large: 1.2 };
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
 const deg = (v) => (isNum(v) ? String(Math.round(v)) : '–');
@@ -119,9 +123,12 @@ function warp(c, cal) {
 
 /* The looks of one block of lines (warm, ready, hot). */
 function drawLines(v, c, o) {
-    const k = v.size === 'large' ? 1.25 : 1;
     const ls = lines(v);
-    const width = (l) => l.parts.reduce((n, p) => n + c.textWidth(p[0], p[1] * k, { font: p[3] }) + p[4] * k, 0);
+    let k = LINES_K[v.size] || LINES_K.normal;
+    const widthAt = (l, f) => l.parts.reduce((n, p) => n + c.textWidth(p[0], p[1] * f, { font: p[3] }) + p[4] * f, 0);
+    const widest = Math.max.apply(null, ls.map((l) => widthAt(l, k)));
+    if (widest > HUD.w - 2 * EDGE) k *= (HUD.w - 2 * EDGE) / widest;      // too wide: as large as fits
+    const width = (l) => widthAt(l, k);
     const block = Math.max.apply(null, ls.map(width));
     // the block's middle line stays where it was at normal size: grown, it spreads up and down evenly
     const mid = (ls[0].base + ls[ls.length - 1].base) / 2;
@@ -142,7 +149,7 @@ function drawLines(v, c, o) {
 function drawValues(v, c, o) {
     const items = (v.items || []).slice(0, 3);
     if (!items.length) return c;
-    const k = v.size === 'large' ? (items.length === 1 ? 1.25 : 1.15) : 1;
+    const k = VALUES_K[v.size] || VALUES_K.normal;
     const L = COLS[items.length];
     const big = L.big * k;
     const lab = L.label * k;

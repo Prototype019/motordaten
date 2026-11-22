@@ -27,6 +27,8 @@ const LOOKS = {
     bereit: { mode: 'ready', label: 'Öl', value: 82 },
     zu_heiss: { mode: 'hot', label: 'Öl', value: 134 },
     werte_eins: { mode: 'values', items: [item('oil', 96, def)] },
+    werte_temperaturen: { mode: 'values', items: [item('oil', 95, def), item('gearbox', 80, def), item('intake', 30, def)] },
+    werte_zwei: { mode: 'values', items: [item('oil', 105, def), item('gearbox', 100, def)] },
     werte_drei: { mode: 'values', items: [item('boost', 1.85, def), item('oil', 58, def), item('rpm', 6550, def)] }
 };
 
@@ -42,7 +44,10 @@ function hudScene(v) {
 }
 
 fs.mkdirSync(OUT, { recursive: true });
-Object.keys(LOOKS).forEach((name) => fs.writeFileSync(path.join(OUT, `hud_look_${name}.png`), hudScene(LOOKS[name]).png(9)));
+Object.keys(LOOKS).forEach((name) => {
+    fs.writeFileSync(path.join(OUT, `hud_look_${name}.png`), hudScene(LOOKS[name]).png(9));
+    fs.writeFileSync(path.join(OUT, `hud_look_${name}_gross.png`), hudScene(Object.assign({ size: 'large' }, LOOKS[name])).png(9));
+});
 
 // the screens: a car warming up with three values chosen
 const cfg = Object.assign(S.defaults(), { order: ['boost', 'oil', 'rpm', 'coolant', 'oilPress', 'intake', 'gearbox', 'voltage'], count: 3 });

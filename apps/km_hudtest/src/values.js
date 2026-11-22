@@ -14,7 +14,7 @@ const VALUES = Object.freeze([
     { key: 'rpm', label: 'Drehzahl', hud: 'DREHZAHL', unit: 'U/min', d: 0, src: 'cds', thousands: true },
     { key: 'boost', label: 'Ladedruck', hud: 'LADEDRUCK', unit: 'bar', d: 2, src: 'dme' },
     { key: 'oilPress', label: 'Öldruck', hud: 'ÖLDRUCK', unit: 'bar', d: 1, src: 'dme' },
-    { key: 'intake', label: 'Ansaugluft', hud: 'ANSAUGLUFT', unit: '°C', d: 0, src: 'dme' },
+    { key: 'intake', label: 'Ansaugluft', hud: 'ANSAUG', unit: '°C', d: 0, src: 'dme' },
     { key: 'gearbox', label: 'Getriebeöl', hud: 'GETRIEBE', unit: '°C', d: 0, src: 'egs' },
     { key: 'voltage', label: 'Bordnetz', hud: 'BORDNETZ', unit: 'V', d: 1, src: 'obd' }
 ]);
