@@ -33,6 +33,7 @@ const PROXIES = 24;             // the host state's proxy buttons (spec.js PROXI
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
 const IF_VEHICLE2 = 'de.bmw.infotainment.vehicle.Vehicle2';
 const IF_CDS2 = 'de.bmw.infotainment.vehicle.CDS2';
+const IF_GUIDANCE = 'de.bmw.infotainment.navigation.guiding.Guidance';
 const SPEED_FACTOR = 0.015625;   // statusCarSpeed2.speedVehicleCentreOfGravity -> km/h (65535 invalid)
 const ACCEL_FACTOR = 0.002;      // statusLongitudinalAccelerationMassCenter -> m/s², offset ACCEL_OFFSET
 const ACCEL_OFFSET = -65;
@@ -93,7 +94,9 @@ class HudApp extends ListApp {
         this._v = {};                   // oil, coolant, rpm (the car's signal); boost, oilPress, intake, gearbox, voltage
         this._drive = { kmh: null, moved: false, stillSince: 0, brakeAt: 0, braking: false };
         this._refresh = { due: 0, why: '', until: 0, last: 0 };
-        this._lost = { since: 0, tries: 0 };     // the picture offered but not shown: since when, offered anew how often
+        this._lost = { since: 0, tries: 0 };
+        this._nav = false;              // BMW's route guidance on (guidanceState)
+        this._navWord = '';     // the picture offered but not shown: since when, offered anew how often
         this._at = {};                  // when each value read through the gateway last came
         this._gateway = 'wait';         // wait | open | failed
         this._gatewayError = '';
@@ -389,6 +392,8 @@ class HudApp extends ListApp {
         } else if (r.due && now >= r.due) {
             r.due = 0;
         }
+        // BMW's route guidance: the HUD is its own (grid: the alignment picture is asked for by hand, it shows)
+        if (this._nav && view && view.mode !== 'grid') view = null;
         // BMW took the picture and does not give the place back: offered anew
         const lost = this._lost;
         const state = this._hud.targetState;
@@ -440,15 +445,18 @@ class HudApp extends ListApp {
     /* ---- the car's speed and braking: when to hand the picture over anew ---- */
 
     _subscribeDrive() {
-        const watch = (iface, attr, fn) => {
+        const watch = (iface, attr, fn, instance, failed) => {
             let proxy;
             new Promise((resolve) => setImmediate(resolve))
-                .then(() => someipBuilders.buildTypedProxy(iface, '1'))
+                .then(() => someipBuilders.buildTypedProxy(iface, instance || '1'))
                 .then((p) => { proxy = p; return proxy.init(); })
                 .then(() => proxy.waitUntilAvailable())
                 .then(() => proxy[attr].subscribe((v) => { if (!this._stopped) fn(v); }))
-                .catch((e) => logger.warn(`${attr}: ${e && e.message}`));
+                .catch((e) => { logger.warn(`${attr}: ${e && e.message}`); if (failed) failed(e); });
         };
+        // BMW's route guidance: while it guides, the HUD shows its arrows and our picture would lie over them
+        watch(IF_GUIDANCE, 'guidanceState', (v) => this._guidance(v), 'Main_Instance',
+            (e) => Diag.note(`Navigation: Signal nicht verfügbar (${String(e && e.message).slice(0, 80)})`));
         watch(IF_VEHICLE2, 'statusCarSpeed2', (v) => {
             const raw = v && v.speedVehicleCentreOfGravity;
             this._speed(isNum(raw) && raw !== SIGNAL_INVALID ? raw * SPEED_FACTOR : null, Date.now());
@@ -457,6 +465,19 @@ class HudApp extends ListApp {
             const raw = v && v.longitudinalAccelerationCentreOfGravity;
             this._accel(isNum(raw) && raw !== SIGNAL_INVALID ? raw * ACCEL_FACTOR + ACCEL_OFFSET : null, Date.now());
         });
+    }
+
+    /* guidanceState: ACTIVE, INACTIVE or CALCULATING_ROUTE (a word, or an object naming one). Guiding or about to:
+     * our picture off the HUD, and back when the guidance ends. Anything else is noted and changes nothing. */
+    _guidance(v) {
+        const word = String(v && typeof v === 'object' ? (v.guidanceState || v.name || v.value || JSON.stringify(v)) : v).toUpperCase();
+        const on = word === 'ACTIVE' || word === 'CALCULATING_ROUTE' ? true : word === 'INACTIVE' ? false : null;
+        if (word !== this._navWord) Diag.note(`Navigation: ${word.slice(0, 60)}${on === null ? ' (unbekannt, bleibt wie es war)' : on ? ' – HUD-Werte aus' : ''}`);
+        this._navWord = word;
+        if (on !== null && on !== this._nav) {
+            this._nav = on;
+            this._tick();
+        }
     }
 
     _speed(kmh, now) {

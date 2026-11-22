@@ -126,6 +126,12 @@
         "statusLongitudinalAccelerationMassCenter": "s"
       }
     },
+    "de.bmw.infotainment.navigation.guiding.Guidance": {
+      "instances": "Main_Instance",
+      "attributes": {
+        "guidanceState": "s"
+      }
+    },
     "com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu": {
       "instances": "SystemFunctionsInternalTasuInst1",
       "methods": [

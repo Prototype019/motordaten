@@ -46,6 +46,8 @@ module.exports = {
         // the car's speed and braking (read only): when to hand the HUD picture over anew (settings refresh)
         'de.bmw.infotainment.vehicle.Vehicle2': { instances: '1', attributes: { statusCarSpeed2: 's' } },
         'de.bmw.infotainment.vehicle.CDS2': { instances: '1', attributes: { statusLongitudinalAccelerationMassCenter: 's' } },
+        // route guidance on or off (read only): while BMW guides, the HUD is its own, our picture stays away
+        'de.bmw.infotainment.navigation.guiding.Guidance': { instances: 'Main_Instance', attributes: { guidanceState: 's' } },
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
             instances: 'SystemFunctionsInternalTasuInst1',
             methods: ['sendTasuRequest'],

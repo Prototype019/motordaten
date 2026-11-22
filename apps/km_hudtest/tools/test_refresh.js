@@ -62,13 +62,16 @@ const vehProxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: () 
     statusCarSpeed2: { subscribe: (cb) => { veh.on('speed', cb); return Promise.resolve(); } } });
 const cds2Proxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
     statusLongitudinalAccelerationMassCenter: { subscribe: (cb) => { veh.on('accel', cb); return Promise.resolve(); } } });
+const guideProxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
+    guidanceState: { subscribe: (cb) => { veh.on('guide', cb); return Promise.resolve(); } } });
 const kmh = (v) => veh.emit('speed', { speedVehicleCentreOfGravity: Math.round(v / 0.015625) });
 const ms2 = (a) => veh.emit('accel', { longitudinalAccelerationCentreOfGravity: Math.round((a + 65) / 0.002) });
 
 server.listen(process.env.KM_CR_SOCKET, () => {
     const unit = require('../../../tools/fake_unit.js').install(require('../spec.js'), require('../package/rhmiData/application.json'), {
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasu, 'de.bmw.infotainment.vehicle.CDS': cdsProxy,
-        'de.bmw.infotainment.vehicle.Vehicle2': vehProxy, 'de.bmw.infotainment.vehicle.CDS2': cds2Proxy });
+        'de.bmw.infotainment.vehicle.Vehicle2': vehProxy, 'de.bmw.infotainment.vehicle.CDS2': cds2Proxy,
+        'de.bmw.infotainment.navigation.guiding.Guidance': guideProxy });
     const realExit = process.exit;
     process.exit = () => {};
     let app = null;
@@ -141,10 +144,24 @@ server.listen(process.env.KM_CR_SOCKET, () => {
         assert.strictEqual(app._hud.targetState, 'shown');
         await unit.wait(22000);
         assert.strictEqual(hides(), n + 2, 'shown: left alone');
+        // route guidance: our picture away while BMW guides, back when it ends; nothing offered anew meanwhile
+        const g = hides();
+        veh.emit('guide', 'ACTIVE');
+        await unit.wait(300);
+        assert.strictEqual(visible(), 0, 'guiding: off the HUD');
+        await unit.wait(8000);
+        assert.strictEqual(hides(), g + 1, 'and left alone while guiding');
+        veh.emit('guide', 'SOMETHING_NEW');
+        await unit.wait(300);
+        assert.strictEqual(visible(), 0, 'an unknown word changes nothing');
+        veh.emit('guide', 'INACTIVE');
+        await unit.wait(300);
+        assert.strictEqual(visible(), 1, 'guidance over: back');
         await new Promise((r) => require('../src/diag.js').flush(r));
         const log = fs.readFileSync(path.join(dir, 'diag.log'), 'utf8');
         assert.ok(/starkes Bremsen \(-6\.0/.test(log) && /neu übergeben \(Halt\)/.test(log) && /neu übergeben \(alle 5 min\)/.test(log), log);
         assert.ok(/BMW zeigt unser Bild nicht mehr/.test(log) && /neu angeboten \(2\. Mal\)/.test(log) && /Bild wieder zu sehen/.test(log), log);
+        assert.ok(/Navigation: ACTIVE – HUD-Werte aus/.test(log) && /Navigation: INACTIVE/.test(log), log);
         console.log('test_refresh: ok');
         realExit(0);
     })().catch((e) => { console.error(e); realExit(1); });
