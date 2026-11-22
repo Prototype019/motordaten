@@ -1,13 +1,13 @@
 'use strict';
 /**
- * Draws the apps' tile icons (140 x 140, transparent) as
+ * Draws the apps' tile icons (140 x 140, their own rounded tile, transparent around it) as
  * apps/<id>/package/rhmiData/variantGroups/Common/images/<icon of its spec.js>: three leaning stripes (light blue,
  * dark blue, red) running into a heavy white M, and under it the app's word: SUITE (M Suite, km_motordaten) or
  * SUITE HUD with HUD in red (M Suite HUD, km_hudtest). Every shape is a distance field, so every edge is
  * anti-aliased; the letters are strokes on a 4 x 6 grid.
  *
  *   node tools/make_logo.js            both icons
- *   node tools/make_logo.js <file> 4   a sheet of both on a dark tile, 4 times as large (to look at)
+ *   node tools/make_logo.js <file> 4   a sheet of both, 4 times as large (to look at)
  */
 const fs = require('fs');
 const path = require('path');
@@ -67,8 +67,9 @@ const glyphW = (ch) => (ch === 'I' ? 0 : ch === ' ' ? 2.2 : 4);
 const textW = (str, h, gap) => str.split('').reduce((w, ch, i) => w + glyphW(ch) * h / 6 + (i ? gap : 0), 0);
 
 /* The shapes of one icon, in 140 units: each (x, y, k) -> [colour, cover 0..1] or null; k: pixels per unit. */
-function shapes(words) {
+function shapes(words, opts) {
     const out = [];
+    if (opts && opts.backdrop) out.push(backdrop);
     const aa = (d, k) => Math.max(0, Math.min(1, 0.5 - d * k));
     const fill = (pts, col) => out.push((x, y, k) => { const d = poly(x, y, pts); return d < 1 ? [col, aa(d, k)] : null; });
     const text = (str, x, y, h, w, col, gap) => {
@@ -86,16 +87,39 @@ function shapes(words) {
     const mw = 62;
     const x0 = 70 - (3 * ws + mw + H * LEAN) / 2;
     const y0 = words.length > 1 ? 26 : 30;
-    [LIGHT, DARK, RED].forEach((c, i) => fill(bar(x0 + i * ws, y0, ws, H), c));
+    if (!opts || opts.stripes !== false) [LIGHT, DARK, RED].forEach((c, i) => fill(bar(x0 + i * ws, y0, ws, H), c));
     fill(letterM(x0 + 3 * ws, y0, mw, H, 17), WHITE);
     if (words.length > 1) {
         const total = textW(words.join(' '), 13, 5);
         const x = text(words[0], 70 - total / 2, 99, 13, 3.3, WHITE, 5);
-        text(words[1], x + 2.2 * 13 / 6 + 5, 99, 13, 3.3, RED, 5);
+        // on the coloured tile the red would drown: HUD in the stripes' light blue there
+        text(words[1], x + 2.2 * 13 / 6 + 5, 99, 13, 3.3, opts && opts.backdrop ? [170, 220, 255] : RED, 5);
     } else {
         text(words[0], 70 - textW(words[0], 15, 6.5) / 2, 101, 15, 3.8, WHITE, 6.5);
     }
     return out;
+}
+
+/*
+ * The icon's own tile, rounded, filled with the stripes' colours out of focus.
+ */
+const TILE = { x: 2, y: 2, w: 136, h: 136, r: 30 };
+// the three stripes side by side and far out of focus: one soft run of colour along the lean, as BMW's own
+// iDrive 8 tiles run from blue to red; a little darker so the white M and the word stand clear
+const RUN = [[96, 172, 240], LIGHT.map((v) => v * 0.8), DARK, DARK, [120, 40, 110], RED, [200, 30, 40]];
+function backdrop(x, y, k) {
+    const d = box(x, y, TILE);
+    if (d >= 1) return null;
+    const u = x + (y - 70) * LEAN;                       // the same u all the way up a stripe
+    const t = Math.max(0, Math.min(1, (u - 4) / 132)) * (RUN.length - 1);
+    const i = Math.min(RUN.length - 2, Math.floor(t));
+    const f = t - i;
+    const sm = f * f * (3 - 2 * f);
+    let c = RUN[i].map((v, n) => v + (RUN[i + 1][n] - v) * sm);
+    // darker towards the lower edge and the corners
+    const shade = 0.12 + Math.max(0, Math.min(1, (y - 60) / 80)) * 0.38;
+    c = c.map((v) => v * (1 - shade));
+    return [c, Math.max(0, Math.min(1, 0.5 - d * k))];
 }
 
 /* w x h pixels (RGBA floats), the shapes drawn k times as large with their origin at ox, oy (pixels). */
@@ -141,24 +165,25 @@ function png(px, w, h) {
 }
 
 const APPS = [['km_motordaten', ['SUITE']], ['km_hudtest', ['SUITE', 'HUD']]];
+// how the icon is made: its own tile with the stripes out of focus, the sharp stripes and the M on it
+const LOOK = { backdrop: true, stripes: true };
 if (process.argv[2]) {
-    // the sheet: both on the dark tile they sit on in the car
+    // the sheet to look at: both apps, k times as large; with "pick" also the look without the sharp stripes
     const k = Number(process.argv[3]) || 4;
-    const cell = 200 * k;
-    const px = new Float32Array(cell * 2 * cell * 4);
-    APPS.forEach((a, n) => {
-        // the tile is the car's, not the icon's (the icon is transparent): here only to look at, in the menu's grey-blue
-        const tile = (x, y, kk) => { const d = box(x, y, { x: -16, y: -16, w: 172, h: 172, r: 30 }); return d < 1 ? [[52, 62, 78], Math.max(0, Math.min(1, 0.5 - d * kk))] : null; };
-        const list = [tile].concat(shapes(a[1])).map((f) => (x, y, kk) => f(x - 30, y - 30, kk));
-        paint(px, cell * 2, list, k, n * cell, 0, cell);
-    });
-    fs.writeFileSync(process.argv[2], png(px, cell * 2, cell));
+    const looks = process.argv[4] === 'pick' ? [LOOK, { backdrop: true, stripes: false }] : [LOOK];
+    const cell = 170 * k;
+    const px = new Float32Array(cell * 2 * cell * looks.length * 4);
+    looks.forEach((look, row) => APPS.forEach((a, n) => {
+        const list = shapes(a[1], look).map((f) => (x, y, kk) => f(x - 15, y - 15, kk));
+        paint(px, cell * 2, list, k, n * cell, row * cell, cell);
+    }));
+    fs.writeFileSync(process.argv[2], png(px, cell * 2, cell * looks.length));
 } else {
     APPS.forEach((a) => {
         const app = path.join(__dirname, '..', 'apps', a[0]);
         const out = path.join(app, 'package', 'rhmiData', 'variantGroups', 'Common', 'images', require(path.join(app, 'spec.js')).icon);
         const px = new Float32Array(U * U * 4);
-        paint(px, U, shapes(a[1]), 1, 0, 0, U);
+        paint(px, U, shapes(a[1], LOOK), 1, 0, 0, U);
         fs.writeFileSync(out, png(px, U, U));
         console.log(out);
     });
