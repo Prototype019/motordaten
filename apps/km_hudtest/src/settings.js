@@ -19,9 +19,13 @@ const CHOICES = Object.freeze({
     size: { def: 'normal', all: ['normal', 'large'], words: { normal: 'Normal', large: 'Groß' } },
     // Gerade halten: the G87's HUD now and then lays our picture slanted (no message, the cause unknown; kept even
     // parked) and straight again once the picture is handed over anew. stop: anew at each stop after driving;
-    // timed: that, and every REFRESH_EVERY_MS while driving too; off: never
-    refresh: { def: 'stop', all: ['stop', 'timed', 'off'], words: { stop: 'Bei jedem Halt', timed: 'Halt + alle 5 min', off: 'Aus' } }
+    // timed: that, and every REFRESH_EVERY_MS while driving too; off: never. Off by default since the picture is
+    // 352x200 (0.5.2) and stays straight: the handing over takes the picture away for seconds at every stop
+    refresh: { def: 'off', all: ['stop', 'timed', 'off'], words: { stop: 'Bei jedem Halt', timed: 'Halt + alle 5 min', off: 'Aus' } }
 });
+
+// the settings' revision: 2 since 0.5.3 (refresh off by default, an older file's refresh not taken over)
+const REV = 2;
 
 const ITEMS = Object.freeze([
     { key: 'oilReadyOn', def: 1, min: 0, max: 1, step: 1, toggle: true },
@@ -65,6 +69,7 @@ function defaults() {
     const out = { order: V.KEYS.slice() };
     Object.keys(CHOICES).forEach((k) => { out[k] = CHOICES[k].def; });
     ITEMS.forEach((it) => { out[it.key] = it.def; });
+    out.rev = REV;
     return out;
 }
 
@@ -81,6 +86,7 @@ function clean(s) {
     Object.keys(CHOICES).forEach((k) => { if (CHOICES[k].all.indexOf(s[k]) >= 0) out[k] = s[k]; });
     out.order = cleanOrder(s.order);
     ITEMS.forEach((it) => { if (typeof s[it.key] === 'number' && isFinite(s[it.key])) out[it.key] = onStep(it, s[it.key]); });
+    if (!(s.rev >= REV)) out.refresh = CHOICES.refresh.def;     // kept from before 0.5.3 (then 'stop' by default): off once
     return out;
 }
 

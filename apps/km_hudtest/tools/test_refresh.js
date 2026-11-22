@@ -78,7 +78,8 @@ server.listen(process.env.KM_CR_SOCKET, () => {
     (async () => {
         await unit.wait(1200);
         assert.ok(app && app._started);
-        assert.strictEqual(app._settings.refresh, 'stop', 'at each stop by default');
+        assert.strictEqual(app._settings.refresh, 'off', 'off by default');
+        app._set(Object.assign({}, app._settings, { refresh: 'stop' }));
         cds.emit('t', { temperatureEngineOilDrive: 40 + 48, temperatureEngineDrive: 50 + 48 });
         await unit.wait(1200);
         assert.strictEqual(visible(), 1, 'shown (warming up)');

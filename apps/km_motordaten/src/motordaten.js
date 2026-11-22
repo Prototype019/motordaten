@@ -124,8 +124,9 @@ const REOPEN_MS = 10000;       // a failed gateway is tried again after this lon
 const LIVE_TIMEOUT_MS = 700;   // a live read waits this long for its answer (it comes in ~30 ms): a lost one costs little
 const GAP_NOTE_MS = 1500;      // no values from the DME this long: noted (diag.log)
 const HOLD_MS = 4000;          // a value missing an answer keeps its last one this long (the gateway drops some)
-const STALE_MS = 15000;        // while the DME is silent as a whole (a gap), the last values stay this long, dimmed
-const STALE_AFTER_MS = 1000;   // a gap this long dims the values (the screen shows they are the last ones)
+const STALE_MS = 15000;        // while the DME is silent as a whole (a gap), the last values stay this long
+const STALE_AFTER_MS = 1000;   // a gap this long counts as one (v.stale)
+const STALE_NOTE_MS = 3000;    // and this long gets a line on the screen; shorter ones pass unseen, the values stay
 const LIVE_BUSY_RETRIES = 1;   // a live read asks a busy gateway once more, then the next round tries
 const BUSY_MAX_CYCLE_MS = 400; // the longest pause between rounds while the gateway is busy
 const RPM_FRESH_MS = 400;      // the DME's engine speed counts this long; the car's signal after it
@@ -1300,10 +1301,10 @@ class Motordaten extends ListApp {
             status = `DME nicht erreichbar: ${this._gatewayError}`;
         } else if (this._gateway === 'open' && this._round > 2 && FAST.every((kv) => !isNum(m[kv[0]]))) {
             status = `Keine Antwort der DME – Zündung an?${this._gatewayError ? ` (${this._gatewayError})` : ''}`;
-        } else if (this._answered && this._gapFrom && Date.now() - this._gapFrom >= STALE_AFTER_MS) {
-            status = 'Diagnose kurz belegt – grau: die letzten Werte';
+        } else if (this._answered && this._gapFrom && Date.now() - this._gapFrom >= STALE_NOTE_MS) {
+            status = 'Motorsteuerung antwortet gerade nicht – die letzten Werte bleiben stehen';
         }
-        // a gap after answers: the last values, dimmed (dash.js), instead of dashes
+        // a gap after answers: the last values stay as they are instead of dashes; only the line above says so
         v.stale = !!(this._answered && this._gapFrom && Date.now() - this._gapFrom >= STALE_AFTER_MS);
         v.status = status;
         this._v = v;

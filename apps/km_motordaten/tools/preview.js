@@ -130,7 +130,7 @@ SCENES.logknock = {};
 SCENES.logbattery = {};
 SCENES.logcooling = {};
 // the DME silent for a moment: the last values dimmed
-SCENES.stale = Object.assign({}, SCENES.pull, { stale: true, status: 'Diagnose kurz belegt – grau: die letzten Werte' });
+SCENES.stale = Object.assign({}, SCENES.pull, { stale: true, status: 'Motorsteuerung antwortet gerade nicht – die letzten Werte bleiben stehen' });
 // Logs an GitHub, its phases (the code and repository names made up)
 const GH = { online: true, error: null, qr: null, code: null, repo: null, repos: [], sent: null };
 EXTRA.github_off = { github: Object.assign({}, GH, { phase: 'off' }) };

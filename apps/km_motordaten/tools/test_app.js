@@ -140,13 +140,13 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
     }
     assert.ok(Date.now() - t0 < 1200, `values back after ${Date.now() - t0} ms`);
 
-    // the gateway busy for 6 s (the car's diag.log: 3-10 s): the last values stay, dimmed, no dashes, no other
+    // the gateway busy for 6 s (the car's diag.log: 3-10 s): the last values stay, no dashes, no other
     // tester; back within a round or two once it is free
     busy = true;
     await unit.wait(6000);
     assert.ok(app._v.oil > 28 && app._v.oil < 30, 'the last value stays through the gap');
-    assert.strictEqual(app._v.stale, true, 'shown dimmed');
-    assert.ok(/kurz belegt/.test(app._v.status), app._v.status);
+    assert.strictEqual(app._v.stale, true, 'held');
+    assert.ok(/bleiben stehen/.test(app._v.status), app._v.status);
     assert.ok(app._cycle <= 400, `rounds keep coming (pause ${app._cycle} ms)`);
     busy = false;
     assert.deepStrictEqual(Array.from(testers), [0xF4], 'a busy gateway is no reason to change the tester');

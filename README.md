@@ -30,7 +30,7 @@ installieren. Dann reicht „Logs senden“: je Druck eine Datei `<app>/<Datum_U
 Repositories schreiben, auf denen der Nutzer sie installiert hat; kein Passwort und kein Schlüssel im Code, der
 Zugang bleibt im Datenordner der App im Auto (`shared/github_logs.js`, `shared/qr.js`).
 
-HUD „Gerade halten“ (Anzeige): Das G87-HUD legt unser Bild ab und zu schräg (Ursache unbekannt, das Kombi meldet nichts) und behält das, bis das Bild neu übergeben wird. Die App liest dafür das Tempo (Vehicle2 statusCarSpeed2), nur lesend, und übergibt das Bild bei jedem Halt nach der Fahrt neu (etwa 4 s weg, höchstens alle 20 s); „Halt + alle 5 min“ auch während der Fahrt; „Aus“. Starkes Bremsen (CDS2) wird nur protokolliert.
+HUD „Gerade halten“ (Anzeige): Das G87-HUD legt unser Bild ab und zu schräg (Ursache unbekannt, das Kombi meldet nichts) und behält das, bis das Bild neu übergeben wird. Die App liest dafür das Tempo (Vehicle2 statusCarSpeed2), nur lesend, und übergibt das Bild auf Wunsch neu: „Bei jedem Halt“ nach der Fahrt (etwa 4 s weg, höchstens alle 20 s), „Halt + alle 5 min“ auch während der Fahrt. Seit 0.5.3 steht das auf „Aus“ (das Bild ist seit 352x200 gerade, und das Neu-Übergeben nimmt die Anzeige bei jedem Halt kurz weg). Starkes Bremsen (CDS2) wird nur protokolliert.
 
 ### HUD
 
