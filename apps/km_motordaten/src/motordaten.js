@@ -1235,7 +1235,10 @@ class Motordaten extends ListApp {
         const above = (abs) => (isNum(abs) && ambient !== null ? abs - ambient : null);
         const pick = (a, b) => (isNum(a) ? a : (isNum(b) ? b : null));
         const v = {
-            rpm: this._rpm(), oil: pick(m.oil, this._cds.oil), coolant: pick(m.coolant, this._cds.coolant),
+            rpm: this._rpm(),
+            // the oil as the car itself shows it (its signal, the HUD app's too); the DME's "Öl nach Filter" (4402,
+            // another place in the oil circuit, 1 to 3 °C off) only when the signal has none
+            oil: pick(this._cds.oil, m.oil), coolant: pick(m.coolant, this._cds.coolant),
             intake: m.intake, charge: m.charge, boost: above(m.boostAbs), boostTarget: above(m.boostTargetAbs),
             oilPress: above(m.oilPressAbs), gearbox: m.gearbox, exhaust: m.exhaust, voltage: m.voltage,
             // only while recording (ENGINE): for the logs
