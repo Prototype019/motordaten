@@ -16,6 +16,12 @@ const MARK = 'de_bmw_infotainment_vehicle_CDS.json';
 const MAX_DIRS = 6000;
 const DEPTH = 7;
 const FILE = 'interfaces.txt';
+// the car's one catalog of every interface (fields, methods, events, types)
+const CATALOG = process.env.KM_SOMEIP_CATALOG || '/etc/oap/someip/someip-interfaces.json';
+const CATALOG_MAX = 60 * 1024 * 1024;
+const CATALOG_OUT = 150 * 1024;
+// members that have to do with the M buttons and the M Mode (ROAD, SPORT, TRACK)
+const M_WORDS = /(^|[^a-z])[mM](_?[mM]ode|_?[sS]etup|Drive|Sport|Config)|MMode|[dD]rivingExperience|[dD]riv(e|ing)Mode|(^|[^A-Z0-9])[mM][12](?![0-9a-z])/;
 
 function names(o) {
     if (Array.isArray(o)) return o.map((x) => (x && (x.name || x.id)) || String(x)).slice(0, 60);
@@ -72,6 +78,7 @@ function run(dir, own, version, done) {
             });
             lines.push(`alle: ${files.map((n) => n.replace(/\.json$/, '')).join(' ')}`.slice(0, 20000));
         });
+        catalog(lines);
         lines.push('', `${dirs} Ordner durchsucht, ${found.length} mit Schnittstellen${queue.length ? ' (abgebrochen: zu viele Ordner)' : ''}`);
         try {
             fs.writeFileSync(out, lines.join('\n') + '\n');
@@ -79,6 +86,72 @@ function run(dir, own, version, done) {
         if (done) done(true, found.length);
     };
     setTimeout(step, 0);
+}
+
+/* What a type is, short: an enum with its values, a struct with its members. */
+function typ(db, ref, depth) {
+    const d = db.datatypes && db.datatypes[ref];
+    if (!d) return String(ref);
+    if (d.type === 'enum') return `enum(${Object.keys(d.items || {}).slice(0, 24).map((k) => `${k}=${d.items[k]}`).join(',')})`;
+    if (d.type === 'typedef') return depth > 3 ? 'typedef' : typ(db, d.dataRef || d.baseType, depth + 1);
+    if (d.type === 'array') return depth > 3 ? '[]' : `[${typ(db, d.elementDataRef, depth + 1)}]`;
+    if (d.type === 'struct') {
+        if (depth > 1) return 'struct';
+        let mem = [];
+        for (let dd = d, i = 0; dd && i < 6; dd = dd.extends && db.datatypes[dd.extends], i++) mem = (dd.members || []).concat(mem);
+        return `{${mem.slice(0, 30).map((m) => `${m.name}:${typ(db, m.dataRef, depth + 1)}`).join(', ')}}`;
+    }
+    return String(d.type);
+}
+
+/* The catalog's interfaces that fit WORDS or have a member fitting M_WORDS: those members with their types first. */
+function catalog(lines) {
+    let db;
+    try {
+        if (fs.statSync(CATALOG).size > CATALOG_MAX) return lines.push('', `== Katalog ${CATALOG}: zu groß`);
+        db = JSON.parse(fs.readFileSync(CATALOG, 'utf8'));
+    } catch (e) {
+        return lines.push('', `== Katalog ${CATALOG}: nicht lesbar (${e.code || 'kein JSON'})`);
+    }
+    const ifs = db.interfaces || {};
+    const all = Object.keys(ifs);
+    lines.push('', `== Katalog ${CATALOG} (${all.length} Schnittstellen)`);
+    const exact = [];
+    const rest = [];
+    all.forEach((name) => {
+        const i = ifs[name] || {};
+        const inst = db.instanceIDs && db.instanceIDs[name];
+        const fields = i.fields || {};
+        const flag = (f) => (f.getter ? 'g' : '') + (f.notifier ? 'n' : '') + (f.setter ? 's' : '');
+        const hits = [];
+        Object.keys(fields).forEach((k) => {
+            const t = typ(db, fields[k].dataRef, 0);
+            // by its name, or by its values: a type that knows ROAD and TRACK is the M Mode whatever it is called
+            if (M_WORDS.test(k) || (/ROAD/i.test(t) && /TRACK/i.test(t))) hits.push(`  M Feld ${name} . ${k} [${flag(fields[k])}] = ${t}`.slice(0, 900));
+        });
+        ['methods', 'events'].forEach((kind) => Object.keys(i[kind] || {}).filter((k) => M_WORDS.test(k)).forEach((k) => {
+            const m = i[kind][k] || {};
+            const args = (m.inputs || m.arguments || m.in || []);
+            const a = Array.isArray(args) ? args.map((x) => `${x.name}:${typ(db, x.dataRef, 1)}`).join(', ') : '';
+            hits.push(`  M ${kind === 'methods' ? 'Befehl' : 'Ereignis'} ${name} . ${k}(${a})`.slice(0, 900));
+        }));
+        if (hits.length) exact.push.apply(exact, hits);
+        if (hits.length || WORDS.test(name)) {
+            rest.push(`* ${name} (svc ${i.serviceId}, inst ${JSON.stringify(inst)}): Felder: ${Object.keys(fields).map((k) => `${k}[${flag(fields[k])}]`).join(', ') || '-'}`
+                + ` | Befehle: ${Object.keys(i.methods || {}).join(', ') || '-'} | Ereignisse: ${Object.keys(i.events || {}).join(', ') || '-'}`);
+        }
+    });
+    Object.keys(db.datatypes || {}).forEach((ref) => {
+        const d = db.datatypes[ref];
+        const keys = d && d.type === 'enum' ? Object.keys(d.items || {}).join(' ') : '';
+        if (/ROAD/i.test(keys) && /TRACK/i.test(keys)) exact.push(`  M Typ ${ref} = ${typ(db, ref, 0)}`.slice(0, 900));
+    });
+    let room = CATALOG_OUT;
+    exact.concat(rest.map((l) => l.slice(0, 2500))).forEach((l) => {
+        if ((room -= l.length + 1) >= 0) lines.push(l);
+    });
+    if (room < 0) lines.push('(gekürzt)');
+    lines.push(`alle: ${all.join(' ')}`.slice(0, 40000));
 }
 
 module.exports = { run, FILE };

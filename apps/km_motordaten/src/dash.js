@@ -137,11 +137,12 @@ const MENU_SECTIONS = [
     { label: 'Fahrzeug', rows: [
         { id: 'menu:limits', page: 'limits', label: 'Grenzwerte', text: 'Ab wann die Werte rot werden' },
         { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen' },
-        { id: 'menu:mhd', page: 'mhd', label: 'MHD-Tuning', text: 'Max Cooling und Abgasklappe aus der App' }] },
+        { id: 'menu:mhd', page: 'mhd', label: 'MHD-Tuning', text: 'Max Cooling und Abgasklappe aus der App' },
+        { id: 'menu:mkeys', page: 'mkeys', label: 'M-Tasten', text: 'Welchen M Mode M1 und M2 einstellen' }] },
     { label: 'App', rows: [
         { id: 'menu:app', page: 'app', label: 'App', text: 'Beim Motorstart öffnen, Reihenfolge, Logs an GitHub' }] }
 ];
-const MENU_ROW_H = 120;
+const MENU_ROW_H = 100;
 const MENU = [];
 (() => {
     let y = 168;
@@ -192,6 +193,20 @@ const READY_TARGETS = readyTargets();
 const MHD_SWITCH = { id: 'toggle:mhdCoolingOn', x: X0, y: SET_TOP + 30, w: 220, h: BTN, label: '' };
 const MHD_FLAP_SWITCH = { id: 'toggle:mhdFlapOn', x: X0, y: SET_TOP + 30 + BTN + 30, w: 220, h: BTN, label: '' };
 const MHD_TARGETS = [MHD_SWITCH, MHD_FLAP_SWITCH, BACK_SET];
+
+/* The M-Tasten page: per button (M1, M2) a row of the M Modes, one chosen (pick:<key>:<place in L.MMODES>). */
+const MKEYS_ROWS = [
+    { key: 'm1Mode', label: 'M1', text: 'M Mode beim Drücken von M1' },
+    { key: 'm2Mode', label: 'M2', text: 'M Mode beim Drücken von M2' }
+].map((r, i) => Object.assign(r, { y: SET_TOP + 154 + i * 130 }));
+const MKEYS_SWITCH = { id: 'toggle:mkeysOn', x: X0, y: SET_TOP + 24, w: 220, h: BTN, label: '' };
+const MKEYS_X = 900;
+const MKEYS_W = 1400;
+const MKEYS_TARGETS = [MKEYS_SWITCH].concat(...MKEYS_ROWS.map((r) => {
+    const gap = 20;
+    const bw = Math.floor((MKEYS_W - gap * (L.MMODES.length - 1)) / L.MMODES.length);
+    return L.MMODES.map((m, i) => ({ id: `pick:${r.key}:${i}`, key: r.key, at: i, x: MKEYS_X + i * (bw + gap), y: r.y, w: bw, h: BTN, label: m.label }));
+})).concat([BACK_SET]);
 
 /* The app page: opening by itself at the engine start; the temperature cells' order back to the start. */
 const START_SWITCH = { id: 'toggle:autoOpenOn', x: X0, y: SET_TOP + 30, w: 220, h: BTN, label: '' };
@@ -335,6 +350,8 @@ function targets(page, extra) {
         own = READY_TARGETS;
     } else if (page === 'mhd') {
         own = MHD_TARGETS;
+    } else if (page === 'mkeys') {
+        own = MKEYS_TARGETS;
     } else if (page === 'app') {
         own = START_TARGETS;
     } else if (page === 'github') {
@@ -357,7 +374,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' || page === 'mhd' || page === 'app' || page === 'github' ? 'settings' : page;
+    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' || page === 'mhd' || page === 'mkeys' || page === 'app' || page === 'github' ? 'settings' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) {
@@ -677,6 +694,9 @@ function summary(id, cfg) {
     if (id === 'menu:mhd') {
         return `Max Cooling ${cfg.mhdCoolingOn ? 'ein' : 'aus'} · Klappe ${cfg.mhdFlapOn ? 'ein' : 'aus'}`;
     }
+    if (id === 'menu:mkeys') {
+        return cfg.mkeysOn ? `M1 ${L.MMODES[cfg.m1Mode || 0].label} · M2 ${L.MMODES[cfg.m2Mode || 0].label}` : 'Aus';
+    }
     if (id === 'menu:app') {
         return cfg.autoOpenOn ? 'Öffnet beim Motorstart' : 'Öffnet nur per Kachel';
     }
@@ -692,8 +712,8 @@ function settingsMenu(rec, cfg, ui) {
         if (focus) {
             rec.strokeRoundRect(m.x, m.y, m.w, m.h, 20, 5, C.ice);
         }
-        rec.text(m.label, m.x + 40, m.y + 52, 40, C.text, { font: 'label' });
-        rec.text(m.text, m.x + 40, m.y + 92, 26, C.dim, { font: 'label' });
+        rec.text(m.label, m.x + 40, m.y + 42, 36, C.text, { font: 'label' });
+        rec.text(m.text, m.x + 40, m.y + 76, 24, C.dim, { font: 'label' });
         // how it is set now, right before the arrow
         rec.text(summary(m.id, cfg), m.x + m.w - 110, m.y + m.h / 2 + 11, 30, C.ice, { font: 'label', align: 'right' });
         const cx = m.x + m.w - 52;
@@ -793,6 +813,34 @@ function mhdPage(rec, cfg, ui) {
     ];
     lines.forEach((l, i) => rec.text(l, X0, MHD_FLAP_SWITCH.y + 170 + i * 50, 30, C.dim, { font: 'label' }));
     button(rec, BACK_SET, ui);
+}
+
+/* M-Tasten: which M Mode a press of M1 and of M2 brings; extra.mkeys.ready once the car's side is connected. */
+function mkeysPage(rec, cfg, ui, extra) {
+    rec.text('M-Tasten', X0, 120, 56, C.text, { font: 'label' });
+    rec.text('Der M Mode liegt ab Werk nicht auf M1 und M2. Hier wählen, was ein Druck auf die Taste einstellt.', X0, 166, 30, C.dim, { font: 'label' });
+    const on = !!cfg.mkeysOn;
+    toggleSwitch(rec, MKEYS_SWITCH, on, ui);
+    rec.text('M1 und M2 stellen den M Mode ein', MKEYS_SWITCH.x + MKEYS_SWITCH.w + 56, MKEYS_SWITCH.y + 64, 44, on ? C.text : C.dim, { font: 'label' });
+    MKEYS_ROWS.forEach((r) => {
+        rec.text(r.label, X0, r.y + 58, 56, on ? C.text : C.dim, { font: 'label' });
+        rec.text(r.text, X0, r.y + 98, 28, C.dim, { font: 'label' });
+        rec.fillRect(X0, r.y + BTN + 16, MKEYS_X + MKEYS_W - X0, 2, C.line);
+    });
+    // the choice shows only while switched on (it is kept all the same)
+    MKEYS_TARGETS.forEach((t) => {
+        if (t.key) button(rec, Object.assign({}, t, { on: on && (cfg[t.key] || 0) === t.at }), ui);
+        else if (t !== MKEYS_SWITCH) button(rec, t, ui);
+    });
+    const ready = !!(extra && extra.mkeys && extra.mkeys.ready);
+    const lines = [
+        !on ? 'Aus: die App schaltet nichts. Nur für M-Modelle mit M1- und M2-Taste; ohne die Tasten passiert auch eingeschaltet nichts.'
+            : ready ? 'Aktiv: ein Druck auf M1 oder M2 stellt den gewählten M Mode ein.'
+                : 'Noch nicht aktiv: die Verbindung zum Auto dafür fehlt noch. Die Auswahl wird schon gespeichert.',
+        'Nichts: die Taste bleibt, wie BMW sie gebaut hat. Track schaltet Assistenzsysteme ab – nur für die Rennstrecke.',
+        'Wer den M Mode danach mit der M-Mode-Taste ändert, behält ihn bis zum nächsten Druck auf M1 oder M2.'
+    ];
+    lines.forEach((l, i) => rec.text(l, X0, MKEYS_ROWS[1].y + BTN + 66 + i * 42, 28, i === 0 && on && ready ? C.text : C.dim, { font: 'label' }));
 }
 
 function appPage(rec, cfg, ui) {
@@ -1284,6 +1332,10 @@ function draw(rec, page, v, cfg, ui, extra) {
     }
     if (page === 'mhd') {
         mhdPage(rec, cfg, ui);
+        return rec;
+    }
+    if (page === 'mkeys') {
+        mkeysPage(rec, cfg, ui, extra);
         return rec;
     }
     if (page === 'app') {
