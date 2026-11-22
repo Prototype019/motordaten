@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const WORDS = /carplay|car_play|smartphone|projection|iap|mane|manoeu|guid|navi|rout|turn|hud|headup|cluster|kombi|instrument/i;
+const WORDS = /carplay|car_play|smartphone|projection|iap|mane|manoeu|guid|navi|rout|turn|hud|headup|cluster|kombi|instrument|mmode|m_mode|msetup|m_setup|mdrive|m_drive|drivingmode|driving_mode|drivemode|drive_mode|dynamic|experience|sport|chassis/i;
 const ROOTS = ['/opt', '/usr/share', '/usr/lib', '/etc', '/var/opt', '/var/lib', '/app', '/apps', '/data', '/mnt', '/home'];
 const MARK = 'de_bmw_infotainment_vehicle_CDS.json';
 const MAX_DIRS = 6000;
@@ -61,7 +61,7 @@ function run(dir, own, version, done) {
         found.forEach((f) => {
             const files = f.list.filter((n) => /\.json$/.test(n));
             lines.push('', `== ${f.d} (${files.length} Dateien)`);
-            files.filter((n) => WORDS.test(n)).slice(0, 80).forEach((n) => {
+            files.filter((n) => WORDS.test(n)).slice(0, 140).forEach((n) => {
                 let text = '';
                 try {
                     const j = JSON.parse(fs.readFileSync(path.join(f.d, n), 'utf8'));
