@@ -48,8 +48,11 @@ const REFRESH_EVERY_MS = 5 * 60 * 1000;   // refresh 'timed': also this often wh
 /* BMW takes our picture off the HUD for its own (route guidance, lists) and on the G87 does not show it again by
  * itself afterwards: the renderer then says "parked" (offered, not shown) for good. Parked this long, the picture
  * is offered anew (away REFRESH_HIDE_MS, then back), as switching Anzeige off and on by hand does: after 5 s,
- * then 10, 20 and every 30 s for as long as BMW keeps its own content there. */
-const LOST_LADDER_MS = [5000, 10000, 20000, 30000];
+ * then 15, 30 and every 60 s for as long as BMW keeps its own content there. The car's log (22.11.2026): "released
+ * by the cluster, still offered" and not back in 10 min; offered anew during route guidance it showed for 4 s and
+ * was released again, so only a picture that stayed LOST_BACK_MS counts as back (the steps start over). */
+const LOST_LADDER_MS = [5000, 15000, 30000, 60000];
+const LOST_BACK_MS = 20000;
 /* CDS temperatures: raw - 48 = °C, 255 = no value; engine speed raw * 0.25, 65535 = no value (as Motordaten). */
 const TEMP_INVALID = 255;
 const RPM_INVALID = 65535;
@@ -61,7 +64,7 @@ const POLL_MS = 1000;
 const TIMEOUT_MS = 1500;
 const REOPEN_MS = 5000;
 /* A value read through the gateway keeps its last reading this long when an answer is missing. */
-const HOLD_MS = 4000;
+const HOLD_MS = 120000;   // the gateway is busy for 3-10 s now and then (the car's log): no dashes for that
 /* The DME's identifiers per value; boost and oil pressure come absolute, the ambient pressure (hPa) is taken off. */
 const DME_DIDS = { oil: [0x5822], boost: [0x4205, 0x4201], oilPress: [0x4436, 0x4201], intake: [0x580F] };
 
@@ -390,12 +393,16 @@ class HudApp extends ListApp {
         const lost = this._lost;
         const state = this._hud.targetState;
         if (state === 'shown') {
-            if (lost.tries || lost.noted) Diag.note('HUD: Bild wieder zu sehen');
-            lost.tries = 0;
             lost.since = 0;
-            lost.noted = false;
+            if (!lost.shownAt) lost.shownAt = now;
+            if ((lost.tries || lost.noted) && now - lost.shownAt >= LOST_BACK_MS) {
+                Diag.note('HUD: Bild wieder zu sehen');
+                lost.tries = 0;
+                lost.noted = false;
+            }
         } else if (view && this._hud.isOn() && state === 'parked' && now >= r.until) {
             const wait = LOST_LADDER_MS[Math.min(lost.tries, LOST_LADDER_MS.length - 1)];
+            lost.shownAt = 0;
             if (!lost.since) {
                 lost.since = now;
             } else if (now - lost.since >= wait) {
@@ -409,6 +416,7 @@ class HudApp extends ListApp {
             }
         } else {
             lost.since = 0;
+            lost.shownAt = 0;
         }
         if (now < r.until && view && view.mode !== 'grid') {
             view = null;

@@ -132,12 +132,14 @@ server.listen(process.env.KM_CR_SOCKET, () => {
         await unit.wait(4500);
         assert.strictEqual(visible(), 1, 'offered anew');
         service.taken = false;          // the guidance ended; the display shows the next offer
-        await unit.wait(11500);
-        assert.strictEqual(hides(), n + 2, 'the second time 10 s later');
+        await unit.wait(12000);
+        assert.strictEqual(hides(), n + 1, 'the second time only after 15 s');
+        await unit.wait(5000);
+        assert.strictEqual(hides(), n + 2, 'the second time');
         await unit.wait(5000);
         assert.strictEqual(visible(), 1, 'and shown');
         assert.strictEqual(app._hud.targetState, 'shown');
-        await unit.wait(12000);
+        await unit.wait(22000);
         assert.strictEqual(hides(), n + 2, 'shown: left alone');
         await new Promise((r) => require('../src/diag.js').flush(r));
         const log = fs.readFileSync(path.join(dir, 'diag.log'), 'utf8');
