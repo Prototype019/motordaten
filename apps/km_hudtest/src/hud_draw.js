@@ -61,7 +61,7 @@ function drawHud(v, c, at) {
         c = c || new Canvas(HUD.w, HUD.h);
         c.clear([0, 0, 0, 0]);
     }
-    if (!v || !v.mode) return c;
+    if (!v || !v.mode || v.mode === 'blank') return c;     // blank: the layer stays, with nothing on it
     const o = at || { x: 0, y: 0, s: 1 };
     if (v.mode === 'grid') drawGrid(c, o);
     else if (v.mode === 'values') drawValues(v, c, o);

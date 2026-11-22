@@ -17,6 +17,9 @@ const path = require('path');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'km-refresh-'));
 process.env.KM_CR_SOCKET = path.join(dir, 'render.sock');
 process.env.KM_DATA_DIR = dir;
+process.env.KM_CR_LOG = path.join(dir, 'cluster-render.log');
+fs.writeFileSync(process.env.KM_CR_LOG, '2026-11-22 16:00:00.000 I start\n');
+const crLog = (l) => fs.appendFileSync(process.env.KM_CR_LOG, `2026-11-22 16:54:47.604 I dcsm: content 43204012: ${l}\n`);
 
 const service = { layers: [], sets: [], frames: 0, sock: null, taken: false };
 const send = (sock, obj) => {
@@ -173,11 +176,23 @@ server.listen(process.env.KM_CR_SOCKET, () => {
         veh.emit('trips', []);
         await unit.wait(300);
         assert.strictEqual(visible(), 1, 'no trip: back');
+        // the KOMBI gives our picture only a part of the HUD (something of its own shows): empty, the layer stays
+        const h0 = hides();
+        const f0 = service.frames;
+        crLog('canvas 353x203, rect 353x128@0,75, safe 0x0@0,0, layout 4');
+        await unit.wait(1200);
+        assert.strictEqual(hides(), h0, 'the layer stays offered');
+        assert.strictEqual(app._view && app._view.mode, 'blank', 'nothing on it');
+        assert.ok(service.frames > f0, 'the empty picture went out');
+        crLog('canvas 353x203, rect 353x203@0,0, safe 0x0@0,0, layout 4');
+        await unit.wait(1200);
+        assert.notStrictEqual(app._view && app._view.mode, 'blank', 'the whole again: the values back');
         await new Promise((r) => require('../src/diag.js').flush(r));
         const log = fs.readFileSync(path.join(dir, 'diag.log'), 'utf8');
         assert.ok(/starkes Bremsen \(-6\.0/.test(log) && /neu übergeben \(Halt\)/.test(log) && /neu übergeben \(alle 5 min\)/.test(log), log);
         assert.ok(/BMW zeigt unser Bild nicht mehr/.test(log) && /neu angeboten \(2\. Mal\)/.test(log) && /Bild wieder zu sehen/.test(log), log);
         assert.ok(/Navigation: ACTIVE – HUD-Werte aus/.test(log) && /Navigation: INACTIVE/.test(log), log);
+        assert.ok(/BMW zeigt etwas Eigenes im HUD/.test(log) && /Platz wieder frei/.test(log), log);
         console.log('test_refresh: ok');
         realExit(0);
     })().catch((e) => { console.error(e); realExit(1); });

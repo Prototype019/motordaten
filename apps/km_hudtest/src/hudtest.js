@@ -34,6 +34,15 @@ const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
 const IF_VEHICLE2 = 'de.bmw.infotainment.vehicle.Vehicle2';
 const IF_CDS2 = 'de.bmw.infotainment.vehicle.CDS2';
 const IF_GUIDANCE = 'de.bmw.infotainment.navigation.guiding.Guidance';
+/* The KOMBI now and then gives our picture only a part of the HUD (the renderer's log: "content 43204012: canvas
+ * 353x203, rect 353x128@0,75") while it shows something of its own there, and the whole again afterwards; our
+ * picture is not scaled into the part, so the two lie over each other. The renderer does not tell its clients, so
+ * its log (readable by all) is followed: with less than the whole, our picture stays empty (the layer stays
+ * offered: hidden, the KOMBI would stop telling). BMW's signals know nothing of a route in CarPlay; this may. */
+const fs = require('fs');
+const CR_LOG = process.env.KM_CR_LOG || '/var/opt/cluster-render/log/cluster-render.log';
+const CR_HUD_CONTENT = '43204012';
+const ROOM_MS = 400;
 const IF_ROUTING = 'de.bmw.infotainment.navigation.routing.Routing';
 const SPEED_FACTOR = 0.015625;   // statusCarSpeed2.speedVehicleCentreOfGravity -> km/h (65535 invalid)
 const ACCEL_FACTOR = 0.002;      // statusLongitudinalAccelerationMassCenter -> m/s², offset ACCEL_OFFSET
@@ -98,6 +107,7 @@ class HudApp extends ListApp {
         this._lost = { since: 0, tries: 0 };
         this._nav = false;              // BMW's route guidance on (guidanceState)
         this._navWord = '';
+        this._room = { pos: -1, part: false, rest: '', timer: null };   // the renderer's log: read up to pos; part: less than the whole
         this._navSrc = { state: false, trips: false };
         this._navNoted = {};     // the picture offered but not shown: since when, offered anew how often
         this._at = {};                  // when each value read through the gateway last came
@@ -141,6 +151,7 @@ class HudApp extends ListApp {
             this._hud.start();
             this._subscribe();
             this._subscribeDrive();
+            this._watchRoom();
             this._loop();
             this._startDrawn();
         } else {
@@ -153,6 +164,7 @@ class HudApp extends ListApp {
     stop() {
         this._stopped = true;
         clearInterval(this._timer);
+        clearInterval(this._room.timer);
         clearTimeout(this._poll);
         this._poll = null;
         this._hud.stop();
@@ -397,6 +409,7 @@ class HudApp extends ListApp {
         }
         // BMW's route guidance: the HUD is its own (grid: the alignment picture is asked for by hand, it shows)
         if (this._nav && view && view.mode !== 'grid') view = null;
+        if (this._room.part && view && view.mode !== 'grid') view = { mode: 'blank' };
         // BMW took the picture and does not give the place back: offered anew
         const lost = this._lost;
         const state = this._hud.targetState;
@@ -478,6 +491,45 @@ class HudApp extends ListApp {
             const raw = v && v.longitudinalAccelerationCentreOfGravity;
             this._accel(isNum(raw) && raw !== SIGNAL_INVALID ? raw * ACCEL_FACTOR + ACCEL_OFFSET : null, Date.now());
         });
+    }
+
+    /* Follows the renderer's log for the part of the HUD the KOMBI gives our picture (CR_LOG above). */
+    _watchRoom() {
+        const r = this._room;
+        const re = new RegExp(`content ${CR_HUD_CONTENT}: canvas (\\d+)x(\\d+), rect (\\d+)x(\\d+)@(-?\\d+),(-?\\d+)`);
+        const read = () => {
+            if (this._stopped) return;
+            let fd = null;
+            try {
+                const size = fs.statSync(CR_LOG).size;
+                if (r.pos < 0 || size < r.pos) { r.pos = Math.max(0, size - 16384); r.rest = ''; }   // first time, or a new file
+                if (size > r.pos) {
+                    const n = Math.min(size - r.pos, 65536);
+                    const buf = Buffer.alloc(n);
+                    fd = fs.openSync(CR_LOG, 'r');
+                    fs.readSync(fd, buf, 0, n, size - n);
+                    r.pos = size;
+                    const text = r.rest + buf.toString('utf8');
+                    const lines = text.split('\n');
+                    r.rest = lines.pop();
+                    let part = r.part;
+                    lines.forEach((l) => {
+                        const m = re.exec(l);
+                        if (m) part = !(m[3] === m[1] && m[4] === m[2] && m[5] === '0' && m[6] === '0');
+                        else if (l.indexOf(`content ${CR_HUD_CONTENT} offered`) >= 0 || l.indexOf(`content ${CR_HUD_CONTENT}: offer stopped`) >= 0) part = false;
+                    });
+                    if (part !== r.part) {
+                        r.part = part;
+                        Diag.note(part ? 'HUD: BMW zeigt etwas Eigenes im HUD – Werte aus' : 'HUD: Platz wieder frei – Werte an');
+                        this._tick();
+                    }
+                }
+            } catch (e) {
+                if (!r.failed) { r.failed = true; Diag.note(`HUD: Renderer-Log nicht lesbar (${e && e.code})`); }
+            }
+            if (fd !== null) { try { fs.closeSync(fd); } catch (e) { /* closed */ } }
+        };
+        r.timer = setInterval(read, ROOM_MS);
     }
 
     /* guidanceState: ACTIVE, INACTIVE or CALCULATING_ROUTE (a word, or an object naming one). Guiding or about to:
