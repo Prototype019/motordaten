@@ -1318,6 +1318,11 @@ function draw(rec, page, v, cfg, ui, extra) {
     readiness(rec, v, cfg, ui);
     power(rec, v, cfg);
     health(rec, v, cfg, ui, extra);
+    // the DME silent for a moment: its last values stay, dimmed under a veil (v.stale), instead of dashes
+    // (a colour with alpha, as the red zone uses: no alpha op the renderer might not know)
+    if (v.stale) {
+        rec.fillRect(RAIL, 0, W - RAIL, H, C.asphalt + '99');
+    }
     if (v.status) {
         rec.text(v.status, X0, 752, 30, v.statusErr ? C.limit : C.dim, { font: 'label' });
     }

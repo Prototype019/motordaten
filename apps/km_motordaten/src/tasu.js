@@ -122,6 +122,7 @@ class Tasu extends EventEmitter {
         this.tester = TESTER;
         this.dmeFrames = 0;         // frames from the DME
         this.busy = 0;              // busy verdicts retried
+        this.refused = 0;           // requests given up on a busy gateway (live reads give up early)
         let proxy = null;
         /* The proxy stays in here: requests go through request() and its check only. */
         this._proxy = () => proxy;
@@ -200,7 +201,7 @@ class Tasu extends EventEmitter {
      * UDS reply (an array) or null when none came; throws when refused (here
      * or by the transport).
      */
-    request(sid, data, timeoutMs, unit) {
+    request(sid, data, timeoutMs, unit, opts) {
         const target = unit === undefined ? DME : unit;
         if (UNITS.indexOf(target) < 0) {
             return Promise.reject(new Error(`nur lesen: Steuergerät ${target} nicht erlaubt`));
@@ -211,7 +212,10 @@ class Tasu extends EventEmitter {
         } catch (e) {
             return Promise.reject(e);
         }
-        const run = () => this._request(sid, bytes, timeoutMs || 2500, target);
+        // busyRetries: how often a busy verdict is tried again (BUSY_RETRIES; a live read that comes again
+        // next round anyway gives up sooner, so the round after the gateway is free gets through at once)
+        const retries = opts && typeof opts.busyRetries === 'number' ? opts.busyRetries : BUSY_RETRIES;
+        const run = () => this._request(sid, bytes, timeoutMs || 2500, target, retries);
         const p = this._chain.then(run, run);
         this._chain = p.catch(() => undefined);
         return p;
@@ -357,7 +361,7 @@ class Tasu extends EventEmitter {
         });
     }
 
-    _send(sid, data, target) {
+    _send(sid, data, target, retries) {
         const proxy = this._proxy();
         const params = { sourceAddress: this.tester, targetAddress: target, serviceID: sid, subroutineID: 0,
             udsDataLength: data.length, udsData: Buffer.from(data), deadlockTime: 0 };
@@ -367,16 +371,20 @@ class Tasu extends EventEmitter {
                 let raw;
                 try { raw = JSON.stringify(r); } catch (e) { raw = String(r); }
                 this.lastVerdict = `${verdict} ${raw === undefined ? '' : raw.slice(0, 60)}`;
-                if (/TEMPORARILY_NOT_ACCEPTED|BUSY/i.test(verdict) && n < BUSY_RETRIES) {
+                const busy = /TEMPORARILY_NOT_ACCEPTED|BUSY/i.test(verdict);
+                if (busy && n < (retries === undefined ? BUSY_RETRIES : retries)) {
                     this.busy++;
                     return sleep(BUSY_MS * (n + 1)).then(() => attempt(n + 1));
+                }
+                if (busy) {
+                    this.refused++;
                 }
                 return verdict;
             });
         return attempt(0);
     }
 
-    _request(sid, data, timeoutMs, target) {
+    _request(sid, data, timeoutMs, target, retries) {
         if (!this._proxy()) {
             return Promise.reject(new Error('Diagnose-Dienst nicht offen'));
         }
@@ -430,7 +438,7 @@ class Tasu extends EventEmitter {
                 }
             }
             this.on('frame', onFrame);
-            this._send(sid, data, target)
+            this._send(sid, data, target, retries)
                 .then((verdict) => {
                     if (['NO_ERROR', 'REQUEST_PENDING', '0', '1'].indexOf(verdict) < 0) {
                         finish(null, new Error(`Gateway: ${verdict}`));

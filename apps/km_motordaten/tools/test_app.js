@@ -26,6 +26,7 @@ const ANSWERS = {
 };
 let asked = 0;
 let silent = false;
+let busy = false;           // the gateway refuses (APP_REQUEST_TEMPORARILY_NOT_ACCEPTED), as in Kevin's diag.log
 const testers = new Set();
 const keys = [];
 
@@ -36,6 +37,10 @@ function tasuProxy() {
         sendTasuResponse: { subscribe: (cb) => { events.on('r', cb); return Promise.resolve(); } },
         sendTasuRequest: (p) => {
             asked++;
+            if (busy) {
+                testers.add(p.sourceAddress);
+                return Promise.resolve({ TasuErrorEnum: 'APP_REQUEST_TEMPORARILY_NOT_ACCEPTED' });
+            }
             if (silent) {
                 testers.add(p.sourceAddress);
                 return Promise.resolve({ TasuErrorEnum: 'NO_ERROR' });     // the gateway drops it
@@ -79,7 +84,11 @@ const realExit = process.exit;
 process.exit = () => {};
 const { Tasu } = require('../src/tasu.js');
 const orig = Tasu.prototype.request;
-Tasu.prototype.request = function (sid, data) { return orig.call(this, sid, data, 100); };
+Tasu.prototype.request = function (sid, data, t, u, opts) { return orig.call(this, sid, data, 100, u, opts); };
+let app = null;
+const { ListApp } = require('../src/screen.js');
+const start = ListApp.prototype.start;
+ListApp.prototype.start = function () { app = this; return start.apply(this, arguments); };
 require('../src/motordaten.js');
 
 const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
@@ -130,6 +139,23 @@ const get = (l) => (unit.rows('mdList').find((r) => r[0] === l) || [])[1];
         await unit.wait(50);
     }
     assert.ok(Date.now() - t0 < 1200, `values back after ${Date.now() - t0} ms`);
+
+    // the gateway busy for 6 s (the car's diag.log: 3-10 s): the last values stay, dimmed, no dashes, no other
+    // tester; back within a round or two once it is free
+    busy = true;
+    await unit.wait(6000);
+    assert.ok(app._v.oil > 28 && app._v.oil < 30, 'the last value stays through the gap');
+    assert.strictEqual(app._v.stale, true, 'shown dimmed');
+    assert.ok(/kurz belegt/.test(app._v.status), app._v.status);
+    assert.ok(app._cycle <= 400, `rounds keep coming (pause ${app._cycle} ms)`);
+    busy = false;
+    assert.deepStrictEqual(Array.from(testers), [0xF4], 'a busy gateway is no reason to change the tester');
+    const t1 = Date.now();
+    while (app._v.stale && Date.now() - t1 < 3000) {
+        await unit.wait(20);
+    }
+    assert.ok(Date.now() - t1 < 1000, `fresh values ${Date.now() - t1} ms after the gateway is free`);
+    assert.ok(!app._v.status, 'no status once back');
 
     // a tuned engine at full load: the DME reports the stock torque (masked), the air mass says what it makes
     ANSWERS['22 58 91'] = '62 58 91 03 E8';          // 500 Nm reported

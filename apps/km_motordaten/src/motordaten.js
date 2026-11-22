@@ -124,6 +124,10 @@ const REOPEN_MS = 10000;       // a failed gateway is tried again after this lon
 const LIVE_TIMEOUT_MS = 700;   // a live read waits this long for its answer (it comes in ~30 ms): a lost one costs little
 const GAP_NOTE_MS = 1500;      // no values from the DME this long: noted (diag.log)
 const HOLD_MS = 4000;          // a value missing an answer keeps its last one this long (the gateway drops some)
+const STALE_MS = 15000;        // while the DME is silent as a whole (a gap), the last values stay this long, dimmed
+const STALE_AFTER_MS = 1000;   // a gap this long dims the values (the screen shows they are the last ones)
+const LIVE_BUSY_RETRIES = 1;   // a live read asks a busy gateway once more, then the next round tries
+const BUSY_MAX_CYCLE_MS = 400; // the longest pause between rounds while the gateway is busy
 const RPM_FRESH_MS = 400;      // the DME's engine speed counts this long; the car's signal after it
 
 /* One DME request each round: [key, DID], at most 8. */
@@ -1101,8 +1105,11 @@ class Motordaten extends ListApp {
     _read(list) {
         const dids = list.map((kv) => D.didById(kv[1]));
         const data = [].concat(...list.map((kv) => [kv[1] >> 8, kv[1] & 0xFF]));
-        return this._tasu.request(0x22, data, LIVE_TIMEOUT_MS)
+        return this._tasu.request(0x22, data, LIVE_TIMEOUT_MS, undefined, { busyRetries: LIVE_BUSY_RETRIES })
             .then((u) => {
+                if (!u && list === FAST) {
+                    this._gapSilent = (this._gapSilent || 0) + 1;
+                }
                 const got = D.didNumbers(dids, u) || {};
                 list.forEach((kv) => this._keep(kv[0], got[kv[1]]));
                 if (u && u[0] === 0x7F) {
@@ -1113,7 +1120,11 @@ class Motordaten extends ListApp {
             }, (e) => {
                 list.forEach((kv) => this._keep(kv[0], null));
                 this._gatewayError = e.message;
-                Diag.note(`Anfrage ${list[0][0]}…: ${e.message}`);
+                if (/TEMPORARILY_NOT_ACCEPTED|BUSY/i.test(e.message)) {
+                    this._gapBusy = (this._gapBusy || 0) + 1;       // counted for the gap's note, not one line each
+                } else {
+                    Diag.note(`Anfrage ${list[0][0]}…: ${e.message}`);
+                }
                 return 0;
             });
     }
@@ -1123,10 +1134,13 @@ class Motordaten extends ListApp {
         const now = Date.now();
         if (n) {
             if (this._gapFrom && now - this._gapFrom >= GAP_NOTE_MS) {
-                Diag.note(`DME wieder da nach ${((now - this._gapFrom) / 1000).toFixed(1)} s (Pause ${this._cycle} ms)`);
+                Diag.note(`DME wieder da nach ${((now - this._gapFrom) / 1000).toFixed(1)} s (Pause ${this._cycle} ms, ` +
+                    `belegt ${this._gapBusy || 0}x, ohne Antwort ${this._gapSilent || 0}x)`);
             }
             this._gapFrom = 0;
             this._gapNoted = false;
+            this._gapBusy = 0;
+            this._gapSilent = 0;
         } else {
             this._gapFrom = this._gapFrom || now;
             if (!this._gapNoted && now - this._gapFrom >= GAP_NOTE_MS) {
@@ -1138,7 +1152,8 @@ class Motordaten extends ListApp {
 
     /* A busy gateway gets twice the pause, a round without one brings it back down. */
     _pace(busy) {
-        this._cycle = busy ? Math.min(MAX_CYCLE_MS, this._cycle * 2) : Math.max(CYCLE_MS, Math.round(this._cycle * 0.8));
+        // busy: a little slower, never so slow that the first free moment is missed by long
+        this._cycle = busy ? Math.min(BUSY_MAX_CYCLE_MS, Math.round(this._cycle * 1.5)) : Math.max(CYCLE_MS, Math.round(this._cycle * 0.8));
     }
 
     /* A new value, or none: then the last one stays for HOLD_MS. */
@@ -1147,7 +1162,7 @@ class Motordaten extends ListApp {
         if (isNum(v)) {
             this._dme[key] = v;
             this._at[key] = now;
-        } else if (!(now - (this._at[key] || 0) < HOLD_MS)) {
+        } else if (!(now - (this._at[key] || 0) < (this._gapFrom ? STALE_MS : HOLD_MS))) {
             this._dme[key] = null;
         }
     }
@@ -1158,7 +1173,9 @@ class Motordaten extends ListApp {
         if (any) {
             this._answered = true;          // this tester works: kept through any gap that follows
         }
-        this._emptyRounds = any ? 0 : this._emptyRounds + 1;
+        // a busy gateway says nothing about the tester address: only silence or a refusal counts
+        const busy = /TEMPORARILY_NOT_ACCEPTED|BUSY/i.test(this._gatewayError || '');
+        this._emptyRounds = any || busy ? 0 : this._emptyRounds + 1;
         if (this._emptyRounds >= 2 && !this._answered) {
             this._emptyRounds = 0;
             this._testerIdx = (this._testerIdx + 1) % TESTERS.length;
@@ -1280,7 +1297,11 @@ class Motordaten extends ListApp {
             status = `DME nicht erreichbar: ${this._gatewayError}`;
         } else if (this._gateway === 'open' && this._round > 2 && FAST.every((kv) => !isNum(m[kv[0]]))) {
             status = `Keine Antwort der DME – Zündung an?${this._gatewayError ? ` (${this._gatewayError})` : ''}`;
+        } else if (this._answered && this._gapFrom && Date.now() - this._gapFrom >= STALE_AFTER_MS) {
+            status = 'Diagnose kurz belegt – grau: die letzten Werte';
         }
+        // a gap after answers: the last values, dimmed (dash.js), instead of dashes
+        v.stale = !!(this._answered && this._gapFrom && Date.now() - this._gapFrom >= STALE_AFTER_MS);
         v.status = status;
         this._v = v;
         v.statusErr = this._gateway === 'failed';

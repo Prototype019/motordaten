@@ -1,6 +1,6 @@
 {
   "name": "km_hudtest",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "HUD: Warmfahren und Öltemperatur im Head-up-Display",
   "private": false,
   "main": "javascript/runner.js",
