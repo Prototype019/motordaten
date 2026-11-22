@@ -40,6 +40,7 @@ const IF_GUIDANCE = 'de.bmw.infotainment.navigation.guiding.Guidance';
  * its log (readable by all) is followed: with less than the whole, our picture stays empty (the layer stays
  * offered: hidden, the KOMBI would stop telling). BMW's signals know nothing of a route in CarPlay; this may. */
 const fs = require('fs');
+const Probe = require('./probe.js');
 const CR_LOG = process.env.KM_CR_LOG || '/var/opt/cluster-render/log/cluster-render.log';
 const CR_HUD_CONTENT = '43204012';
 const ROOM_MS = 400;
@@ -132,7 +133,8 @@ class HudApp extends ListApp {
             dir: Diag.dir(), app: 'km_hudtest',
             // the renderer's own log too (readable by all): when the cluster moves or re-lays out the HUD's area
             files: () => Diag.files().map((name) => ({ name, file: require('path').join(Diag.dir(), name) }))
-                .concat([{ name: 'cluster-render.log', file: '/var/opt/cluster-render/log/cluster-render.log' }]),
+                .concat([{ name: 'cluster-render.log', file: '/var/opt/cluster-render/log/cluster-render.log' },
+                    { name: Probe.FILE, file: require('path').join(Diag.dir(), Probe.FILE) }]),
             header: () => this._ghHeader()
         });
         this._gh.on('change', () => this._ghChanged());
@@ -152,6 +154,12 @@ class HudApp extends ListApp {
             this._subscribe();
             this._subscribeDrive();
             this._watchRoom();
+            // which interfaces the car has (once per version, read only): to find a signal for a route in CarPlay
+            setTimeout(() => {
+                if (this._stopped) return;
+                const own = require('path').join(__dirname, '..', '..', 'someipInterfaces');
+                Probe.run(Diag.dir(), own, VERSION, (ran, n) => { if (ran) Diag.note(`Schnittstellen-Liste geschrieben (${n} Ordner)`); });
+            }, 20000);
             this._loop();
             this._startDrawn();
         } else {
