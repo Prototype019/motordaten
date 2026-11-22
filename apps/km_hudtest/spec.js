@@ -5,7 +5,7 @@ const PROXIES = 24;
 
 module.exports = {
     PROXIES,
-    description: 'HUD: Warmfahren und Öltemperatur im Head-up-Display',
+    description: 'M Suite HUD: Warmfahren und Werte im Head-up-Display',
     // started with the head unit (and again should it stop): the HUD shows without the app being opened first
     startType: 'autostart',
     loggingId: 'KMHT',
@@ -23,7 +23,7 @@ module.exports = {
     },
     texts: {
         SID_TEMP_EMPTY: '',
-        SID_HT_TITLE: 'HUD',
+        SID_HT_TITLE: 'M Suite HUD',
         SID_HT_RUN: 'Anzeige aus / an'
     },
     states: [{

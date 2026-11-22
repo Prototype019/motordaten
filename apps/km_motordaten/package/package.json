@@ -1,7 +1,7 @@
 {
   "name": "km_motordaten",
-  "version": "0.29.5",
-  "description": "Motordaten: Temperaturen, Ladedruck, Öldruck und Drehzahl der DME live",
+  "version": "0.30.0",
+  "description": "M Suite: Motordaten live, Maximalwerte, Logs, Fehlerspeicher, M-Tasten",
   "private": false,
   "main": "javascript/runner.js",
   "oapAppSettings": {

@@ -327,7 +327,7 @@ class HudApp extends ListApp {
     _ghHeader() {
         const s = this._settings;
         const m = process.memoryUsage();
-        return [`HUD ${VERSION}`, `Laufzeit: ${Math.round(process.uptime() / 60)} min`,
+        return [`M Suite HUD ${VERSION}`, `Laufzeit: ${Math.round(process.uptime() / 60)} min`,
             `Speicher: ${Math.round(m.rss / 1048576)} MB (Heap ${Math.round(m.heapUsed / 1048576)} MB)`,
             `Anzeige: ${S.CHOICES.mode.words[s.mode]}; Werte im HUD: ${S.shown(s).join(', ')}`,
             `Ausrichtung: Neigung ${s.tilt}, Versatz ${s.shiftX}, Höhe ${s.height}, Breite ${s.width}`].join('\n');

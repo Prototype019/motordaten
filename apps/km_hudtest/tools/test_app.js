@@ -365,7 +365,7 @@ server.listen(SOCK, () => {
             app._action('page:status');
             assert.strictEqual(app._page, 'status');
             const head = app._ghHeader();
-            assert.ok(/^HUD \S+\n/.test(head) && /Neigung/.test(head) && /Speicher/.test(head), head);
+            assert.ok(/^M Suite HUD \S+\n/.test(head) && /Neigung/.test(head) && /Speicher/.test(head), head);
             return new Promise((r) => require('../src/diag.js').flush(r));
         });
     }).then(() => {

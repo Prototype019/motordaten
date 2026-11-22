@@ -452,7 +452,7 @@ class Motordaten extends ListApp {
                 header: () => {
                     const m = process.memoryUsage();
                     const d = clock.wall();
-                    return [`Motordaten ${version}`, `Gesendet ${d.toISOString().slice(0, 19).replace('T', ' ')} (Uhr im Auto)`,
+                    return [`M Suite ${version}`, `Gesendet ${d.toISOString().slice(0, 19).replace('T', ' ')} (Uhr im Auto)`,
                         `Läuft seit ${Math.round(process.uptime() / 60)} min, Speicher ${Math.round(m.rss / 1048576)} MB`].join('\n');
                 }
             });
