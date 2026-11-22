@@ -5,7 +5,7 @@ Eigene Fahrzeugdaten-Apps für BMW iDrive 8 (MGU), installiert über den
 
 | App | Was sie tut |
 |---|---|
-| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche über `mgu-render`. Live aus Motor und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10-mal pro Sekunde: Drehzahl, Ladedruck mit Soll, Leistung aus der gemessenen Luftmasse und Drehmoment, Öldruck, Öl-, Kühlmittel-, Ansaugluft-, Getriebeöl- und Abgastemperatur mit Temperaturbalken, Klopfregelung mit Zylinder, Bordnetz. Bereit-Anzeige für Volllast. Aufzeichnungen mit Diagrammen (auch Lambda, Raildruck, Klopfen je Zylinder) und USB-Export, Fehlerspeicher aller Steuergeräte mit Klartext. Einstellungen als Liste: Fahrzeug (Grenzwerte, Bereit für Volllast, MHD-Tuning) und App (beim ersten Motorstart einer Fahrt von selbst öffnen, Reihenfolge der Temperaturen zurücksetzen). |
+| **Motordaten** (`km_motordaten`) | Eigene gezeichnete Oberfläche über `mgu-render`. Live aus Motor und Getriebe über das Diagnose-Gateway der Headunit, nur lesend, etwa 10-mal pro Sekunde: Drehzahl, Ladedruck mit Soll, Leistung aus der gemessenen Luftmasse und Drehmoment, Öldruck, Öl-, Kühlmittel-, Ansaugluft-, Getriebeöl- und Abgastemperatur mit Temperaturbalken, Klopfregelung mit Zylinder, Bordnetz. Bereit-Anzeige für Volllast. Aufzeichnungen mit Diagrammen (auch Lambda, Raildruck, Klopfen je Zylinder) und USB-Export, Fehlerspeicher aller Steuergeräte mit Klartext. Einstellungen als Liste: Fahrzeug (Grenzwerte, Bereit für Volllast, MHD-Tuning) und App (beim ersten Motorstart einer Fahrt von selbst öffnen, Reihenfolge der Temperaturen zurücksetzen, Logs an GitHub). |
 | **HUD** (`km_hudtest`) | Warmfahren und Werte im Head-up-Display, über den Cluster renderer von `robertnisipeanu/idrive-apps` (der Store installiert ihn mit). Warmfahren: Öl bzw. Kühlmittel in Blau, bis alles bereit ist, dann kurz „Bereit“ und das HUD ist wieder frei; Öl zu heiß in Rot. Werte: bis zu drei frei gewählte Werte nebeneinander (Öl, Kühlmittel, Drehzahl, Ladedruck, Öldruck, Ansaugluft, Getriebeöl, Bordnetz), Reihenfolge per Ziehen. Position und Größe einstellbar, „Im HUD testen“. Startet mit der Headunit (`mguAppStartType: autostart`), das HUD kommt also ohne die App zu öffnen; läuft auch, wenn die Headunit sie ohne Bildschirm startet. Eigene Oberfläche im Motordaten-Look (Live, Werte, Anzeige, Bereit, Status). Nur lesend: Öl, Kühlmittel und Drehzahl aus dem Fahrzeugsignal (CDS); die übrigen über die Diagnose, nur solange sie im HUD stehen, einmal pro Sekunde. |
 
 Jede App zeigt oben eine Statuszeile, worauf sie wartet oder was fehlschlug.
@@ -23,12 +23,20 @@ Minuten aus; Start-Stopp öffnet nicht erneut). Motordaten startet dafür mit de
 seit 0.27.0, nachdem die HUD-App gezeigt hat, dass das im G87 geht). Im Hintergrund liest die App nur das Fahrzeugsignal,
 nichts über die Diagnose. Ins Protokoll (diag.log) kommt bei jedem Start, ob die Headunit Bildschirme und Kachel mitgab.
 
+Logs an GitHub (Motordaten › Einstellungen › App oder Reiter Logs; HUD › Status): die Protokolle der App ins eigene
+GitHub-Repository, über das Internet des Handys (Store-Uplink). Einmal einrichten mit zwei QR-Codes: „Verbinden“
+zeigt einen Code für github.com/login/device, danach die GitHub-App „Motordaten Logs“ auf dem gewünschten Repository
+installieren. Dann reicht „Logs senden“: je Druck eine Datei `<app>/<Datum_Uhrzeit>.log`. Die App darf nur in die
+Repositories schreiben, auf denen der Nutzer sie installiert hat; kein Passwort und kein Schlüssel im Code, der
+Zugang bleibt im Datenordner der App im Auto (`shared/github_logs.js`, `shared/qr.js`).
+
 ### HUD
 
 1. Im Store **HUD** installieren (bringt den **Cluster renderer** von `robertnisipeanu/idrive-apps` mit), Headunit neu starten, App öffnen.
 2. **Live**: was gerade im HUD steht, Öl und Kühlmittel, Anzeige Warmfahren / Werte / Aus, „Im HUD testen“ (zeigt jede Ansicht ein paar Sekunden).
 3. **Werte**: halten und ziehen ändert die Reihenfolge und was im HUD steht, tippen nimmt einen Wert hinein oder heraus (bis zu drei).
 4. **Anzeige**: was, wo (links / Mitte / rechts) und wie groß. **Ausrichten** (Knopf oben): das HUD des G87 stellt unser Bild schräg (etwa 30°) und flacher; solange die Seite offen ist, zeigt das HUD ein Raster – Neigung, Versatz, Höhe und Breite einstellen, bis Linien gerade, der Kreis rund und der Rahmen ganz zu sehen ist. **Bereit**: welche Temperaturen fürs Warmfahren zählen, ab wann Öl, Kühlmittel und Drehzahl rot werden.
+5. **Status › Logs an GitHub**: die Protokolle der HUD-App ins eigene GitHub schicken (Verbinden mit zwei QR-Codes, dann „Logs senden“).
 
 Werte über die Diagnose (Ladedruck, Öldruck, Ansaugluft, Getriebeöl, Bordnetz) fragt die App beim Motor bzw. Getriebe an, solange sie im HUD stehen. Läuft gleichzeitig Motordaten, teilen sich beide die Diagnose-Leitung; wer keine Aussetzer in Motordaten will, nimmt im HUD nur Werte aus dem Fahrzeugsignal.
 

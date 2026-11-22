@@ -31,6 +31,36 @@ process.env.KM_DATA_DIR = work;     // the app's settings (hud.json) live for th
 const D = require(path.join(APP, 'src/decode.js'));
 const { Canvas } = require(path.join(APP, 'src/kit_canvas.js'));
 
+/* ---- a stand-in for src/github_logs.js (no internet here): Verbinden -> code -> install -> pick -> ready, Logs senden ---- */
+const GH = require(path.join(APP, 'src/github_logs.js'));
+class FakeGithub extends EventEmitter {
+    constructor() {
+        super();
+        this.s = { phase: 'off', error: null, online: true, qr: null, code: null, repo: null, repos: [], sent: null };
+        this.timer = null;
+    }
+    state() { return Object.assign({}, this.s); }
+    _go(phase, more, next, ms) {
+        clearTimeout(this.timer);
+        this.s = Object.assign({}, this.s, { phase, error: null, qr: null, code: null, repos: [] }, more);
+        this.emit('change', this.state());
+        if (next) this.timer = setTimeout(next, ms);
+    }
+    connect() {
+        this._go('code', { qr: GH.DEVICE_URL, code: 'WDJB-MJHT' }, () => this._go('install', { qr: GH.INSTALL_URL },
+            () => this._go('pick', { repos: ['kevin/g31-logs', 'kevin/auto-notizen'] }), 5000), 5000);
+        return Promise.resolve();
+    }
+    cancel() { this._go('off', {}); }
+    choose(name) { this._go('ready', { repo: name }); }
+    send() {
+        this._go('sending', { repo: this.s.repo }, () => this._go('ready', { repo: this.s.repo, sent: { at: Date.now(), path: 'km_hudtest/x.log' } }), 1500);
+        return Promise.resolve(true);
+    }
+    disconnect() { this._go('off', { repo: null, sent: null }); }
+}
+const github = new FakeGithub();
+
 /* ---- the drive: oil (°C) and speed (km/h) at t seconds ---- */
 const lerp = (a, b, f) => a + (b - a) * Math.max(0, Math.min(1, f));
 const PHASES = [[8, 'Kaltstart'], [26, 'Warmfahren'], [34, 'Warm'], [42, 'Volllast, Öl zu heiß'], [48, 'Abkühlen']];
@@ -140,12 +170,16 @@ net.createServer((sock) => {
 
 const dash = require(path.join(APP, 'src/dash.js'));
 const REC = require(path.join(APP, 'src/kit_record.js'));
+/* What the pages show besides the values (as hudtest.js sets it on src/drawn.js). */
+function extra() {
+    const st = app ? app._settings : null;
+    return Object.assign(st ? { order: st.order, count: st.count, mode: st.mode } : {}, { github: github.state() });
+}
 /* The app's drawn screen, as mgu-render would show it. */
 function screenPng() {
     const rec = new REC.Recorder(dash.W, dash.H);
     const st = app ? app._settings : null;
-    dash.draw(rec, screen.page, app ? app.screenValues() : {}, st, { pressed: screen.pressed },
-        st ? { order: st.order, count: st.count, mode: st.mode } : {});
+    dash.draw(rec, screen.page, app ? app.screenValues() : {}, st, { pressed: screen.pressed }, extra());
     const c = new Canvas(dash.W, dash.H);
     REC.play(rec.words(), c);
     return c.png();
@@ -215,7 +249,7 @@ function start() {
     // the app itself: its screens drawn here (no mgu-render on the Mac), its buttons pressed by clicks
     const { ListApp } = require(path.join(APP, 'src/screen.js'));
     const startApp = ListApp.prototype.start;
-    ListApp.prototype.start = function () { app = this; return startApp.apply(this, arguments); };
+    ListApp.prototype.start = function () { app = this; app._gh = github; return startApp.apply(this, arguments); };
     require(path.join(APP, 'src/hudtest.js'));
     serve(unit, now);
 }
@@ -244,7 +278,7 @@ function serve(unit, now) {
             const x = Number(q.get('x')) * dash.W;
             const y = Number(q.get('y')) * dash.H;
             const st = app && app._settings;
-            const t = dash.targets(screen.page, st ? { order: st.order, count: st.count, mode: st.mode } : {}).find((k) => x >= k.x && x <= k.x + k.w && y >= k.y && y <= k.y + k.h);
+            const t = dash.targets(screen.page, extra()).find((k) => x >= k.x && x <= k.x + k.w && y >= k.y && y <= k.y + k.h);
             if (t && app) {
                 app._action(t.id);
                 screen.page = app._page;

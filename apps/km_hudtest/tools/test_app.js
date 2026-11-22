@@ -350,6 +350,32 @@ server.listen(SOCK, () => {
             assert.strictEqual(row('HUD'), 'aus', 'the test over');
         });
     }).then(() => {
+        // Logs an GitHub: the page's buttons call the right methods (a fake in place of the real one)
+        const calls = [];
+        const fake = { connect() { calls.push('connect'); return Promise.resolve(); }, cancel() { calls.push('cancel'); },
+            choose(n) { calls.push(`choose ${n}`); }, send() { calls.push('send'); return Promise.resolve(true); },
+            disconnect() { calls.push('disconnect'); }, state() { return { phase: 'off' }; } };
+        app._gh = fake;
+        ['gh:connect', 'gh:cancel', 'gh:choose:kevin/g31-logs', 'gh:disconnect'].forEach((id) => app._action(id));
+        app._action('gh:send');       // after the notebook is written out
+        return unit.wait(300).then(() => {
+            assert.deepStrictEqual(calls, ['connect', 'cancel', 'choose kevin/g31-logs', 'disconnect', 'send']);
+            app._action('page:github');
+            assert.strictEqual(app._page, 'github');
+            app._action('page:status');
+            assert.strictEqual(app._page, 'status');
+            const head = app._ghHeader();
+            assert.ok(/^HUD \S+\n/.test(head) && /Neigung/.test(head) && /Speicher/.test(head), head);
+            return new Promise((r) => require('../src/diag.js').flush(r));
+        });
+    }).then(() => {
+        // the notebook (diag.log): start, running, mode changes, the link; nothing per frame
+        const lines = fs.readFileSync(path.join(dir, 'diag.log'), 'utf8').trim().split('\n').map((l) => l.slice(24));
+        assert.ok(lines.some((l) => /^Start \S/.test(l)), lines.join('\n'));
+        assert.strictEqual(lines.filter((l) => /^Läuft: (mit|ohne) Bildschirme\w*, Kachel (da|fehlt), /.test(l)).length, 1, lines.join('\n'));
+        assert.ok(lines.some((l) => /^Anzeige: Aus/.test(l)) && lines.some((l) => /^HUD-Verbindung: verbunden/.test(l)), lines.join('\n'));
+        assert.ok(lines.length < 40, `${lines.length} lines in the notebook, not one per frame:\n${lines.join('\n')}`);
+    }).then(() => {
         console.log(`test_app: ok (${asked} DME requests, ${service.frames.length} pictures, ${service.conns} connections)`);
         process.exit(0);
     }, (e) => {

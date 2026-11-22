@@ -96,7 +96,7 @@ const away = () => unit.rhmi.emit('applicationStackChanged', { SOME_OTHER_APP: 1
 
     // the App page: its targets, and the temperature cells' order back to the start
     const dash = require('../src/dash.js');
-    assert.deepStrictEqual(dash.targets('app').slice(5).map((t) => t.id), ['toggle:autoOpenOn', 'order:reset', 'settings:back']);
+    assert.deepStrictEqual(dash.targets('app').slice(5).map((t) => t.id), ['toggle:autoOpenOn', 'order:reset', 'page:github', 'settings:back']);
     app._setLimits(Object.assign({}, app._limits, { tempOrder: ['gearbox', 'intake', 'coolant'] }));
     app._action('order:reset');
     assert.deepStrictEqual(app._limits.tempOrder, ['coolant', 'intake', 'gearbox'], 'order back to the start');

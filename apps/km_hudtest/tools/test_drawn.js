@@ -95,6 +95,31 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.proxyPress(idx);
     assert.strictEqual(actions.pop(), 'cell:rpm', 'the controller presses a card');
 
+    // Logs an GitHub: its targets answer taps and the controller, and follow the state set through setExtra
+    const heard = [];
+    d.on('targets', (ts) => heard.push(ts.length));
+    d.setPage('status');
+    const toGh = dash.targets('status').find((t) => t.id === 'page:github');
+    touch('down', ...center(toGh));
+    touch('up', ...center(toGh));
+    assert.strictEqual(actions.pop(), 'page:github');
+    d.setPage('github');
+    d.setExtra({ github: { phase: 'off', online: true } });
+    const go = dash.targets('github', d.extra).find((t) => t.id === 'gh:connect');
+    touch('down', ...center(go));
+    touch('up', ...center(go));
+    assert.strictEqual(actions.pop(), 'gh:connect');
+    d.setExtra({ github: { phase: 'pick', repos: ['a/b', 'c/d'] } });
+    const pickTs = dash.targets('github', d.extra);
+    assert.ok(pickTs.length <= spec.PROXIES && heard.length > 0, 'the targets follow the phase');
+    const pi = pickTs.findIndex((t) => t.id === 'gh:choose:c/d');
+    d.proxyFocus(pi, true);
+    d.proxyPress(pi);
+    assert.strictEqual(actions.pop(), 'gh:choose:c/d', 'the controller chooses');
+    d.setExtra({ github: { phase: 'ready', repo: 'a/b', sent: { at: Date.now() } } });
+    d.setExtra({ github: { phase: 'code', qr: 'https://github.com/login/device', code: 'ABCD-EFGH' } });
+    assert.ok(g.frames > 0);
+
     console.log(`test_drawn: ok, ${g.frames} frames`);
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

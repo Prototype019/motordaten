@@ -49,6 +49,7 @@ process.on('unhandledRejection', (e) => {
 const Faults = require('./faults.js');
 const clock = require('./clock.js');
 const { DtcTexts } = require('./dtctext.js');
+const { GithubLogs } = require('./github_logs.js');
 
 /* Whether FrontCCU has reported a turn of the dial on this unit (data/controller.json): then the drawn
  * screens take the dial from it from the start. dialKnown(true) keeps that. */
@@ -352,6 +353,14 @@ class Motordaten extends ListApp {
             this.run();
         } else if (id === 'menu:limits' || id === 'menu:ready' || id === 'menu:mhd' || id === 'menu:app') {
             d.setPage(id.slice(5));
+        } else if (id === 'page:github') {
+            d.setExtra({ githubFrom: d.page === 'logs' ? 'logs' : 'app' });
+            this._githubShown();
+            d.setPage('github');
+        } else if (id === 'github:back') {
+            d.setPage(d.extra.githubFrom || 'app');
+        } else if (id.indexOf('gh:') === 0) {
+            this._githubAction(id.slice(3));
         } else if (id === 'records:clear') {
             d.setExtra({ maxima: Object.assign({}, d.extra.maxima, { confirm: true }) });
         } else if (id === 'records:clear!') {
@@ -410,6 +419,48 @@ class Motordaten extends ListApp {
             d.setExtra({ confirmDelete: false });
             this._showLogs();
             d.setPage('logs');
+        }
+    }
+
+    /* ---- Logs an GitHub (shared/github_logs.js) ---- */
+
+    _github() {
+        if (!this._gh) {
+            const version = appVersion();
+            this._gh = new GithubLogs({
+                dir: Diag.dir(), app: 'km_motordaten',
+                files: () => [Diag.FILE, 'diag.1.log'].map((n) => ({ name: n, file: require('path').join(Diag.dir(), n) })),
+                header: () => {
+                    const m = process.memoryUsage();
+                    const d = clock.wall();
+                    return [`Motordaten ${version}`, `Gesendet ${d.toISOString().slice(0, 19).replace('T', ' ')} (Uhr im Auto)`,
+                        `Läuft seit ${Math.round(process.uptime() / 60)} min, Speicher ${Math.round(m.rss / 1048576)} MB`].join('\n');
+                }
+            });
+            this._gh.on('change', () => this._githubShown());
+        }
+        return this._gh;
+    }
+
+    _githubShown() {
+        if (this._drawn) {
+            this._drawn.setExtra({ github: this._github().state() });
+        }
+    }
+
+    _githubAction(what) {
+        const gh = this._github();
+        if (what === 'connect') {
+            gh.connect();
+        } else if (what === 'cancel') {
+            gh.cancel();
+        } else if (what === 'send') {
+            Diag.flush(() => gh.send().then((ok) => Diag.note(ok ? `Logs an GitHub gesendet: ${gh.state().sent.path}`
+                : `Logs an GitHub nicht gesendet: ${gh.state().error}`)));
+        } else if (what === 'disconnect') {
+            gh.disconnect();
+        } else if (what.indexOf('pick:') === 0) {
+            gh.choose(gh.state().repos[Number(what.slice(5))]);
         }
     }
 
@@ -1159,6 +1210,9 @@ class Motordaten extends ListApp {
     }
 
     _render() {
+        if (this._drawn && this._drawn.page === 'github') {
+            this._githubShown();            // the phone's internet comes and goes
+        }
         const m = this._dme;
         const ambient = isNum(m.ambient) ? m.ambient / 1000 : null;      // hPa -> bar
         const above = (abs) => (isNum(abs) && ambient !== null ? abs - ambient : null);
@@ -1262,13 +1316,14 @@ class Motordaten extends ListApp {
 }
 
 // the version from the package beside the app (read, not required: the unit builds only from app modules)
-Diag.note(`Start ${(() => {
+function appVersion() {
     try {
         return JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'package.json'), 'utf8')).version;
     } catch (e) {
         return '?';
     }
-})()}`);
+}
+Diag.note(`Start ${appVersion()}`);
 // memory once a minute in the notebook: MainApp ends an app past its memoryThresholdKB
 setInterval(() => {
     const m = process.memoryUsage();

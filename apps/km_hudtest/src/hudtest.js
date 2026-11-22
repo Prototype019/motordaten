@@ -23,6 +23,8 @@ const { Drawn } = require('./drawn.js');
 const S = require('./settings.js');
 const V = require('./values.js');
 const { Warmup, testView, TEST, TEST_STEP_MS } = require('./warmup.js');
+const Diag = require('./diag.js');
+const { GithubLogs } = require('./github_logs.js');
 const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 
 const LIST = 'ST_OnlineApps_HudTest';
@@ -43,6 +45,15 @@ const REOPEN_MS = 5000;
 const HOLD_MS = 4000;
 /* The DME's identifiers per value; boost and oil pressure come absolute, the ambient pressure (hPa) is taken off. */
 const DME_DIDS = { oil: [0x5822], boost: [0x4205, 0x4201], oilPress: [0x4436, 0x4201], intake: [0x580F] };
+
+/* The app's version, read from the package beside the app (the unit builds only from app modules). */
+const VERSION = (() => {
+    try {
+        return JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'package.json'), 'utf8')).version;
+    } catch (e) {
+        return '?';
+    }
+})();
 
 const isNum = (v) => typeof v === 'number' && isFinite(v);
 const isTrue = (raw) => raw === true || raw === 'true' || raw === 1 || raw === '1';
@@ -75,6 +86,13 @@ class HudApp extends ListApp {
         this._page = 'main';             // the drawn page open (Ausrichten shows the alignment picture)
         this._layerState = null;
         this._proxies = [];
+        this._noted = { link: null, diag: null };      // what the notebook (diag.log) last heard of the link and the reads
+        this._gh = new GithubLogs({
+            dir: Diag.dir(), app: 'km_hudtest',
+            files: () => Diag.files().map((name) => ({ name, file: require('path').join(Diag.dir(), name) })),
+            header: () => this._ghHeader()
+        });
+        this._gh.on('change', () => this._ghChanged());
         this._hud.on('change', () => this._render());
         this._timer = setInterval(() => this._tick(), 500);
     }
@@ -83,6 +101,8 @@ class HudApp extends ListApp {
     run() {
         if (!this._started) {
             this._started = true;
+            Diag.note(`Läuft: ${this.rhmiApplication ? 'mit Bildschirmen' : 'ohne Bildschirme'}, ` +
+                `Kachel ${this._frame && this._frame.tile ? 'da' : 'fehlt'}, ${this.isVisible() ? 'vorne' : 'im Hintergrund'}`);
             this._startedAt = Date.now();
             this._hud.show(false);
             this._hud.start();
@@ -157,6 +177,7 @@ class HudApp extends ListApp {
         if (!this._layerState) return;
         this._drawn = new Drawn(this.getAppId(), logger);
         this._drawn.setLimits(this._settings);
+        this._ghChanged();
         this._drawn.on('mode', (mode) => this.useEntryState(mode === 'layer' ? LAYER : LIST));
         this._drawn.on('action', (id) => this._action(id));
         this._drawn.on('targets', (targets) => this._proxiesFor(targets));
@@ -215,11 +236,66 @@ class HudApp extends ListApp {
         } else if (id === 'test') {
             this._test = this._test ? 0 : Date.now();
             logger.info(this._test ? 'HUD test started' : 'HUD test stopped');
+        } else if (id.indexOf('gh:') === 0) {
+            this._github(id.slice(3));
         } else if (id === 'reconnect') {
             this._hud.stop();
             this._hud.start();
         }
         this._tick();
+    }
+
+    /* The page Logs an GitHub: its buttons (src/github_logs.js; connect never waited for, it may take minutes). */
+    _github(what) {
+        const gh = this._gh;
+        if (what === 'connect') {
+            gh.connect();
+        } else if (what === 'cancel') {
+            gh.cancel();
+        } else if (what.indexOf('choose:') === 0) {
+            gh.choose(what.slice(7));
+        } else if (what === 'send') {
+            // the notebook written out first, so the send has the newest lines
+            Diag.note('Logs an GitHub: Senden');
+            Diag.flush(() => gh.send());
+        } else if (what === 'disconnect') {
+            gh.disconnect();
+        }
+    }
+
+    _ghChanged() {
+        if (this._drawn) this._drawn.setExtra({ github: this._gh.state() });
+    }
+
+    /* The lines on top of the file sent to GitHub. */
+    _ghHeader() {
+        const s = this._settings;
+        const m = process.memoryUsage();
+        return [`HUD ${VERSION}`, `Laufzeit: ${Math.round(process.uptime() / 60)} min`,
+            `Speicher: ${Math.round(m.rss / 1048576)} MB (Heap ${Math.round(m.heapUsed / 1048576)} MB)`,
+            `Anzeige: ${S.CHOICES.mode.words[s.mode]}; Werte im HUD: ${S.shown(s).join(', ')}`,
+            `Ausrichtung: Neigung ${s.tilt}, Versatz ${s.shiftX}, Höhe ${s.height}, Breite ${s.width}`].join('\n');
+    }
+
+    /* What the notebook hears of the renderer link and the diagnosis reads: only when it changes. */
+    _noteStates() {
+        const h = this._hud;
+        const link = `${h.conn}${h.backend ? ` (${h.backend})` : ''}`;
+        const why = (h.why() || '').replace(/seit \d+ s/, 'seit einer Weile');
+        const linkKey = `${link}|${why}`;
+        if (this._noted.link !== linkKey) {
+            const first = this._noted.link === null;
+            this._noted.link = linkKey;
+            if (!first || h.conn !== 'aus') Diag.note(`HUD-Verbindung: ${link}${why ? `: ${why}` : ''}`);
+        }
+        const diagKey = this._needs().length ? `${this._gateway}|${this._gatewayError}` : 'nicht gebraucht';
+        if (this._noted.diag !== diagKey) {
+            const before = this._noted.diag;
+            this._noted.diag = diagKey;
+            const bad = this._gateway === 'failed' || !!this._gatewayError;
+            if (bad) Diag.note(`Diagnose: ${this._gateway === 'failed' ? 'Gateway nicht geöffnet' : 'Motor'}: ${this._gatewayError || '-'}`);
+            else if (before && /\|./.test(before)) Diag.note('Diagnose: wieder in Ordnung');
+        }
     }
 
     _choose(key, word) {
@@ -229,6 +305,7 @@ class HudApp extends ListApp {
     }
 
     _set(s) {
+        if (s.mode !== this._settings.mode) Diag.note(`Anzeige: ${S.CHOICES.mode.words[s.mode]}`);
         this._settings = s;
         if (!S.save(s)) logger.warn('settings not saved');
         if (this._drawn) {
@@ -248,6 +325,7 @@ class HudApp extends ListApp {
 
     /* Every half second and on every change: what the HUD shows, and the screens. */
     _tick() {
+        if (this._page === 'github') this._ghChanged();      // the phone's internet comes and goes
         if (this._stopped) return;
         const now = Date.now();
         let view = this._warmup.view(this._v, this._settings, now);
@@ -443,6 +521,7 @@ class HudApp extends ListApp {
     }
 
     _render() {
+        this._noteStates();
         const sv = this.screenValues();
         const words = sv.words;
         const rows = sv.rows;
@@ -455,8 +534,22 @@ class HudApp extends ListApp {
     }
 }
 
-process.on('uncaughtException', (e) => logger.error(`uncaught: ${e && e.stack}`));
-process.on('unhandledRejection', (e) => logger.warn(`unhandled rejection: ${e && e.message}`));
+/* An error nobody caught: noted (diag.log) and the app goes on. */
+process.on('uncaughtException', (e) => {
+    logger.error(`uncaught: ${e && e.stack}`);
+    Diag.note(`Fehler abgefangen: ${String(e && e.stack).split('\n').slice(0, 4).join(' | ')}`);
+});
+process.on('unhandledRejection', (e) => {
+    logger.warn(`unhandled rejection: ${e && e.message}`);
+    Diag.note(`Promise abgelehnt: ${e && e.message}`);
+});
+
+Diag.note(`Start ${VERSION}`);
+// memory once a minute in the notebook: MainApp ends an app past its memoryThresholdKB
+setInterval(() => {
+    const m = process.memoryUsage();
+    Diag.note(`Speicher ${Math.round(m.rss / 1048576)} MB (Heap ${Math.round(m.heapUsed / 1048576)} MB)`);
+}, 60000).unref();
 
 const app = new HudApp();
 app.start().catch((err) => {

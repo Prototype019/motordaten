@@ -23,6 +23,8 @@
  * controller order: { id, x, y, w, h, label }.
  */
 const L = require('./limits.js');
+const qr = require('./qr.js');
+const clock = require('./clock.js');
 
 const W = 2880;
 const H = 764;
@@ -137,7 +139,7 @@ const MENU_SECTIONS = [
         { id: 'menu:ready', page: 'ready', label: 'Bereit für Volllast', text: 'Welche Temperaturen erreicht sein müssen' },
         { id: 'menu:mhd', page: 'mhd', label: 'MHD-Tuning', text: 'Max Cooling und Abgasklappe aus der App' }] },
     { label: 'App', rows: [
-        { id: 'menu:app', page: 'app', label: 'App', text: 'Beim Motorstart öffnen, Reihenfolge der Temperaturen' }] }
+        { id: 'menu:app', page: 'app', label: 'App', text: 'Beim Motorstart öffnen, Reihenfolge, Logs an GitHub' }] }
 ];
 const MENU_ROW_H = 120;
 const MENU = [];
@@ -194,7 +196,35 @@ const MHD_TARGETS = [MHD_SWITCH, MHD_FLAP_SWITCH, BACK_SET];
 /* The app page: opening by itself at the engine start; the temperature cells' order back to the start. */
 const START_SWITCH = { id: 'toggle:autoOpenOn', x: X0, y: SET_TOP + 30, w: 220, h: BTN, label: '' };
 const ORDER_RESET = { id: 'order:reset', x: X0, y: SET_TOP + 330, w: 520, h: 84, label: 'Reihenfolge zurücksetzen' };
-const START_TARGETS = [START_SWITCH, ORDER_RESET, BACK_SET];
+const GITHUB_OPEN = { id: 'page:github', x: X0, y: SET_TOP + 450, w: 520, h: 84, label: 'Logs an GitHub' };
+const START_TARGETS = [START_SWITCH, ORDER_RESET, GITHUB_OPEN, BACK_SET];
+
+/*
+ * Logs an GitHub (shared/github_logs.js): extra.github is its state(); the QR code to scan on the left, the steps
+ * on the right; once connected the send button. Its targets by phase.
+ */
+const GH_QR = { x: X0, y: 64, size: 640 };
+const GH_RIGHT = X0 + GH_QR.size + 80;
+const GH_BACK = { id: 'github:back', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Zurück' };
+const GH_CANCEL = { id: 'gh:cancel', x: W - PAD - 340, y: 64, w: 340, h: 84, label: 'Abbrechen' };
+function githubTargets(extra) {
+    const g = (extra && extra.github) || { phase: 'off' };
+    if (g.phase === 'code' || g.phase === 'install') {
+        return [GH_CANCEL];
+    }
+    if (g.phase === 'pick') {
+        return (g.repos || []).slice(0, 5).map((name, i) => ({ id: `gh:pick:${i}`, x: X0, y: 216 + i * 104, w: 1300, h: 88, label: name }))
+            .concat([GH_CANCEL]);
+    }
+    if (g.phase === 'ready') {
+        return [{ id: 'gh:send', x: X0, y: 300, w: 560, h: 120, label: 'Logs senden', primary: true },
+            { id: 'gh:disconnect', x: X0 + 620, y: 318, w: 300, h: 84, label: 'Trennen' }, GH_BACK];
+    }
+    if (g.phase === 'sending') {
+        return [GH_BACK];
+    }
+    return [{ id: 'gh:connect', x: X0, y: 380, w: 420, h: BTN, label: 'Verbinden', primary: true }, GH_BACK];
+}
 
 /* ---- the logs pages ---- */
 
@@ -278,6 +308,9 @@ function logsTargets(extra) {
             label: sure ? 'Wirklich alle löschen' : 'Alle löschen', danger: sure });
         out.push({ id: 'usb', x: W - PAD - w - 24 - 380, y: 64, w: 380, h: 84, label: 'Auf USB speichern' });
     }
+    // the app's own error logs to GitHub (the recordings stay on the USB stick)
+    const right = logs.length ? W - PAD - ((extra && extra.confirmDeleteAll) ? 460 : 340) - 24 - 380 - 24 : W - PAD;
+    out.push({ id: 'page:github', x: right - 360, y: 64, w: 360, h: 84, label: 'Logs an GitHub' });
     return out;
 }
 
@@ -304,6 +337,8 @@ function targets(page, extra) {
         own = MHD_TARGETS;
     } else if (page === 'app') {
         own = START_TARGETS;
+    } else if (page === 'github') {
+        own = githubTargets(extra);
     } else if (page === 'records') {
         own = recordsTargets(extra);
     } else if (page === 'logs') {
@@ -322,7 +357,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' || page === 'mhd' || page === 'app' ? 'settings' : page;
+    const current = page === 'log' ? 'logs' : page === 'faultunit' ? 'faults' : page === 'limits' || page === 'ready' || page === 'mhd' || page === 'app' || page === 'github' ? 'settings' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) {
@@ -768,14 +803,88 @@ function appPage(rec, cfg, ui) {
     rec.text('Beim Motorstart öffnen', START_SWITCH.x + START_SWITCH.w + 56, START_SWITCH.y + 64, 44, on ? C.text : C.dim, { font: 'label' });
     const lines = [
         'Einmal pro Fahrt: beim ersten Motorstart, nachdem der Motor mindestens drei Minuten aus war. Ein Neustart durch die',
-        'Start-Stopp-Automatik öffnet sie nicht noch einmal. Das geht, sobald die App seit dem Hochfahren der Headunit einmal lief.'
+        'Start-Stopp-Automatik öffnet sie nicht noch einmal. Die App startet dafür mit der Headunit von selbst im Hintergrund.'
     ];
     lines.forEach((l, i) => rec.text(l, X0, START_SWITCH.y + 150 + i * 44, 28, C.dim, { font: 'label' }));
     rec.fillRect(X0, ORDER_RESET.y - 40, W - PAD - X0, 2, C.line);
     button(rec, ORDER_RESET, ui);
     rec.text('Die Temperatur-Kacheln der Live-Seite wieder in der ersten Reihenfolge (sonst: gedrückt halten und ziehen).',
         ORDER_RESET.x + ORDER_RESET.w + 40, ORDER_RESET.y + 52, 28, C.dim, { font: 'label' });
+    button(rec, GITHUB_OPEN, ui);
+    rec.text('Die Fehlerprotokolle der App ins eigene GitHub schicken, über das Internet des Handys.',
+        GITHUB_OPEN.x + GITHUB_OPEN.w + 40, GITHUB_OPEN.y + 52, 28, C.dim, { font: 'label' });
     button(rec, BACK_SET, ui);
+}
+
+/* A QR code: black modules on white with a quiet zone of four modules, as large as fits size (whole pixels). */
+function qrCode(rec, text, x, y, size) {
+    const q = qr.encode(text);
+    const m = Math.floor(size / (q.size + 8));
+    const side = m * (q.size + 8);
+    rec.roundRect(x, y, side, side, 12, '#FFFFFF');
+    for (let r = 0; r < q.size; r++) {
+        for (let c = 0; c < q.size; c++) {
+            if (q.dark(c, r)) {
+                rec.fillRect(x + (c + 4) * m, y + (r + 4) * m, m, m, '#000000');
+            }
+        }
+    }
+    return side;
+}
+
+function githubPage(rec, ui, extra) {
+    const g = (extra && extra.github) || { phase: 'off' };
+    const ts = githubTargets(extra);
+    const note = (y) => {
+        if (g.error) {
+            rec.text(g.error, X0, y, 30, C.limit, { font: 'label' });
+        } else if (!g.online && (g.phase === 'off' || g.phase === 'ready')) {
+            rec.text('Kein Internet – ist das Handy verbunden?', X0, y, 30, C.limit, { font: 'label' });
+        }
+    };
+    if (g.phase === 'code' || g.phase === 'install') {
+        qrCode(rec, g.qr || '', GH_QR.x, GH_QR.y, GH_QR.size);
+        if (g.phase === 'code') {
+            rec.text('Mit dem Handy verbinden', GH_RIGHT, 120, 56, C.text, { font: 'label' });
+            const steps = ['1. QR-Code mit dem Handy scannen', '2. Diesen Code eingeben:', '3. Bestätigen'];
+            rec.text(steps[0], GH_RIGHT, 220, 36, C.text, { font: 'label' });
+            rec.text(steps[1], GH_RIGHT, 290, 36, C.text, { font: 'label' });
+            rec.text(g.code || '…', GH_RIGHT, 430, 120, C.ice, { font: 'label', spacing: 8 });
+            rec.text(steps[2], GH_RIGHT, 530, 36, C.text, { font: 'label' });
+            rec.text('Der Code gilt 15 Minuten.', GH_RIGHT, 600, 28, C.dim, { font: 'label' });
+        } else {
+            rec.text('Repository auswählen', GH_RIGHT, 120, 56, C.text, { font: 'label' });
+            rec.text('1. QR-Code mit dem Handy scannen', GH_RIGHT, 220, 36, C.text, { font: 'label' });
+            rec.text('2. Repository für die Logs auswählen', GH_RIGHT, 290, 36, C.text, { font: 'label' });
+            rec.text('3. Auf Installieren tippen', GH_RIGHT, 360, 36, C.text, { font: 'label' });
+            rec.text('Die App darf danach nur in dieses Repository schreiben.', GH_RIGHT, 440, 28, C.dim, { font: 'label' });
+            rec.text('Wartet, bis du fertig bist …', GH_RIGHT, 500, 28, C.ice, { font: 'label' });
+            if (g.error) {
+                rec.text(g.error, GH_RIGHT, 560, 30, C.limit, { font: 'label' });
+            }
+        }
+        ts.forEach((t) => button(rec, t, ui));
+        return;
+    }
+    rec.text('Logs an GitHub', X0, 120, 56, C.text, { font: 'label' });
+    if (g.phase === 'pick') {
+        rec.text('Welches Repository soll die Logs bekommen?', X0, 166, 30, C.dim, { font: 'label' });
+    } else if (g.phase === 'ready' || g.phase === 'sending') {
+        rec.text(`Verbunden mit ${g.repo || ''}`, X0, 166, 30, C.ice, { font: 'label' });
+        if (g.phase === 'sending') {
+            rec.text('Wird gesendet …', X0, 300 + 76, 44, C.text, { font: 'label' });
+        } else if (g.sent && !g.error) {
+            const d = clock.wall(g.sent.at);
+            rec.text(`Gesendet um ${two(d.getUTCHours())}:${two(d.getUTCMinutes())} Uhr`, X0, 480, 32, C.ok, { font: 'label' });
+        }
+        note(480);
+    } else {
+        rec.text('Deine Logs landen in deinem eigenen GitHub. Einmal mit dem Handy verbinden, dann reicht ein Druck auf „Logs senden“.',
+            X0, 166, 30, C.dim, { font: 'label' });
+        rec.text('Dazu brauchst du ein GitHub-Konto und ein Repository für die Logs (am besten privat).', X0, 216, 30, C.dim, { font: 'label' });
+        note(540);
+    }
+    ts.forEach((t) => button(rec, t, ui, { primary: t.primary, size: t.primary && t.h > 100 ? 40 : 32 }));
 }
 
 function settings(rec, cfg, ui) {
@@ -981,7 +1090,7 @@ function logsPage(rec, ui, extra) {
     rec.text(usb ? usb.text : logs.length ? `${logs.length} gespeichert, die neueste zuerst. Es bleiben die letzten 20.` :
         'Noch keine Aufzeichnung. Starte eine mit Aufnehmen im Reiter Live.', X0, 166, 30, usb && usb.error ? C.limit : usb ? C.ice : C.dim,
         { font: 'label' });
-    logsTargets(extra).filter((t) => t.id.indexOf('deleteAll') === 0 || t.id === 'usb').forEach((t) => button(rec, t, ui));
+    logsTargets(extra).filter((t) => t.id.indexOf('deleteAll') === 0 || t.id === 'usb' || t.id === 'page:github').forEach((t) => button(rec, t, ui));
     logsTargets(extra).filter((t) => t.id.indexOf('open:') === 0).forEach((t, i) => {
         const r = logs[i];
         if (ui && ui.focus === t.id) {
@@ -1179,6 +1288,10 @@ function draw(rec, page, v, cfg, ui, extra) {
     }
     if (page === 'app') {
         appPage(rec, cfg, ui);
+        return rec;
+    }
+    if (page === 'github') {
+        githubPage(rec, ui, extra);
         return rec;
     }
     if (page === 'records') {

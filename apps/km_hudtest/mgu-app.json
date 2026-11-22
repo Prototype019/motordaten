@@ -1,12 +1,13 @@
 {
   "schema": 1,
   "id": "km_hudtest",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "tree": "package",
+  "internet": true,
   "modules": ["src/hudtest.js", "src/hud_link.js", "src/hud_draw.js", "src/cluster_render_client.js",
     "src/screen.js", "src/tasu.js", "src/decode.js", "src/kit_canvas.js", "src/kit_fonts.js",
     "src/font_label.js", "src/font_scale.js", "src/font_num.js",
-    "src/drawn.js", "src/dash.js", "src/settings.js", "src/warmup.js", "src/values.js", "src/mgu_render_client.js", "src/kit_record.js"],
+    "src/drawn.js", "src/dash.js", "src/settings.js", "src/warmup.js", "src/values.js", "src/mgu_render_client.js", "src/kit_record.js", "src/diag.js", "src/clock.js", "src/net.js", "src/github_logs.js", "src/qr.js"],
   "sdk": [
     "oap-sdk/src/core/OnlineApp.js",
     "oap-sdk/src/logging/logging",

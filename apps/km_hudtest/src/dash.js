@@ -13,7 +13,9 @@
  * Page 'align' (under Anzeige): the HUD shows the alignment picture while it is open; slant, aside and height taken
  *   back (settings ALIGN), each with − and +.
  * Page 'ready' (Bereit): which temperatures count, from where; when oil, coolant and engine speed turn red.
- * Page 'status': the cluster renderer and where the values come from.
+ * Page 'status': the cluster renderer and where the values come from; its button opens
+ * Page 'github' (under Status): the app's logs into the driver's own GitHub repository, set up by scanning QR
+ *   codes (src/github_logs.js; extra.github is its state(): phase off, code, install, pick, ready, sending).
  *
  * draw(rec, page, v, cfg, ui, extra) records one frame into a kit_record Recorder (or a kit_canvas Canvas):
  * v { oil, coolant, view (what the HUD shows, src/warmup.js), words { title, text }, source, testing,
@@ -26,6 +28,8 @@
 const S = require('./settings.js');
 const V = require('./values.js');
 const hud = require('./hud_draw.js');
+const qr = require('./qr.js');
+const clock = require('./clock.js');
 
 const W = 2880;
 const H = 764;
@@ -133,12 +137,54 @@ function valuesTargets(extra) {
     return extra && extra.mode !== 'values' ? cells.concat([SHOW_VALUES]) : cells;
 }
 
-const STATUS_TARGETS = [{ id: 'reconnect', x: W - PAD - 420, y: 64, w: 420, h: 84, label: 'Neu verbinden' }];
+const STATUS_TARGETS = [{ id: 'reconnect', x: W - PAD - 420, y: 64, w: 420, h: 84, label: 'Neu verbinden' },
+    { id: 'page:github', x: W - PAD - 420 - 24 - 420, y: 64, w: 420, h: 84, label: 'Logs an GitHub' }];
+
+/* Logs an GitHub: Zurück at the top; the rest follows the phase (extra.github, src/github_logs.js state()). */
+const GH_BACK = { id: 'page:status', x: W - PAD - 300, y: 64, w: 300, h: 84, label: 'Zurück' };
+const GH_TOP = 200;
+const GH_MAX_REPOS = 5;
+const GH_PICK = { w: 1100, h: 96, stepY: 120, gap: 50 };
+const qrCache = { text: null, q: null };
+function qrOf(text) {
+    if (qrCache.text !== text) {
+        qrCache.q = qr.encode(text);
+        qrCache.text = text;
+    }
+    return qrCache.q;
+}
+/* The QR square: modules at an integer size (at least 6 px), a quiet zone of 4 modules, inside the page. */
+function qrBox(text) {
+    const q = qrOf(text);
+    const m = Math.max(6, Math.floor((H - GH_TOP - 24) / (q.size + 8)));
+    const side = (q.size + 8) * m;
+    return { x: X0, y: GH_TOP, m, side, size: q.size };
+}
+const qrRight = (text) => qrBox(text).x + qrBox(text).side + 90;
+function githubTargets(st) {
+    const out = [GH_BACK];
+    const phase = st && st.phase;
+    if (phase === 'code' || phase === 'install') {
+        const x = st.qr ? qrRight(st.qr) : X0;
+        out.push({ id: 'gh:cancel', x, y: 640, w: 360, h: 84, label: 'Abbrechen' });
+    } else if (phase === 'pick') {
+        (st.repos || []).slice(0, GH_MAX_REPOS).forEach((name, i) => out.push({ id: `gh:choose:${name}`,
+            x: X0 + (i % 2) * (GH_PICK.w + GH_PICK.gap), y: 230 + Math.floor(i / 2) * GH_PICK.stepY, w: GH_PICK.w, h: GH_PICK.h, label: name }));
+    } else if (phase === 'ready') {
+        out.push({ id: 'gh:send', x: X0, y: 330, w: 600, h: 120, label: 'Logs senden' },
+            { id: 'gh:disconnect', x: X0, y: 600, w: 360, h: 84, label: 'Trennen' });
+    } else if (phase === 'sending') {
+        // nothing to press while it goes
+    } else {
+        out.push({ id: 'gh:connect', x: X0, y: 380, w: 480, h: 112, label: 'Verbinden' });
+    }
+    return out;
+}
 
 function targets(page, extra) {
     const own = page === 'values' ? valuesTargets(extra) : page === 'display' ? DISPLAY_TARGETS : page === 'align' ? ALIGN_TARGETS
         : page === 'ready' ? READY_TARGETS
-        : page === 'status' ? STATUS_TARGETS : MAIN_TARGETS;
+        : page === 'status' ? STATUS_TARGETS : page === 'github' ? githubTargets(extra && extra.github) : MAIN_TARGETS;
     return TABS.concat(own);
 }
 
@@ -147,7 +193,7 @@ function targets(page, extra) {
 function rail(rec, page, ui) {
     rec.fillRect(0, 0, RAIL, H, '#0C1117');
     rec.fillRect(RAIL - 2, 0, 2, H, C.line);
-    const current = page === 'align' ? 'display' : page;
+    const current = page === 'align' ? 'display' : page === 'github' ? 'status' : page;
     TABS.forEach((t) => {
         const on = t.page === current;
         if (ui && ui.pressed === t.id) rec.fillRect(t.x, t.y, t.w, t.h, C.line);
@@ -380,6 +426,80 @@ function statusPage(rec, v, cfg, ui) {
     STATUS_TARGETS.forEach((t) => button(rec, t, ui));
 }
 
+/* Text cut to fit width w (…). */
+function fit(rec, text, size, w) {
+    let t = String(text);
+    if (rec.textWidth(t, size, { font: 'label' }) <= w) return t;
+    while (t.length > 1 && rec.textWidth(`${t}…`, size, { font: 'label' }) > w) t = t.slice(0, -1);
+    return `${t}…`;
+}
+
+/* The QR code: black modules on a white square (quiet zone included), runs of dark modules as one bar. */
+function drawQr(rec, box, text) {
+    const q = qrOf(text);
+    const pad = 4 * box.m;
+    rec.fillRect(box.x, box.y, box.side, box.side, '#FFFFFF');
+    for (let y = 0; y < q.size; y++) {
+        for (let x = 0; x < q.size; x++) {
+            if (!q.dark(x, y)) continue;
+            let n = 1;
+            while (x + n < q.size && q.dark(x + n, y)) n++;
+            rec.fillRect(box.x + pad + x * box.m, box.y + pad + y * box.m, n * box.m, box.m, '#000000');
+            x += n - 1;
+        }
+    }
+}
+
+function githubPage(rec, v, cfg, ui, extra) {
+    const st = (extra && extra.github) || { phase: 'off', online: true };
+    const phase = st.phase;
+    const ts = githubTargets(st);
+    title(rec, 'Logs an GitHub', phase === 'pick' ? 'Welches Repository?' : 'Die Logs der App in dein eigenes GitHub schicken.');
+    const btn = (id, opts) => { const t = ts.find((k) => k.id === id); if (t) button(rec, t, ui, opts); };
+    button(rec, GH_BACK, ui);
+    const sideText = (rx, lines, y0, size) => lines.forEach((l, i) => rec.text(l, rx, y0 + i * (size + 18), size, C.text, { font: 'label' }));
+    let errorAt = { x: X0, y: 720 };
+    if (phase === 'code' || phase === 'install') {
+        const box = qrBox(st.qr);
+        drawQr(rec, box, st.qr);
+        const rx = qrRight(st.qr);
+        if (phase === 'code') {
+            rec.text('Dein Code', rx, 250, 30, C.dim, { font: 'label' });
+            rec.text(st.code || '', rx, 380, 130, C.ice, { font: 'label' });
+            sideText(rx, ['1. QR-Code scannen', '2. Code eingeben', '3. Bestätigen'], 450, 40);
+        } else {
+            rec.text('Fast fertig', rx, 300, 56, C.text, { font: 'label' });
+            sideText(rx, ['Repository für die Logs auswählen', 'und auf Installieren tippen'], 380, 40);
+        }
+        btn('gh:cancel');
+        errorAt = { x: rx, y: 610 };
+    } else if (phase === 'pick') {
+        ts.filter((t) => t.id.indexOf('gh:choose:') === 0).forEach((t) => button(rec, Object.assign({}, t, { label: fit(rec, t.label, 36, t.w - 60) }), ui, { size: 36 }));
+        errorAt = { x: X0, y: 700 };
+    } else if (phase === 'ready' || phase === 'sending') {
+        rec.text(fit(rec, `Verbunden mit ${st.repo || ''}`, 56, W - PAD - X0), X0, 290, 56, C.text, { font: 'label' });
+        if (phase === 'ready') {
+            btn('gh:send', { primary: true, size: 48 });
+            if (st.sent) {
+                const d = clock.wall(st.sent.at);
+                const p = (n) => String(n).padStart(2, '0');
+                rec.text(`Gesendet ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`, X0 + 600 + 60, 330 + 60 + 15, 44, C.ok, { font: 'label' });
+            }
+            btn('gh:disconnect');
+        } else {
+            rec.text('Wird gesendet …', X0, 400, 56, C.ice, { font: 'label' });
+        }
+        errorAt = { x: X0, y: 540 };
+    } else {
+        rec.text('Deine Logs landen in deinem eigenen GitHub.', X0, 270, 48, C.text, { font: 'label' });
+        rec.text('Einmal mit dem Handy verbinden.', X0, 336, 48, C.text, { font: 'label' });
+        btn('gh:connect', { primary: true, size: 44 });
+        if (st.online === false) rec.text('Kein Internet – ist das Handy verbunden?', X0, 560, 36, C.limit, { font: 'label' });
+        errorAt = { x: X0, y: 640 };
+    }
+    if (st.error) rec.text(fit(rec, st.error, 32, W - PAD - errorAt.x), errorAt.x, errorAt.y, 32, C.limit, { font: 'label' });
+}
+
 function draw(rec, page, v, cfg, ui, extra) {
     v = v || {};
     cfg = S.clean(cfg || S.defaults());
@@ -390,8 +510,9 @@ function draw(rec, page, v, cfg, ui, extra) {
     else if (page === 'align') alignPage(rec, v, cfg, ui);
     else if (page === 'ready') readyPage(rec, v, cfg, ui);
     else if (page === 'status') statusPage(rec, v, cfg, ui);
+    else if (page === 'github') githubPage(rec, v, cfg, ui, extra);
     else mainPage(rec, v, cfg, ui);
     return rec;
 }
 
-module.exports = { draw, targets, tempCellBoxes, tempSlotAt, DRAG_PAGE, W, H, C, TABS };
+module.exports = { draw, targets, tempCellBoxes, tempSlotAt, DRAG_PAGE, W, H, C, TABS, qrBox };

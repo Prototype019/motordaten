@@ -129,9 +129,19 @@ SCENES.logload = {};
 SCENES.logknock = {};
 SCENES.logbattery = {};
 SCENES.logcooling = {};
+// Logs an GitHub, its phases (the code and repository names made up)
+const GH = { online: true, error: null, qr: null, code: null, repo: null, repos: [], sent: null };
+EXTRA.github_off = { github: Object.assign({}, GH, { phase: 'off' }) };
+EXTRA.github_offline = { github: Object.assign({}, GH, { phase: 'off', online: false }) };
+EXTRA.github_code = { github: Object.assign({}, GH, { phase: 'code', qr: 'https://github.com/login/device', code: 'WDJB-MJHT' }) };
+EXTRA.github_install = { github: Object.assign({}, GH, { phase: 'install', qr: 'https://github.com/apps/motordaten-logs/installations/new' }) };
+EXTRA.github_pick = { github: Object.assign({}, GH, { phase: 'pick', repos: ['fahrer/motordaten-logs', 'fahrer/notizen', 'fahrer/website'] }) };
+EXTRA.github_ready = { github: Object.assign({}, GH, { phase: 'ready', repo: 'fahrer/motordaten-logs',
+    sent: { at: Date.UTC(2026, 10, 22, 9, 5), path: 'km_motordaten/2026-11-22_09-05-07.log' } }) };
+Object.keys(EXTRA).filter((n) => /^github_/.test(n)).forEach((n) => { SCENES[n] = {}; });
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
-    const page = name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' || name === 'app' || name === 'records' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
+    const page = /^github_/.test(name) ? 'github' : name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' || name === 'app' || name === 'records' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
     const cfg = /^(settings|limits|ready|mhd|app)$/.test(name) ? Object.assign(Limits.defaults(), { rpmRed: 6800, gearboxReadyOn: 1, gearboxReady: 60 }) :
         name === 'cold' || name === 'pull' || name === 'warming' ? Object.assign(Limits.defaults(), { gearboxReadyOn: 1 }) : Limits.defaults();
     if (name === 'warnings') cfg.oilMax = 125;

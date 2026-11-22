@@ -205,4 +205,88 @@ assert.strictEqual(S.clean({ tilt: 99 }).tilt, 45, 'in its range');
 });
 assert.ok(dash.targets('display', extra).some((t) => t.id === 'page:align'), 'Anzeige opens Ausrichten');
 
+/* ---- Logs an GitHub: every phase draws, its targets sit on the screen apart from each other, every character exists ---- */
+{
+    const { Canvas } = require('../src/kit_canvas.js');
+    const REC = require('../src/kit_record.js');
+    const fonts = require('../src/kit_fonts.js');
+    const GH = require('../src/github_logs.js');
+    const phases = {
+        off: { phase: 'off', error: null, online: true, qr: null, code: null, repo: null, repos: [], sent: null },
+        offline: { phase: 'off', error: 'Keine Verbindung ins Internet', online: false, qr: null, code: null, repo: null, repos: [], sent: null },
+        code: { phase: 'code', error: null, online: true, qr: GH.DEVICE_URL, code: 'WDJB-MJHT', repo: null, repos: [], sent: null },
+        install: { phase: 'install', error: null, online: true, qr: GH.INSTALL_URL, code: null, repo: null, repos: [], sent: null },
+        pick: { phase: 'pick', error: null, online: true, qr: null, code: null, repo: null,
+            repos: ['kevin/g31-logs', 'kevin/auto', 'kevin/ein-sehr-langer-name-fuer-ein-repository-mit-logs', 'kevin/d', 'kevin/e', 'kevin/zu-viel'], sent: null },
+        ready: { phase: 'ready', error: null, online: true, qr: null, code: null, repo: 'kevin/g31-logs', repos: [], sent: null },
+        sent: { phase: 'ready', error: 'GitHub lehnt ab (500)', online: true, qr: null, code: null, repo: 'kevin/g31-logs', repos: [], sent: { at: Date.UTC(2026, 10, 22, 14, 32), path: 'x' } },
+        sending: { phase: 'sending', error: null, online: true, qr: null, code: null, repo: 'kevin/g31-logs', repos: [], sent: null }
+    };
+    const expect = { off: ['gh:connect'], offline: ['gh:connect'], code: ['gh:cancel'], install: ['gh:cancel'],
+        pick: ['gh:choose:kevin/g31-logs', 'gh:choose:kevin/auto', 'gh:choose:kevin/ein-sehr-langer-name-fuer-ein-repository-mit-logs', 'gh:choose:kevin/d', 'gh:choose:kevin/e'],
+        ready: ['gh:send', 'gh:disconnect'], sent: ['gh:send', 'gh:disconnect'], sending: [] };
+    Object.keys(phases).forEach((name) => {
+        const ex = Object.assign({}, extra, { github: phases[name] });
+        const rec = new Recorder(dash.W, dash.H);
+        const texts = [];
+        const text = rec.text.bind(rec);
+        rec.text = (str, x, y, size, c, opts) => { texts.push([String(str), size, (opts && opts.font) || 'label', x, y]); return text(str, x, y, size, c, opts); };
+        dash.draw(rec, 'github', {}, def, { focus: null }, ex);
+        dash.draw(new Recorder(dash.W, dash.H), 'github', {}, def, { focus: 'gh:connect', pressed: 'gh:send' }, ex);
+        // every character is baked in its font (a missing one would show as "?")
+        texts.forEach(([str, size, font]) => {
+            const f = fonts.get(font, size, str);
+            for (const ch of str) assert.ok(f.glyphs[ch.codePointAt(0)], `github ${name}: "${ch}" of "${str}" is not in the ${font} font`);
+        });
+        const ts = dash.targets('github', ex);
+        assert.ok(ts.length <= spec.PROXIES, `github ${name}: ${ts.length} targets`);
+        assert.strictEqual(new Set(ts.map((t) => t.id)).size, ts.length, `github ${name}: every id once`);
+        assert.ok(ts.some((t) => t.id === 'page:status'), `github ${name}: back to Status`);
+        assert.deepStrictEqual(ts.filter((t) => t.id.indexOf('gh:') === 0).map((t) => t.id), expect[name], `github ${name}: its buttons`);
+        ts.forEach((t) => {
+            assert.ok(t.x >= 0 && t.y >= 0 && t.x + t.w <= dash.W && t.y + t.h <= dash.H, `github ${name} ${t.id} on the screen`);
+            assert.ok(t.h >= 84 && t.w >= 84, `github ${name} ${t.id}: large enough to press`);
+        });
+        for (let i = 0; i < ts.length; i++) {
+            for (let j = i + 1; j < ts.length; j++) {
+                const a = ts[i];
+                const b = ts[j];
+                assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, `github ${name}: ${a.id} and ${b.id} overlap`);
+            }
+        }
+        // the texts drawn stay on the screen
+        texts.forEach(([str, size, font, x, y]) => {
+            const w = rec.textWidth(str, size, { font });
+            const left = x;
+            assert.ok(left >= 0 && left + w <= dash.W && y <= dash.H, `github ${name}: "${str}" inside the screen (${Math.round(left + w)})`);
+        });
+        // the QR: white square with a quiet zone, whole modules of 6 px or more, inside the screen, its finder dark
+        if (phases[name].qr) {
+            const b = dash.qrBox(phases[name].qr);
+            assert.ok(Number.isInteger(b.m) && b.m >= 6, `github ${name}: modules ${b.m} px`);
+            assert.ok(b.x >= 0 && b.y >= 0 && b.x + b.side <= dash.W && b.y + b.side <= dash.H, `github ${name}: the QR on the screen`);
+            const c = new Canvas(dash.W, dash.H);
+            REC.play(rec.words(), c);
+            const px = (x, y) => Array.from(c.d.subarray((y * c.w + x) * 4, (y * c.w + x) * 4 + 3));
+            assert.deepStrictEqual(px(b.x + 1, b.y + 1), [255, 255, 255], 'quiet zone white');
+            assert.deepStrictEqual(px(b.x + 4 * b.m + (b.m >> 1), b.y + 4 * b.m + (b.m >> 1)), [0, 0, 0], 'finder dark');
+            assert.deepStrictEqual(px(b.x + b.side - 2, b.y + b.side - 2), [255, 255, 255], 'quiet zone white at the far corner');
+        }
+    });
+    // the code and the texts say what the driver reads
+    const said = (name) => { const t = []; const r = new Recorder(dash.W, dash.H); const f = r.text.bind(r);
+        r.text = (s2, ...a) => { t.push(String(s2)); return f(s2, ...a); };
+        dash.draw(r, 'github', {}, def, null, Object.assign({}, extra, { github: phases[name] })); return t.join(' | '); };
+    assert.ok(/WDJB-MJHT/.test(said('code')) && /1\. QR-Code scannen/.test(said('code')) && /3\. Bestätigen/.test(said('code')));
+    assert.ok(/Kein Internet/.test(said('offline')) && !/Kein Internet/.test(said('off')));
+    assert.ok(/Verbunden mit kevin\/g31-logs/.test(said('ready')) && !/Gesendet/.test(said('ready')));
+    assert.ok(/Gesendet 14:32/.test(said('sent')) && /GitHub lehnt ab/.test(said('sent')));
+    assert.ok(/Wird gesendet/.test(said('sending')));
+    assert.ok(/Welches Repository/.test(said('pick')) && !/zu-viel/.test(said('pick')), 'at most five repositories');
+    assert.strictEqual(dash.targets('github', Object.assign({}, extra, { github: phases.pick })).filter((t) => t.id.indexOf('gh:choose:') === 0).length, 5);
+    // Status opens it, and the rail keeps Status lit
+    assert.ok(dash.targets('status', extra).some((t) => t.id === 'page:github' && t.label === 'Logs an GitHub'));
+    assert.ok(dash.targets('github', extra).some((t) => t.id === 'page:status'));
+}
+
 console.log('test_screens: ok');

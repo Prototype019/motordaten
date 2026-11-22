@@ -61,4 +61,21 @@ const extra = { order: cfg.order, count: cfg.count, mode: cfg.mode };
     REC.play(rec.words(), c);
     fs.writeFileSync(path.join(OUT, `hud_screen_${page}.png`), c.png(9));
 });
-console.log(`preview: ${Object.keys(LOOKS).length + 5} pictures in ${path.relative(process.cwd(), OUT)}`);
+// Logs an GitHub: each phase
+const GH = require('../src/github_logs.js');
+const ghBase = { error: null, online: true, qr: null, code: null, repo: null, repos: [], sent: null };
+const GITHUB = {
+    off: { phase: 'off' },
+    code: { phase: 'code', qr: GH.DEVICE_URL, code: 'WDJB-MJHT' },
+    install: { phase: 'install', qr: GH.INSTALL_URL },
+    pick: { phase: 'pick', repos: ['kevin/g31-logs', 'kevin/auto-notizen', 'kevin/werkstatt'] },
+    ready: { phase: 'ready', repo: 'kevin/g31-logs', sent: { at: Date.UTC(2026, 10, 22, 14, 32), path: 'km_hudtest/x.log' } }
+};
+Object.keys(GITHUB).forEach((name) => {
+    const rec = new REC.Recorder(dash.W, dash.H);
+    dash.draw(rec, 'github', v, cfg, { focus: null }, Object.assign({}, extra, { github: Object.assign({}, ghBase, GITHUB[name]) }));
+    const c = new Canvas(dash.W, dash.H);
+    REC.play(rec.words(), c);
+    fs.writeFileSync(path.join(OUT, `hud_screen_github_${name}.png`), c.png(9));
+});
+console.log(`preview: ${Object.keys(LOOKS).length + 5 + Object.keys(GITHUB).length} pictures in ${path.relative(process.cwd(), OUT)}`);
