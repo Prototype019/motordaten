@@ -49,7 +49,12 @@ module.exports = {
         // route guidance on or off (read only): while BMW guides, the HUD is its own, our picture stays away
         // (on the G87 guidanceState stayed INACTIVE while guiding, 22.11.2026: the route's own signals are read too)
         'de.bmw.infotainment.navigation.guiding.Guidance': { instances: 'Main_Instance',
-            attributes: { guidanceState: 's', finalDestinationInfo: 's', nextDestinationInfo: 's' } },
+            attributes: { guidanceState: 's', guidingProvider: 's', finalDestinationInfo: 's', nextDestinationInfo: 's' } },
+        // a route on the phone: guidanceState stays INACTIVE then (seen on the G87 and by other apps' authors);
+        // the phone's projection says whether its turn-by-turn runs (projectedGuidanceActive, read only)
+        'de.bmw.infotainment.a4a.carplay.CarPlayManager': { instances: 'CarPlayManagerInst1', attributes: { projectedGuidanceActive: 's' } },
+        'de.bmw.infotainment.sdi.aap.androidautoprojectedmanager.AndroidAutoProjectedManager': {
+            instances: 'AndroidAutoProjectedManagerInst1', attributes: { projectedGuidanceActive: 's' } },
         'de.bmw.infotainment.navigation.routing.Routing': { instances: 'Main_Instance', attributes: { currentTrips: 's' } },
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
             instances: 'SystemFunctionsInternalTasuInst1',

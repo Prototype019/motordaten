@@ -44,6 +44,8 @@ const Probe = require('./probe.js');
 const CR_LOG = process.env.KM_CR_LOG || '/var/opt/cluster-render/log/cluster-render.log';
 const CR_HUD_CONTENT = '43204012';
 const ROOM_MS = 400;
+const IF_CARPLAY = 'de.bmw.infotainment.a4a.carplay.CarPlayManager';
+const IF_AAUTO = 'de.bmw.infotainment.sdi.aap.androidautoprojectedmanager.AndroidAutoProjectedManager';
 const IF_ROUTING = 'de.bmw.infotainment.navigation.routing.Routing';
 const SPEED_FACTOR = 0.015625;   // statusCarSpeed2.speedVehicleCentreOfGravity -> km/h (65535 invalid)
 const ACCEL_FACTOR = 0.002;      // statusLongitudinalAccelerationMassCenter -> m/s², offset ACCEL_OFFSET
@@ -483,6 +485,19 @@ class HudApp extends ListApp {
         watch(IF_GUIDANCE, 'guidanceState', (v) => this._guidance(v), 'Main_Instance', none('Zustand'));
         // on the G87 that stayed INACTIVE while BMW guided (22.11.2026): the route itself is read as well. A trip
         // marked active with segments counts as guiding; the destinations are only noted, to learn what they say
+        // a route on the phone (CarPlay, Android Auto): BMW draws its turns on the HUD, its own guidance stays off
+        const truth = (v) => { const x = v && typeof v === 'object' ? v.projectedGuidanceActive : v; return x === true || x === 1 || x === 'true'; };
+        [['carplay', 'CarPlay', IF_CARPLAY, 'CarPlayManagerInst1'], ['aauto', 'Android Auto', IF_AAUTO, 'AndroidAutoProjectedManagerInst1']].forEach((p) => {
+            watch(p[2], 'projectedGuidanceActive', (v) => {
+                const on = truth(v);
+                if (this._navNoted[p[0]] !== on) { this._navNoted[p[0]] = on; Diag.note(`Navigation: ${p[1]}-Route ${on ? 'läuft' : 'aus'}`); }
+                this._navFrom(p[0], on);
+            }, p[3], none(p[1]));
+        });
+        watch(IF_GUIDANCE, 'guidingProvider', (v) => {
+            const w = String(v && typeof v === 'object' ? (v.guidingProvider !== undefined ? v.guidingProvider : v.name !== undefined ? v.name : v.value) : v);
+            if (this._navNoted.provider !== w) { this._navNoted.provider = w; Diag.note(`Navigation: Quelle ${w.slice(0, 30)}`); }
+        }, 'Main_Instance', none('Quelle'));
         watch(IF_ROUTING, 'currentTrips', (v) => this._trips(v), 'Main_Instance', none('Route'));
         ['finalDestinationInfo', 'nextDestinationInfo'].forEach((attr) => watch(IF_GUIDANCE, attr, (v) => {
             const d = v && v[attr] ? v[attr] : v;
@@ -556,14 +571,14 @@ class HudApp extends ListApp {
         const active = (Array.isArray(list) ? list : []).filter((t) => t && t.active);
         const segs = active.reduce((n, t) => n + (((t.tripDefinition || {}).tripSegment || []).length || 0), 0);
         const k = `${Array.isArray(list) ? list.length : '?'} Routen, ${active.length} aktiv, ${segs} Abschnitte`;
-        if (this._navNoted.trips !== k) { this._navNoted.trips = k; Diag.note(`Navigation: ${k}${active.length && segs ? ' – HUD-Werte aus' : ''}`); }
-        this._navFrom('trips', active.length > 0 && segs > 0);
+        if (this._navNoted.trips !== k) { this._navNoted.trips = k; Diag.note(`Navigation: ${k}`); }
+        // only noted: whether an active trip ends with the guidance is not known, and the HUD must not stay empty
     }
 
     /* Guiding when any of the signals says so. */
     _navFrom(src, on) {
         this._navSrc[src] = on;
-        const nav = !!(this._navSrc.state || this._navSrc.trips);
+        const nav = Object.keys(this._navSrc).some((k) => this._navSrc[k]);
         if (nav !== this._nav) {
             this._nav = nav;
             Diag.note(`Navigation: ${nav ? 'läuft, HUD-Werte aus' : 'aus, HUD-Werte an'}`);

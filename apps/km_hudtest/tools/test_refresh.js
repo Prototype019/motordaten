@@ -71,6 +71,8 @@ const guideProxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: (
     nextDestinationInfo: { subscribe: () => Promise.resolve() } });
 const routeProxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
     currentTrips: { subscribe: (cb) => { veh.on('trips', cb); return Promise.resolve(); } } });
+const phoneProxy = (ev) => () => ({ init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
+    projectedGuidanceActive: { subscribe: (cb) => { veh.on(ev, cb); return Promise.resolve(); } } });
 const kmh = (v) => veh.emit('speed', { speedVehicleCentreOfGravity: Math.round(v / 0.015625) });
 const ms2 = (a) => veh.emit('accel', { longitudinalAccelerationCentreOfGravity: Math.round((a + 65) / 0.002) });
 
@@ -79,7 +81,9 @@ server.listen(process.env.KM_CR_SOCKET, () => {
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasu, 'de.bmw.infotainment.vehicle.CDS': cdsProxy,
         'de.bmw.infotainment.vehicle.Vehicle2': vehProxy, 'de.bmw.infotainment.vehicle.CDS2': cds2Proxy,
         'de.bmw.infotainment.navigation.guiding.Guidance': guideProxy,
-        'de.bmw.infotainment.navigation.routing.Routing': routeProxy });
+        'de.bmw.infotainment.navigation.routing.Routing': routeProxy,
+        'de.bmw.infotainment.a4a.carplay.CarPlayManager': phoneProxy('carplay'),
+        'de.bmw.infotainment.sdi.aap.androidautoprojectedmanager.AndroidAutoProjectedManager': phoneProxy('aauto') });
     const realExit = process.exit;
     process.exit = () => {};
     let app = null;
@@ -172,10 +176,23 @@ server.listen(process.env.KM_CR_SOCKET, () => {
         assert.strictEqual(visible(), 1, 'a trip not active: shown');
         veh.emit('trips', [{ active: true, tripDefinition: { tripSegment: [{}, {}] } }]);
         await unit.wait(300);
-        assert.strictEqual(visible(), 0, 'an active trip: off the HUD');
+        assert.strictEqual(visible(), 1, 'an active trip is only noted');
         veh.emit('trips', []);
         await unit.wait(300);
         assert.strictEqual(visible(), 1, 'no trip: back');
+        // a route in CarPlay: BMW's guidance stays INACTIVE, the phone's projection says it
+        veh.emit('carplay', false);
+        await unit.wait(300);
+        assert.strictEqual(visible(), 1, 'CarPlay without a route: shown');
+        veh.emit('carplay', true);
+        await unit.wait(300);
+        assert.strictEqual(visible(), 0, 'a route in CarPlay: off the HUD');
+        veh.emit('aauto', { projectedGuidanceActive: false });
+        await unit.wait(300);
+        assert.strictEqual(visible(), 0, 'Android Auto off changes nothing');
+        veh.emit('carplay', false);
+        await unit.wait(300);
+        assert.strictEqual(visible(), 1, 'the route ended: back');
         // the KOMBI gives our picture only a part of the HUD (something of its own shows): empty, the layer stays
         const h0 = hides();
         const f0 = service.frames;
@@ -193,6 +210,7 @@ server.listen(process.env.KM_CR_SOCKET, () => {
         assert.ok(/BMW zeigt unser Bild nicht mehr/.test(log) && /neu angeboten \(2\. Mal\)/.test(log) && /Bild wieder zu sehen/.test(log), log);
         assert.ok(/Navigation: ACTIVE – HUD-Werte aus/.test(log) && /Navigation: INACTIVE/.test(log), log);
         assert.ok(/BMW zeigt etwas Eigenes im HUD/.test(log) && /Platz wieder frei/.test(log), log);
+        assert.ok(/Navigation: CarPlay-Route läuft/.test(log) && /Navigation: CarPlay-Route aus/.test(log), log);
         console.log('test_refresh: ok');
         realExit(0);
     })().catch((e) => { console.error(e); realExit(1); });

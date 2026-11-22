@@ -30,7 +30,7 @@ installieren. Dann reicht „Logs senden“: je Druck eine Datei `<app>/<Datum_U
 Repositories schreiben, auf denen der Nutzer sie installiert hat; kein Passwort und kein Schlüssel im Code, der
 Zugang bleibt im Datenordner der App im Auto (`shared/github_logs.js`, `shared/qr.js`).
 
-HUD und Navigation (ab 0.5.7): Die App liest, ob BMWs Zielführung läuft (Guidance guidanceState, nur lesend). Solange sie läuft, bleiben unsere Werte aus dem HUD; endet sie, kommen sie wieder. Ob das Signal im G87 ankommt, steht im Log („Navigation: …“).
+HUD und Navigation (ab 0.5.11): Solange eine Zielführung läuft, bleiben unsere Werte aus dem HUD; endet sie, kommen sie wieder. Gelesen wird nur: BMWs Navigation (Guidance guidanceState ACTIVE) und die Route auf dem Handy (CarPlayManager / AndroidAutoProjectedManager projectedGuidanceActive). Bei einer CarPlay-Route bleibt guidanceState auf INACTIVE (im G87 am 22.11.2026 gesehen, andere App-Autoren beschreiben dasselbe). Im Log steht, was ankommt („Navigation: …“); data/interfaces.txt listet einmal je Version die Schnittstellen des Autos.
 
 HUD kommt von selbst zurück (ab 0.5.4): Nimmt BMW unser Bild für eigenen Inhalt weg (Navigation, Listen) und zeigt es danach nicht wieder (der Renderer meldet dann dauerhaft „angeboten, nicht gezeigt“), bietet die App es neu an: nach 5 s, dann 15, 30 und alle 60 s, bis es wieder zu sehen ist.
 

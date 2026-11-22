@@ -130,8 +130,21 @@
       "instances": "Main_Instance",
       "attributes": {
         "guidanceState": "s",
+        "guidingProvider": "s",
         "finalDestinationInfo": "s",
         "nextDestinationInfo": "s"
+      }
+    },
+    "de.bmw.infotainment.a4a.carplay.CarPlayManager": {
+      "instances": "CarPlayManagerInst1",
+      "attributes": {
+        "projectedGuidanceActive": "s"
+      }
+    },
+    "de.bmw.infotainment.sdi.aap.androidautoprojectedmanager.AndroidAutoProjectedManager": {
+      "instances": "AndroidAutoProjectedManagerInst1",
+      "attributes": {
+        "projectedGuidanceActive": "s"
       }
     },
     "de.bmw.infotainment.navigation.routing.Routing": {
