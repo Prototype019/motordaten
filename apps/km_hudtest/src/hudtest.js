@@ -89,7 +89,9 @@ class HudApp extends ListApp {
         this._noted = { link: null, diag: null };      // what the notebook (diag.log) last heard of the link and the reads
         this._gh = new GithubLogs({
             dir: Diag.dir(), app: 'km_hudtest',
-            files: () => Diag.files().map((name) => ({ name, file: require('path').join(Diag.dir(), name) })),
+            // the renderer's own log too (readable by all): when the cluster moves or re-lays out the HUD's area
+            files: () => Diag.files().map((name) => ({ name, file: require('path').join(Diag.dir(), name) }))
+                .concat([{ name: 'cluster-render.log', file: '/var/opt/cluster-render/log/cluster-render.log' }]),
             header: () => this._ghHeader()
         });
         this._gh.on('change', () => this._ghChanged());
