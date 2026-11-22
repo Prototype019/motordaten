@@ -63,7 +63,11 @@ const vehProxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: () 
 const cds2Proxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
     statusLongitudinalAccelerationMassCenter: { subscribe: (cb) => { veh.on('accel', cb); return Promise.resolve(); } } });
 const guideProxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
-    guidanceState: { subscribe: (cb) => { veh.on('guide', cb); return Promise.resolve(); } } });
+    guidanceState: { subscribe: (cb) => { veh.on('guide', cb); return Promise.resolve(); } },
+    finalDestinationInfo: { subscribe: (cb) => { veh.on('dest', cb); return Promise.resolve(); } },
+    nextDestinationInfo: { subscribe: () => Promise.resolve() } });
+const routeProxy = () => ({ init: () => Promise.resolve(), waitUntilAvailable: () => Promise.resolve(),
+    currentTrips: { subscribe: (cb) => { veh.on('trips', cb); return Promise.resolve(); } } });
 const kmh = (v) => veh.emit('speed', { speedVehicleCentreOfGravity: Math.round(v / 0.015625) });
 const ms2 = (a) => veh.emit('accel', { longitudinalAccelerationCentreOfGravity: Math.round((a + 65) / 0.002) });
 
@@ -71,7 +75,8 @@ server.listen(process.env.KM_CR_SOCKET, () => {
     const unit = require('../../../tools/fake_unit.js').install(require('../spec.js'), require('../package/rhmiData/application.json'), {
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': tasu, 'de.bmw.infotainment.vehicle.CDS': cdsProxy,
         'de.bmw.infotainment.vehicle.Vehicle2': vehProxy, 'de.bmw.infotainment.vehicle.CDS2': cds2Proxy,
-        'de.bmw.infotainment.navigation.guiding.Guidance': guideProxy });
+        'de.bmw.infotainment.navigation.guiding.Guidance': guideProxy,
+        'de.bmw.infotainment.navigation.routing.Routing': routeProxy });
     const realExit = process.exit;
     process.exit = () => {};
     let app = null;
@@ -157,6 +162,17 @@ server.listen(process.env.KM_CR_SOCKET, () => {
         veh.emit('guide', 'INACTIVE');
         await unit.wait(300);
         assert.strictEqual(visible(), 1, 'guidance over: back');
+        // the G87: the state stays INACTIVE while guiding; an active trip with segments says it
+        veh.emit('dest', { formattedDistance: { rawDistance: 4200 }, travelTime: 300 });
+        veh.emit('trips', [{ active: false, tripDefinition: { tripSegment: [{}] } }]);
+        await unit.wait(300);
+        assert.strictEqual(visible(), 1, 'a trip not active: shown');
+        veh.emit('trips', [{ active: true, tripDefinition: { tripSegment: [{}, {}] } }]);
+        await unit.wait(300);
+        assert.strictEqual(visible(), 0, 'an active trip: off the HUD');
+        veh.emit('trips', []);
+        await unit.wait(300);
+        assert.strictEqual(visible(), 1, 'no trip: back');
         await new Promise((r) => require('../src/diag.js').flush(r));
         const log = fs.readFileSync(path.join(dir, 'diag.log'), 'utf8');
         assert.ok(/starkes Bremsen \(-6\.0/.test(log) && /neu übergeben \(Halt\)/.test(log) && /neu übergeben \(alle 5 min\)/.test(log), log);

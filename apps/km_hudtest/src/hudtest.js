@@ -34,6 +34,7 @@ const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
 const IF_VEHICLE2 = 'de.bmw.infotainment.vehicle.Vehicle2';
 const IF_CDS2 = 'de.bmw.infotainment.vehicle.CDS2';
 const IF_GUIDANCE = 'de.bmw.infotainment.navigation.guiding.Guidance';
+const IF_ROUTING = 'de.bmw.infotainment.navigation.routing.Routing';
 const SPEED_FACTOR = 0.015625;   // statusCarSpeed2.speedVehicleCentreOfGravity -> km/h (65535 invalid)
 const ACCEL_FACTOR = 0.002;      // statusLongitudinalAccelerationMassCenter -> m/s², offset ACCEL_OFFSET
 const ACCEL_OFFSET = -65;
@@ -96,7 +97,9 @@ class HudApp extends ListApp {
         this._refresh = { due: 0, why: '', until: 0, last: 0 };
         this._lost = { since: 0, tries: 0 };
         this._nav = false;              // BMW's route guidance on (guidanceState)
-        this._navWord = '';     // the picture offered but not shown: since when, offered anew how often
+        this._navWord = '';
+        this._navSrc = { state: false, trips: false };
+        this._navNoted = {};     // the picture offered but not shown: since when, offered anew how often
         this._at = {};                  // when each value read through the gateway last came
         this._gateway = 'wait';         // wait | open | failed
         this._gatewayError = '';
@@ -455,8 +458,18 @@ class HudApp extends ListApp {
                 .catch((e) => { logger.warn(`${attr}: ${e && e.message}`); if (failed) failed(e); });
         };
         // BMW's route guidance: while it guides, the HUD shows its arrows and our picture would lie over them
-        watch(IF_GUIDANCE, 'guidanceState', (v) => this._guidance(v), 'Main_Instance',
-            (e) => Diag.note(`Navigation: Signal nicht verfügbar (${String(e && e.message).slice(0, 80)})`));
+        const none = (what) => (e) => Diag.note(`Navigation: ${what} nicht verfügbar (${String(e && e.message).slice(0, 80)})`);
+        watch(IF_GUIDANCE, 'guidanceState', (v) => this._guidance(v), 'Main_Instance', none('Zustand'));
+        // on the G87 that stayed INACTIVE while BMW guided (22.11.2026): the route itself is read as well. A trip
+        // marked active with segments counts as guiding; the destinations are only noted, to learn what they say
+        watch(IF_ROUTING, 'currentTrips', (v) => this._trips(v), 'Main_Instance', none('Route'));
+        ['finalDestinationInfo', 'nextDestinationInfo'].forEach((attr) => watch(IF_GUIDANCE, attr, (v) => {
+            const d = v && v[attr] ? v[attr] : v;
+            const dist = d && d.formattedDistance && d.formattedDistance.rawDistance;
+            const text = `${attr === 'finalDestinationInfo' ? 'Ziel' : 'nächstes Ziel'}: ${isNum(dist) ? `${Math.round(dist)} m` : '–'}, Fahrzeit ${d && isNum(d.travelTime) ? d.travelTime : '–'}`;
+            const k = `${attr}:${isNum(dist) ? (dist > 0 ? 'da' : 'null') : 'leer'}`;
+            if (this._navNoted[attr] !== k) { this._navNoted[attr] = k; Diag.note(`Navigation: ${text}`); }
+        }, 'Main_Instance', none(attr)));
         watch(IF_VEHICLE2, 'statusCarSpeed2', (v) => {
             const raw = v && v.speedVehicleCentreOfGravity;
             this._speed(isNum(raw) && raw !== SIGNAL_INVALID ? raw * SPEED_FACTOR : null, Date.now());
@@ -474,8 +487,26 @@ class HudApp extends ListApp {
         const on = word === 'ACTIVE' || word === 'CALCULATING_ROUTE' ? true : word === 'INACTIVE' ? false : null;
         if (word !== this._navWord) Diag.note(`Navigation: ${word.slice(0, 60)}${on === null ? ' (unbekannt, bleibt wie es war)' : on ? ' – HUD-Werte aus' : ''}`);
         this._navWord = word;
-        if (on !== null && on !== this._nav) {
-            this._nav = on;
+        if (on !== null) this._navFrom('state', on);
+    }
+
+    /* currentTrips: [{ active, tripDefinition: { tripSegment: [...] } }] (or wrapped under its name). */
+    _trips(v) {
+        const list = Array.isArray(v) ? v : (v && (v.currentTrips || v.trips)) || [];
+        const active = (Array.isArray(list) ? list : []).filter((t) => t && t.active);
+        const segs = active.reduce((n, t) => n + (((t.tripDefinition || {}).tripSegment || []).length || 0), 0);
+        const k = `${Array.isArray(list) ? list.length : '?'} Routen, ${active.length} aktiv, ${segs} Abschnitte`;
+        if (this._navNoted.trips !== k) { this._navNoted.trips = k; Diag.note(`Navigation: ${k}${active.length && segs ? ' – HUD-Werte aus' : ''}`); }
+        this._navFrom('trips', active.length > 0 && segs > 0);
+    }
+
+    /* Guiding when any of the signals says so. */
+    _navFrom(src, on) {
+        this._navSrc[src] = on;
+        const nav = !!(this._navSrc.state || this._navSrc.trips);
+        if (nav !== this._nav) {
+            this._nav = nav;
+            Diag.note(`Navigation: ${nav ? 'läuft, HUD-Werte aus' : 'aus, HUD-Werte an'}`);
             this._tick();
         }
     }

@@ -129,7 +129,15 @@
     "de.bmw.infotainment.navigation.guiding.Guidance": {
       "instances": "Main_Instance",
       "attributes": {
-        "guidanceState": "s"
+        "guidanceState": "s",
+        "finalDestinationInfo": "s",
+        "nextDestinationInfo": "s"
+      }
+    },
+    "de.bmw.infotainment.navigation.routing.Routing": {
+      "instances": "Main_Instance",
+      "attributes": {
+        "currentTrips": "s"
       }
     },
     "com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu": {
