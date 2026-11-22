@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const net = require('./net.js');
 
-const CLIENT_ID = 'Iv23liPLACEHOLDER';          // set once the GitHub App exists
+const CLIENT_ID = 'Iv23lijxhIFqmSDxfHMH';       // the GitHub App "Motordaten Logs" (public, no secret)
 const SLUG = 'motordaten-logs';
 const DEVICE_URL = 'https://github.com/login/device';
 const INSTALL_URL = `https://github.com/apps/${SLUG}/installations/new`;
