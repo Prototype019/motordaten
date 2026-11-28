@@ -31,7 +31,6 @@ const { Tasu, TESTERS, EGS, NO_CLEAR } = require('./tasu.js');
 const D = require('./decode.js');
 const { Drawn } = require('./drawn.js');
 const Limits = require('./limits.js');
-const { MMode } = require('./mmode.js');
 const Logbook = require('./logbook.js');
 const Usb = require('./usb.js');
 const Diag = require('./diag.js');
@@ -196,15 +195,6 @@ class Motordaten extends ListApp {
         this._started = false;
         this._drawn = null;
         this._limits = Limits.load();
-        // M-Tasten: M1 / M2 -> the chosen M Mode (shared/mmode.js). The car's side is not connected yet: which
-        // interface reports the M setup and takes the M Mode is being looked up (the HUD app's interfaces.txt).
-        // Then: its reports go to this._mmode.setup() / .mode(), and send() becomes the command.
-        this._mmode = new MMode({
-            // switched off: nothing for either button, so nothing is ever sent
-            pick: () => (this._limits.mkeysOn ? { m1: Limits.MMODES[this._limits.m1Mode || 0].word, m2: Limits.MMODES[this._limits.m2Mode || 0].word } : {}),
-            send: () => { throw new Error('noch keine Verbindung zum Auto dafür'); },
-            note: (text) => Diag.note(text)
-        });
         this._texts = new DtcTexts(logger);
         this._recording = null;     // a Logbook.Recording while recording
         this._summaries = new Map(); // recording name -> its summary (files do not change once written)
@@ -366,7 +356,7 @@ class Motordaten extends ListApp {
             this._toggleRecording();
         } else if (id === 'reset') {
             this.run();
-        } else if (id === 'menu:limits' || id === 'menu:ready' || id === 'menu:mhd' || id === 'menu:mkeys' || id === 'menu:app') {
+        } else if (id === 'menu:limits' || id === 'menu:ready' || id === 'menu:mhd' || id === 'menu:app') {
             d.setPage(id.slice(5));
         } else if (id === 'page:github') {
             d.setExtra({ githubFrom: d.page === 'logs' ? 'logs' : 'app' });
@@ -391,10 +381,6 @@ class Motordaten extends ListApp {
             this._flapPressed();
         } else if (id === 'order:reset') {
             this._setLimits(Object.assign({}, this._limits, { tempOrder: Limits.tempOrder([]) }));
-        } else if (id.indexOf('pick:') === 0) {
-            // M-Tasten: the M Mode for M1 / M2
-            const p = id.split(':');
-            this._setLimits(Limits.picked(this._limits, p[1], Number(p[2])));
         } else if (id === 'settings:back') {
             d.setPage('settings');
         } else if (id.indexOf('toggle:') === 0) {

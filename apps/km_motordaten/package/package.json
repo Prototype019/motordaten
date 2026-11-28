@@ -1,7 +1,7 @@
 {
   "name": "km_motordaten",
-  "version": "0.31.3",
-  "description": "M Suite: Motordaten live, Maximalwerte, Logs, Fehlerspeicher, M-Tasten",
+  "version": "0.32.0",
+  "description": "M Suite: Motordaten live, Maximalwerte, Logs, Fehlerspeicher",
   "private": false,
   "main": "javascript/runner.js",
   "oapAppSettings": {

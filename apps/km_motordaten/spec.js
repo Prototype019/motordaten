@@ -5,7 +5,7 @@ const PROXIES = 48;
 
 module.exports = {
     PROXIES,
-    description: 'M Suite: Motordaten live, Maximalwerte, Logs, Fehlerspeicher, M-Tasten',
+    description: 'M Suite: Motordaten live, Maximalwerte, Logs, Fehlerspeicher',
     loggingId: 'KMMD',
     // starts with the head unit (package.json mguAppStartType): at the engine start it is already running and
     // opens by itself (Einstellungen › App); in the background it reads nothing from the car but the CDS signal

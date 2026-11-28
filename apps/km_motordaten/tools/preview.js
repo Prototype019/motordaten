@@ -61,7 +61,6 @@ SCENES.settings = {};
 SCENES.records = {};
 SCENES.mhd = {};
 SCENES.app = {};
-SCENES.mkeys = {};
 SCENES.warming = Object.assign({}, SCENES.cold, { rpm: 2400, rpmPeak: 3100, oil: 86, coolant: 64, gearbox: 41, exhaust: 520 });
 SCENES.limits = {};
 SCENES.ready = {};
@@ -144,11 +143,10 @@ EXTRA.github_ready = { github: Object.assign({}, GH, { phase: 'ready', repo: 'fa
 Object.keys(EXTRA).filter((n) => /^github_/.test(n)).forEach((n) => { SCENES[n] = {}; });
 Object.keys(SCENES).forEach((name) => {
     const rec = new Recorder(dash.W, dash.H);
-    const page = /^github_/.test(name) ? 'github' : name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' || name === 'mkeys' || name === 'app' || name === 'records' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
+    const page = /^github_/.test(name) ? 'github' : name === 'settings' || name === 'limits' || name === 'ready' || name === 'mhd' || name === 'app' || name === 'records' ? name : /^logs/.test(name) ? 'logs' : /^log/.test(name) ? 'log' : name === 'faultunit' ? 'faultunit' : /^faults/.test(name) ? 'faults' : 'main';
     const cfg = /^(settings|limits|ready|mhd|app)$/.test(name) ? Object.assign(Limits.defaults(), { rpmRed: 6800, gearboxReadyOn: 1, gearboxReady: 60 }) :
         name === 'cold' || name === 'pull' || name === 'warming' ? Object.assign(Limits.defaults(), { gearboxReadyOn: 1 }) : Limits.defaults();
     if (name === 'warnings') cfg.oilMax = 125;
-    if (name === 'mkeys') Object.assign(cfg, { mkeysOn: 1, m1Mode: 2, m2Mode: 1 });
     dash.draw(rec, page, SCENES[name], cfg, { focus: name === 'pull' ? 'reset' : name === 'limits' ? 'inc:oilMax' : name === 'ready' ? 'toggle:gearboxReadyOn' : null },
         EXTRA[name] || {});
     const cv = new Canvas(dash.W, dash.H);

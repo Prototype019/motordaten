@@ -30,11 +30,6 @@ const ITEMS = Object.freeze([
     { key: 'mhdCoolingOn', group: 'mhd', def: 0, min: 0, max: 1, step: 1, d: 0, toggle: true },
     // MHD: the exhaust flap button on the live page (2F 02 00/01/02; off: no button, nothing sent)
     { key: 'mhdFlapOn', group: 'mhd', def: 0, min: 0, max: 1, step: 1, d: 0, toggle: true },
-    // M-Tasten: the M Mode a press of M1 / M2 brings, as a place in MMODES (0: nothing, the button as BMW made it)
-    // mkeysOn: the whole thing on or off (off: nothing is ever sent; for cars without M buttons)
-    { key: 'mkeysOn', group: 'mkeys', def: 0, min: 0, max: 1, step: 1, d: 0, toggle: true },
-    { key: 'm1Mode', group: 'mkeys', def: 0, min: 0, max: 3, step: 1, d: 0 },
-    { key: 'm2Mode', group: 'mkeys', def: 0, min: 0, max: 3, step: 1, d: 0 },
     // open the app by itself at the first engine start of a drive (src/motordaten.js _autoOpen); its own group
     { key: 'autoOpenOn', group: 'start', def: 1, min: 0, max: 1, step: 1, d: 0, toggle: true },
     // ready for full load: each temperature on or off, and the one it has to reach
@@ -120,12 +115,6 @@ function stepped(limits, key, dir) {
     return Object.assign({}, limits, { [key]: onStep(it, limits[key] + dir * it.step) });
 }
 
-/* limits with key set to the value v, on its range and step. */
-function picked(limits, key, v) {
-    const it = ITEMS.find((x) => x.key === key);
-    return it && isFinite(v) ? Object.assign({}, limits, { [key]: onStep(it, Number(v)) }) : limits;
-}
-
 /* limits with an on/off item switched. */
 function toggled(limits, key) {
     const it = ITEMS.find((x) => x.key === key && x.toggle);
@@ -154,7 +143,4 @@ function readiness(limits, v) {
     return { on: items.length > 0, ready: items.length > 0 && !missing.length, items, missing };
 }
 
-/* What m1Mode / m2Mode count: the M Mode's word for shared/mmode.js and its name on the screen. */
-const MMODES = Object.freeze([{ word: 'none', label: 'Nichts' }, { word: 'road', label: 'Road' }, { word: 'sport', label: 'Sport' }, { word: 'track', label: 'Track' }]);
-
-module.exports = { MMODES, picked, ITEMS, READY, TEMP_CELLS, tempOrder, defaults, load, save, stepped, toggled, reset, readiness, onStep };
+module.exports = { ITEMS, READY, TEMP_CELLS, tempOrder, defaults, load, save, stepped, toggled, reset, readiness, onStep };

@@ -36,10 +36,6 @@ HUD kommt von selbst zurück (ab 0.5.4): Nimmt BMW unser Bild für eigenen Inhal
 
 HUD „Gerade halten“ (Anzeige): Das G87-HUD legt unser Bild ab und zu schräg (Ursache unbekannt, das Kombi meldet nichts) und behält das, bis das Bild neu übergeben wird. Die App liest dafür das Tempo (Vehicle2 statusCarSpeed2), nur lesend, und übergibt das Bild auf Wunsch neu: „Bei jedem Halt“ nach der Fahrt (etwa 4 s weg, höchstens alle 20 s), „Halt + alle 5 min“ auch während der Fahrt. Seit 0.5.3 steht das auf „Aus“ (das Bild ist seit 352x200 gerade, und das Neu-Übergeben nimmt die Anzeige bei jedem Halt kurz weg). Starkes Bremsen (CDS2) wird nur protokolliert.
 
-M-Tasten (Einstellungen › M-Tasten, ab 0.29.5): Beim G87 lässt sich der M Mode (Road / Sport / Track) nicht auf M1 und M2 speichern. Auf der Seite schaltet man die Funktion ein (ab Werk aus; ohne M-Tasten passiert auch eingeschaltet nichts, weil nur ein gemeldeter Tastendruck zählt) und wählt je Taste, welchen M Mode ein Druck einstellen soll (Nichts: wie ab Werk). **Noch nicht aktiv**: die Auswahl wird gespeichert, geschaltet wird noch nichts – welche Schnittstelle im Auto die M-Tasten meldet und den M Mode annimmt, ist noch nicht bekannt. Die HUD-App (ab 0.5.13) durchsucht dafür den Katalog des Autos (`/etc/oap/someip/someip-interfaces.json`, nur lesend) und legt das Ergebnis als `interfaces.txt` zu den Logs. Die Entscheidung („nur ein Tastendruck zählt, ein Befehl je Druck, von Hand gewählter Mode bleibt") steht in `shared/mmode.js` (`node tools/test_mmode.js`).
-
-Gefunden am 28.11.2026 (HUD 0.6.2, nur mitgelesen): Schnittstelle `de.bmw.infotainment.misc.MDrive`. `statusMDriveThree.statusMDrive3DrivingMode` ist der M Mode (`FAHRMODUS_1` Road, `_2` Sport, `_3` Track), `controlDisplayMSystems.controlDisplayCID` meldet `M1_AKTIV`/`M2_AKTIV` beim Drücken. `mDriveThree` (lesen und setzen) trägt pro M-Setup (`setupMDrive3Index` `KONFIGURATION_1` = M1) einen Fahrmodus. **Test ab M Suite 0.31.0**: Knopf „Test: M1 = Sport" schreibt nur diesen Fahrmodus ins M1-Setup (alles andere `KEINE_AENDERUNG`, nie Track, nur im Stand), „Zurücksetzen" schreibt `KEINE_AENDERUNG` (wie ab Werk). Vorher und nachher wird gelesen, alles steht im Log (`shared/mdrive.js`, `node tools/test_mdrive.js`).
-
 ### HUD
 
 1. Im Store **HUD** installieren (bringt den **Cluster renderer** von `robertnisipeanu/idrive-apps` mit), Headunit neu starten, App öffnen.
@@ -78,6 +74,8 @@ node apps/km_hudtest/tools/emulator.js             # HUD-App im Browser (http://
 
 `shared/` (Listen-Bildschirm, Diagnose-Link, Werte-Tabellen) kopiert `tools/gen.js` in die Apps.
 `tools/enet/live.py` zeigt dieselben DME-Werte live am Mac über ein ENET-Kabel.
+
+M1/M2 → M Mode gibt es bewusst nicht (geprüft am 28.11.2026 am G87): Den M Mode und die M1/M2-Tasten kann eine App mitlesen (`de.bmw.infotainment.misc.MDrive`, `statusMDriveThree`, `controlDisplayMSystems`). Die M-Setups selbst (`mDriveThree`) darf eine normale App aber weder abfragen noch setzen: Der Rechte-Dienst des Autos lehnt die ganze App bei der Installation ab. Das geht nur als Root-Dienst, so wie es IterioDev Overlays macht.
 Die Headunit baut die Apps selbst (`mgu-app.json`, `"build": "unit"`) und
 setzt BMWs oap-sdk aus einer vorhandenen BMW-App ein. Das SDK gehört nie in
 dieses Repository.

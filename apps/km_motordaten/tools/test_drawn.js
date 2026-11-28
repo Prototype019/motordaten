@@ -219,21 +219,7 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.on('targets', (t) => told.push(t.length));
     d.setPage('settings');
     assert.deepStrictEqual(told, [dash.targets('settings', d.extra).length]);
-    assert.deepStrictEqual(dash.targets('settings').slice(5).map((t) => t.id), ['menu:limits', 'menu:ready', 'menu:mhd', 'menu:mkeys', 'menu:app']);
-    // M-Tasten: four M Modes per button, one chosen, kept in the limits; nothing chosen at the start
-    {
-        const ts = dash.targets('mkeys').slice(5);
-        assert.deepStrictEqual(ts.map((t) => t.id), ['toggle:mkeysOn', 'pick:m1Mode:0', 'pick:m1Mode:1', 'pick:m1Mode:2', 'pick:m1Mode:3',
-            'pick:m2Mode:0', 'pick:m2Mode:1', 'pick:m2Mode:2', 'pick:m2Mode:3', 'settings:back']);
-        ts.forEach((t) => assert.ok(t.x >= 0 && t.x + t.w <= dash.W && t.y + t.h <= dash.H, `${t.id} on the screen`));
-        assert.strictEqual(Limits.defaults().m1Mode, 0);
-        assert.strictEqual(Limits.defaults().mkeysOn, 0, 'off until switched on');
-        assert.strictEqual(Limits.picked(Limits.defaults(), 'm1Mode', 2).m1Mode, 2);
-        assert.strictEqual(Limits.picked(Limits.defaults(), 'm2Mode', 9).m2Mode, 3, 'on its range');
-        assert.strictEqual(Limits.picked(Limits.defaults(), 'quatsch', 1).quatsch, undefined);
-        assert.deepStrictEqual(Limits.MMODES.map((m) => m.word), ['none', 'road', 'sport', 'track']);
-        dash.draw(new (require('../src/kit_record.js').Recorder)(dash.W, dash.H), 'mkeys', {}, Limits.picked(Limits.defaults(), 'm1Mode', 2), null, {});
-    }
+    assert.deepStrictEqual(dash.targets('settings').slice(5).map((t) => t.id), ['menu:limits', 'menu:ready', 'menu:mhd', 'menu:app']);
     assert.deepStrictEqual(dash.targets('mhd').slice(5).map((t) => t.id), ['toggle:mhdCoolingOn', 'toggle:mhdFlapOn', 'settings:back']);
     // the flap's button only while switched on (extra.flap), its state in its words; with Max Cooling both share the place
     assert.strictEqual(Limits.defaults().mhdFlapOn, 0, 'the flap starts off');

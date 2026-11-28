@@ -108,19 +108,6 @@ const away = () => unit.rhmi.emit('applicationStackChanged', { SOME_OTHER_APP: 1
     });
     dash.draw(new (require('../src/kit_record.js').Recorder)(dash.W, dash.H), 'settings', {}, app._limits, null, {});
     dash.draw(new (require('../src/kit_record.js').Recorder)(dash.W, dash.H), 'app', {}, app._limits, null, {});
-    // M-Tasten: opened from the menu, a press keeps the choice; the car's side is not connected, nothing is sent
-    app._action('menu:mkeys');
-    app._action('pick:m1Mode:2');
-    app._action('pick:m2Mode:1');
-    assert.strictEqual(app._limits.m1Mode, 2);
-    assert.strictEqual(app._limits.m2Mode, 1);
-    assert.deepStrictEqual(app._mmode._pick(), {}, 'switched off: nothing for either button');
-    app._action('toggle:mkeysOn');
-    assert.deepStrictEqual(app._mmode._pick(), { m1: 'sport', m2: 'road' });
-    app._action('toggle:mkeysOn');
-    app._action('pick:m1Mode:0');
-    app._action('pick:m2Mode:0');
-    app._action('settings:back');
 
     // the app (re)started mid-drive, the engine running at its first value: not over the navigation
     const realUptime = process.uptime;
