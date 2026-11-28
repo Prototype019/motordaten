@@ -56,8 +56,9 @@ Fehlerspeicher `19 02` (auch an alle Steuergeräte gleichzeitig); Einzelanfragen
 Änderungen im Auto gibt es zwei: MHD Max Cooling (`2F 03 01` / `2F 03 00` an die DME, nur wenn in den Einstellungen
 eingeschaltet, an nur bei laufendem Motor) und Fehler löschen (`14 FF FF FF`): nur auf Wunsch mit Rückfrage, nur bei Motor aus
 und Zündung an, je Steuergerät einzeln, nie die Headunit. Die MHD-Abgasklappe (`2F 02`) steuert die App seit 0.33.0 nicht mehr:
-`2F 02 00` ist MHDs eigene Klappen-Einstellung „OEM“, MHD behält sie über Neustarts und hat damit die Flash-Einstellung
-„in Sport offen“ überdeckt (28.11.2026).
+Danach ging die Klappe in Sport nicht mehr auf (28.11.2026). Laut Log schickte die App nur am 20.11. und 27.11. Klappen-Befehle,
+jedes Mal zuletzt `2F 02 00` („OEM“, von MHD bestätigt), danach nichts mehr. Ob MHD dieses „OEM“ speichert und damit die
+Flash-Einstellung „in Sport offen“ überdeckt, ist nicht bewiesen.
 Alles andere lehnt `shared/tasu.js` ab, bevor es das Gateway erreicht: keine
 Sitzungswechsel, kein Löschen, kein Schreiben, keine Routinen. Eine Anfrage
 nach der anderen, mindestens 25 ms Abstand.
