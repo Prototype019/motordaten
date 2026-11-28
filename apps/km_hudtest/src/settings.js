@@ -32,6 +32,10 @@ const ITEMS = Object.freeze([
     { key: 'oilReady', label: 'Öltemperatur', short: 'Öl', unit: '°C', def: 80, min: 50, max: 110, step: 5 },
     { key: 'coolantReadyOn', def: 1, min: 0, max: 1, step: 1, toggle: true },
     { key: 'coolantReady', label: 'Kühlmittel', short: 'Kühlmittel', unit: '°C', def: 70, min: 40, max: 100, step: 5 },
+    // the gearbox oil (EGS, through the gateway): off by default, as in M Suite; on: blue under Werte while under it,
+    // and Warmfahren waits for it too
+    { key: 'gearboxReadyOn', def: 0, min: 0, max: 1, step: 1, toggle: true },
+    { key: 'gearboxReady', label: 'Getriebeöl', short: 'Getriebe', unit: '°C', def: 50, min: 30, max: 90, step: 5 },
     { key: 'oilMax', label: 'Öl zu heiß ab', unit: '°C', def: 130, min: 110, max: 150, step: 5 },
     { key: 'coolantMax', label: 'Kühlmittel zu heiß ab', unit: '°C', def: 115, min: 100, max: 125, step: 1 },
     { key: 'rpmMax', label: 'Drehzahl rot ab', unit: 'U/min', def: 6400, min: 4000, max: 7600, step: 100 },
@@ -49,7 +53,8 @@ const ITEMS = Object.freeze([
 /* The temperatures that can count for "ready": the value, its threshold, its switch. */
 const READY = Object.freeze([
     { value: 'oil', at: 'oilReady', on: 'oilReadyOn', label: 'Öltemperatur', short: 'Öl' },
-    { value: 'coolant', at: 'coolantReady', on: 'coolantReadyOn', label: 'Kühlmittel', short: 'Kühlmittel' }
+    { value: 'coolant', at: 'coolantReady', on: 'coolantReadyOn', label: 'Kühlmittel', short: 'Kühlmittel' },
+    { value: 'gearbox', at: 'gearboxReady', on: 'gearboxReadyOn', label: 'Getriebeöl', short: 'Getriebe' }
 ]);
 
 function dataDir() {

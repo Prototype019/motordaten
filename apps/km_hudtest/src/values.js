@@ -37,6 +37,7 @@ function tone(key, v, s) {
     if (!isNum(v)) return 'none';
     if (key === 'oil') return v >= s.oilMax ? 'hot' : s.oilReadyOn && v < s.oilReady ? 'cold' : 'normal';
     if (key === 'coolant') return v >= s.coolantMax ? 'hot' : s.coolantReadyOn && v < s.coolantReady ? 'cold' : 'normal';
+    if (key === 'gearbox') return s.gearboxReadyOn && v < s.gearboxReady ? 'cold' : 'normal';
     if (key === 'rpm') return v >= s.rpmMax ? 'hot' : 'normal';
     return 'normal';
 }

@@ -97,8 +97,8 @@ const ALIGN_TEXT = {
 };
 
 /* Bereit: per temperature its switch and its ready value; then where oil, coolant and engine speed turn red. */
-const READY_ROW_H = 104;
-const READY_TOP = 200;
+const READY_ROW_H = 92;      // six rows: three temperatures (oil, coolant, gearbox), three limits
+const READY_TOP = 190;
 const CTRL = 84;
 const STEP_RIGHT = W - PAD;
 const READY_ROWS = S.READY.map((r) => ({ kind: 'ready', r, key: r.at, label: r.label }))

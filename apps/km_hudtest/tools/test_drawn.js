@@ -87,6 +87,29 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     touch('up', ...center(sw));
     assert.strictEqual(actions.pop(), 'toggle:oilReadyOn', 'a held switch is still a press');
 
+    // the gearbox oil on Bereit: off by default; switched on it is blue under its value and Warmfahren waits for it
+    {
+        const V = require('../src/values.js');
+        const { Warmup } = require('../src/warmup.js');
+        const ts = dash.targets('ready');
+        ['toggle:gearboxReadyOn', 'dec:gearboxReady', 'inc:gearboxReady'].forEach((id) => assert.ok(ts.some((t) => t.id === id), id));
+        ts.forEach((t) => assert.ok(t.y + t.h <= dash.H, `${t.id} on the screen`));
+        const def = S.defaults();
+        assert.strictEqual(def.gearboxReadyOn, 0);
+        assert.strictEqual(def.gearboxReady, 50);
+        assert.strictEqual(V.tone('gearbox', 35, def), 'normal', 'off: never blue');
+        const on = Object.assign({}, def, { gearboxReadyOn: 1, gearboxReady: 60 });
+        assert.strictEqual(V.tone('gearbox', 45, on), 'cold');
+        assert.strictEqual(V.tone('gearbox', 60, on), 'normal');
+        const w = new Warmup();
+        const view = w.view({ oil: 95, coolant: 90, gearbox: 45 }, on, 0);
+        assert.strictEqual(view.mode, 'warm');
+        assert.strictEqual(view.label, 'Getriebe');
+        assert.ok(/Getriebe noch unter 60/.test(w.words(view, on, { oil: 95, coolant: 90, gearbox: 45 }).text));
+        assert.strictEqual(new Warmup().view({ oil: 95, coolant: 90 }, on, 0).mode, 'ready', 'the gearbox not known does not hold');
+        assert.strictEqual(new Warmup().view({ oil: 95, coolant: 90, gearbox: 45 }, def, 0).mode, 'ready', 'off: not waited for');
+    }
+
     // the controller: a proxy per target, pressing the focused one
     d.setPage('values');
     const idx = dash.targets('values', d.extra).findIndex((t) => t.id === 'cell:rpm');

@@ -77,7 +77,8 @@ class Warmup {
         }
         if (view.mode === 'hot') return { title: 'Öl zu heiß', text: `Ab ${s.oilMax} °C zeigt das HUD die Öltemperatur in Rot.` };
         if (view.mode === 'ready') return { title: 'Bereit', text: 'Kurz im HUD, dann wird es frei.' };
-        return { title: 'Warmfahren', text: `${view.label} noch unter ${view.label === 'Öl' ? s.oilReady : s.coolantReady} °C. Schonend fahren.` };
+        const r = S.READY.find((x) => x.short === view.label);
+        return { title: 'Warmfahren', text: `${view.label} noch unter ${r ? s[r.at] : s.oilReady} °C. Schonend fahren.` };
     }
 }
 

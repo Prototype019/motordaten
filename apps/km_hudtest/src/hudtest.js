@@ -711,6 +711,8 @@ class HudApp extends ListApp {
         const out = s.mode === 'values' ? S.shown(s).filter((k) => V.byKey(k).src !== 'cds') : [];
         // the oil when the signal has none: warming up, shown, or for the hot warning in Werte
         if (!this._cdsFresh()) out.unshift('oil');
+        // the gearbox oil for Warmfahren while it counts (under Werte it comes when shown)
+        if (s.mode === 'warm' && s.gearboxReadyOn && out.indexOf('gearbox') < 0) out.push('gearbox');
         return out;
     }
 
