@@ -202,15 +202,11 @@ const MKEYS_ROWS = [
 const MKEYS_SWITCH = { id: 'toggle:mkeysOn', x: X0, y: SET_TOP + 24, w: 220, h: BTN, label: '' };
 const MKEYS_X = 900;
 const MKEYS_W = 1400;
-// the test: M1 -> Sport written into the car's M1 setup, and back (shared/mdrive.js; only at a standstill)
-const MKEYS_TEST = [
-    { id: 'mkeys:test', x: MKEYS_X + 500, y: MKEYS_SWITCH.y, w: 480, h: BTN, label: 'Test: M1 = Sport' },
-    { id: 'mkeys:reset', x: MKEYS_X + 1000, y: MKEYS_SWITCH.y, w: 400, h: BTN, label: 'Zurücksetzen' }];
 const MKEYS_TARGETS = [MKEYS_SWITCH].concat(...MKEYS_ROWS.map((r) => {
     const gap = 20;
     const bw = Math.floor((MKEYS_W - gap * (L.MMODES.length - 1)) / L.MMODES.length);
     return L.MMODES.map((m, i) => ({ id: `pick:${r.key}:${i}`, key: r.key, at: i, x: MKEYS_X + i * (bw + gap), y: r.y, w: bw, h: BTN, label: m.label }));
-})).concat(MKEYS_TEST, [BACK_SET]);
+})).concat([BACK_SET]);
 
 /* The app page: opening by itself at the engine start; the temperature cells' order back to the start. */
 const START_SWITCH = { id: 'toggle:autoOpenOn', x: X0, y: SET_TOP + 30, w: 220, h: BTN, label: '' };
@@ -844,14 +840,7 @@ function mkeysPage(rec, cfg, ui, extra) {
         'Nichts: die Taste bleibt, wie BMW sie gebaut hat. Track schaltet Assistenzsysteme ab – nur für die Rennstrecke.',
         'Wer den M Mode danach mit der M-Mode-Taste ändert, behält ihn bis zum nächsten Druck auf M1 oder M2.'
     ];
-    // the test's line in place of the last hint: the M Mode now and what the last test did
-    const test = extra && extra.mkeys && extra.mkeys.test;
-    if (test) {
-        const r = test.result;
-        lines[2] = `Test (nur im Stand): M Mode jetzt ${test.mode || '–'} · ${test.busy ? 'schreibt …' : r ? r.text : 'noch nicht getestet'}`;
-    }
-    lines.forEach((l, i) => rec.text(l, X0, MKEYS_ROWS[1].y + BTN + 66 + i * 42, 28,
-        (i === 0 && on && ready) || (i === 2 && test && test.result) ? (i === 2 && test.result && !test.result.ok ? C.limit : C.text) : C.dim, { font: 'label' }));
+    lines.forEach((l, i) => rec.text(l, X0, MKEYS_ROWS[1].y + BTN + 66 + i * 42, 28, i === 0 && on && ready ? C.text : C.dim, { font: 'label' }));
 }
 
 function appPage(rec, cfg, ui) {

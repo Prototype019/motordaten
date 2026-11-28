@@ -107,7 +107,6 @@ function scanUpTo(k) {
 }
 const done = scanUpTo(99);
 EXTRA.faults = { faults: { scan: done, units: 28, entries: done[done.findIndex((u) => u.addr === 0x5D)].entries, at: new Date(Date.UTC(2026, 10, 14, 11, 2)) } };
-EXTRA.mkeys = { mkeys: { test: { mode: 'Sport', busy: false, result: { ok: true, text: 'M1 = Sport geschrieben', at: 0 } } } };
 EXTRA.faultsread = { faults: { reading: true, scan: scanUpTo(14), progress: 15 } };
 EXTRA.faultsclear = { faults: Object.assign({}, EXTRA.faults.faults, { confirmClear: true }) };
 /* the unit page with made-up fault texts (the real ones come from the car's own download, not the repo) */

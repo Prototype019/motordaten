@@ -32,7 +32,6 @@ const D = require('./decode.js');
 const { Drawn } = require('./drawn.js');
 const Limits = require('./limits.js');
 const { MMode } = require('./mmode.js');
-const { MDrive, word: mdriveWord } = require('./mdrive.js');
 const Logbook = require('./logbook.js');
 const Usb = require('./usb.js');
 const Diag = require('./diag.js');
@@ -95,10 +94,6 @@ const FAULT_TRIES = 3;       // a unit that does not answer (DSC is slow to) is 
 const PROXIES = 48;            // the host state's proxy buttons (spec.js PROXIES; test_drawn checks)
 
 const IF_CDS = 'de.bmw.infotainment.vehicle.CDS';
-const IF_MDRIVE = 'de.bmw.infotainment.misc.MDrive';       // M setups and M Mode (shared/mdrive.js)
-const IF_VEHICLE2 = 'de.bmw.infotainment.vehicle.Vehicle2'; // the car's speed: the M test only at a standstill
-const SPEED_FACTOR = 0.015625;                              // statusCarSpeed2 -> km/h
-const SPEED_INVALID = 65535;
 const LIST = 'ST_OnlineApps_Motordaten';
 const LAYER = 'ST_OnlineApps_MotordatenLayer';
 const RPM_INVALID = 65535;
@@ -210,8 +205,6 @@ class Motordaten extends ListApp {
             send: () => { throw new Error('noch keine Verbindung zum Auto dafür'); },
             note: (text) => Diag.note(text)
         });
-        // M-Tasten test: writes one M setup's driving mode, by hand and only at a standstill (shared/mdrive.js)
-        this._mdrive = new MDrive({ note: (text) => Diag.note(text), changed: () => this._mkeysShown() });
         this._texts = new DtcTexts(logger);
         this._recording = null;     // a Logbook.Recording while recording
         this._summaries = new Map(); // recording name -> its summary (files do not change once written)
@@ -374,7 +367,6 @@ class Motordaten extends ListApp {
         } else if (id === 'reset') {
             this.run();
         } else if (id === 'menu:limits' || id === 'menu:ready' || id === 'menu:mhd' || id === 'menu:mkeys' || id === 'menu:app') {
-            if (id === 'menu:mkeys') this._mkeysShown();
             d.setPage(id.slice(5));
         } else if (id === 'page:github') {
             d.setExtra({ githubFrom: d.page === 'logs' ? 'logs' : 'app' });
@@ -399,9 +391,6 @@ class Motordaten extends ListApp {
             this._flapPressed();
         } else if (id === 'order:reset') {
             this._setLimits(Object.assign({}, this._limits, { tempOrder: Limits.tempOrder([]) }));
-        } else if (id === 'mkeys:test' || id === 'mkeys:reset') {
-            // M-Tasten test: M1 -> Sport, or back to no change (as from the factory)
-            this._mdrive.write('m1', id === 'mkeys:test' ? 'sport' : 'none');
         } else if (id.indexOf('pick:') === 0) {
             // M-Tasten: the M Mode for M1 / M2
             const p = id.split(':');
@@ -1028,28 +1017,6 @@ class Motordaten extends ListApp {
             ]))
             .then(() => logger.info('CDS subscribed'))
             .catch((err) => logger.warn(`CDS unavailable: ${err && err.message}`));
-        // M setups and M Mode: the mode now, the M1/M2 messages; the setter for the test (shared/mdrive.js)
-        let md;
-        new Promise((resolve) => setImmediate(resolve))
-            .then(() => someipBuilders.buildTypedProxy(IF_MDRIVE, '1'))
-            .then((p) => { md = p; return md.init(); })
-            .then(() => md.waitUntilAvailable())
-            .then(() => Promise.all([
-                md.statusMDriveThree.subscribe((v) => this._mdrive.status(v)),
-                md.controlDisplayMSystems.subscribe((v) => this._mdrive.display(v))
-            ]))
-            .then(() => { this._mdrive.setProxy(md); Diag.note('M: MDrive verbunden'); })
-            .catch((err) => Diag.note(`M: MDrive nicht verfügbar (${String(err && err.message).slice(0, 120)})`));
-        let veh;
-        new Promise((resolve) => setImmediate(resolve))
-            .then(() => someipBuilders.buildTypedProxy(IF_VEHICLE2, '1'))
-            .then((p) => { veh = p; return veh.init(); })
-            .then(() => veh.waitUntilAvailable())
-            .then(() => veh.statusCarSpeed2.subscribe((v) => {
-                const raw = v && v.speedVehicleCentreOfGravity;
-                this._mdrive.speed(isNum(raw) && raw !== SPEED_INVALID ? raw * SPEED_FACTOR : null);
-            }))
-            .catch((err) => Diag.note(`M: Tempo nicht verfügbar (${String(err && err.message).slice(0, 120)})`));
         // the controller's dial, for the drawn screens (src/drawn.js ccu)
         let ccu;
         new Promise((resolve) => setImmediate(resolve))
@@ -1272,14 +1239,6 @@ class Motordaten extends ListApp {
             return dme < ENGINE_STOPPED_RPM ? 0 : dme;
         }
         return isNum(this._cds.rpm) ? this._cds.rpm : (isNum(dme) ? dme : null);
-    }
-
-    /* The M-Tasten page's test line: the mode now and the last result. */
-    _mkeysShown() {
-        const d = this._drawn;
-        if (!d) return;
-        const m = this._mdrive;
-        d.setExtra({ mkeys: Object.assign({}, d.extra.mkeys, { test: { mode: m.mode ? mdriveWord(m.mode) : null, busy: m.busy, result: m.result } }) });
     }
 
     _render() {

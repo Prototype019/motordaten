@@ -120,9 +120,6 @@ const away = () => unit.rhmi.emit('applicationStackChanged', { SOME_OTHER_APP: 1
     app._action('toggle:mkeysOn');
     app._action('pick:m1Mode:0');
     app._action('pick:m2Mode:0');
-    // the M test without MDrive in the car (the fake has none): refused with a word, nothing sent
-    app._action('mkeys:test');
-    setImmediate(() => assert.ok(app._mdrive.result && /nicht erreichbar/.test(app._mdrive.result.text), 'M test refused without MDrive'));
     app._action('settings:back');
 
     // the app (re)started mid-drive, the engine running at its first value: not over the navigation
