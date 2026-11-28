@@ -224,7 +224,7 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     {
         const ts = dash.targets('mkeys').slice(5);
         assert.deepStrictEqual(ts.map((t) => t.id), ['toggle:mkeysOn', 'pick:m1Mode:0', 'pick:m1Mode:1', 'pick:m1Mode:2', 'pick:m1Mode:3',
-            'pick:m2Mode:0', 'pick:m2Mode:1', 'pick:m2Mode:2', 'pick:m2Mode:3', 'settings:back']);
+            'pick:m2Mode:0', 'pick:m2Mode:1', 'pick:m2Mode:2', 'pick:m2Mode:3', 'mkeys:test', 'mkeys:reset', 'settings:back']);
         ts.forEach((t) => assert.ok(t.x >= 0 && t.x + t.w <= dash.W && t.y + t.h <= dash.H, `${t.id} on the screen`));
         assert.strictEqual(Limits.defaults().m1Mode, 0);
         assert.strictEqual(Limits.defaults().mkeysOn, 0, 'off until switched on');

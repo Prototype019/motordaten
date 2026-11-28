@@ -114,6 +114,20 @@
         "statusEngineTemperature": "s"
       }
     },
+    "de.bmw.infotainment.misc.MDrive": {
+      "instances": "1",
+      "attributes": {
+        "statusMDriveThree": "s",
+        "controlDisplayMSystems": "s",
+        "mDriveThree": "rw"
+      }
+    },
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "instances": "1",
+      "attributes": {
+        "statusCarSpeed2": "s"
+      }
+    },
     "com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu": {
       "instances": "SystemFunctionsInternalTasuInst1",
       "methods": [
