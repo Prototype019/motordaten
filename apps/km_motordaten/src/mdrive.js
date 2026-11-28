@@ -92,14 +92,14 @@ class MDrive {
         this._changed();
         const p = this._proxy;
         const read = (what) => Promise.resolve()
-            .then(() => p.mDriveThree.getValue(TIMEOUT_MS))
+            .then(() => { if (!p.mDriveThree) throw new Error('nicht freigegeben'); return p.mDriveThree.getValue(TIMEOUT_MS); })
             .then((r) => this._note(`M-Test: mDriveThree ${what}: ${short(r)}`))
             .catch((e) => this._note(`M-Test: mDriveThree ${what} nicht lesbar (${String(e && e.message).slice(0, 120)})`));
         return read('vorher')
             .then(() => {
                 this._note(`M-Test: schreibe ${short(v)}`);
                 // without the setter in the app's manifest the proxy has no setValue (0.31.1: refused by the installer)
-                if (typeof p.mDriveThree.setValue !== 'function') throw new Error('kein Schreibrecht für diese App');
+                if (!p.mDriveThree || typeof p.mDriveThree.setValue !== 'function') throw new Error('das Auto lässt diese App nicht an die M-Setups');
                 return p.mDriveThree.setValue(v, TIMEOUT_MS);
             })
             .then((r) => read('nachher').then(() => done(true, `${setup.toUpperCase()} = ${word(DRIVING[mode])} geschrieben${r !== undefined ? ` (Antwort ${short(r).slice(0, 80)})` : ''}`)))

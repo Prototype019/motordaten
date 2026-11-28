@@ -1,6 +1,6 @@
 {
   "name": "km_motordaten",
-  "version": "0.31.1",
+  "version": "0.31.2",
   "description": "M Suite: Motordaten live, Maximalwerte, Logs, Fehlerspeicher, M-Tasten",
   "private": false,
   "main": "javascript/runner.js",
