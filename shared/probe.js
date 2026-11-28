@@ -136,6 +136,7 @@ function mainappCatalogs(lines) {
         });
     }
     lines.push('', `== MainApp-Kataloge (${dirs} Ordner${queue.length ? ', abgebrochen' : ''})`);
+    hits.filter((h) => /aclManager\.js$/.test(h.p)).forEach((h) => aclRules(lines, h.p));
     hits.slice(0, 60).forEach((h) => {
         let note = '';
         if (/\.json$/.test(h.p) && h.size < CATALOG_MAX) {
@@ -151,6 +152,31 @@ function mainappCatalogs(lines) {
         }
         lines.push(`* ${h.p} (${h.size} B)${note}`);
     });
+}
+
+/* The installer's access rules (BMW's aclManager.js, minified): the places that decide on getters, setters and
+ * refusals, each a short window around its word, read only. Why an app asking for MDrive.mDriveThree was refused. */
+const ACL_WORDS = /setter|getter|not found|not allowed|forbidden|blacklist|denylist|whitelist|restricted|readonly|read-only|46367|MDrive|privileged|permission/gi;
+function aclRules(lines, file) {
+    let t;
+    try { t = fs.readFileSync(file, 'utf8'); } catch (e) { return lines.push(`-- ${file}: nicht lesbar (${e.code})`); }
+    lines.push('', `== Installer-Regeln ${file}`);
+    const seen = {};
+    let n = 0;
+    let room = 60000;
+    let m;
+    ACL_WORDS.lastIndex = 0;
+    while ((m = ACL_WORDS.exec(t)) && n < 250 && room > 0) {
+        const from = Math.max(0, m.index - 160);
+        const w = t.slice(from, m.index + 200).replace(/\s+/g, ' ');
+        const key = w.slice(100, 260);
+        ACL_WORDS.lastIndex = m.index + 200;
+        if (seen[key]) continue;
+        seen[key] = true;
+        n++;
+        room -= w.length + 8;
+        lines.push(`@${m.index} ${w}`);
+    }
 }
 
 /* What a type is, short: an enum with its values, a struct with its members. */
