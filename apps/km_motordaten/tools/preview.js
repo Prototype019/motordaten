@@ -69,7 +69,7 @@ SCENES.warnings = { battSoc: 41, battVoltage: 12.1, battCurrent: -18, knock: 4.5
 const logName = sampleLog();
 const summary = Logbook.summary(logName);
 const EXTRA = {
-    pull: { recording: { ms: 83000 }, cooling: { state: 'ON' }, flap: { state: 'OPEN' } },
+    pull: { recording: { ms: 83000 }, cooling: { state: 'ON' } },
     records: { maxima: { trip: { rpm: 6950, power: 692, torque: 812, boost: 2.04, oilPress: 5.9, oil: 108, coolant: 96, gearbox: 92, intake: 21,
         charge: 46, exhaust: 912, knock: 1.5 }, rec: { rpm: { v: 7180, at: Date.UTC(2026, 10, 9, 15, 0) }, power: { v: 692, at: Date.UTC(2026, 10, 14, 17, 0) },
         torque: { v: 845, at: Date.UTC(2026, 10, 9, 15, 0) }, boost: { v: 2.11, at: Date.UTC(2026, 10, 9, 15, 0) }, oilPress: { v: 6.2, at: Date.UTC(2026, 10, 1, 9, 0) },

@@ -28,8 +28,6 @@ const ITEMS = Object.freeze([
     { key: 'voltageMin', label: 'Bordnetz-Warnung (Motor an) unter', unit: 'V', def: 13.0, min: 11, max: 14, step: 0.1, d: 1 },
     // MHD: the Max Cooling button on the live page (off: no button, nothing sent)
     { key: 'mhdCoolingOn', group: 'mhd', def: 0, min: 0, max: 1, step: 1, d: 0, toggle: true },
-    // MHD: the exhaust flap button on the live page (2F 02 00/01/02; off: no button, nothing sent)
-    { key: 'mhdFlapOn', group: 'mhd', def: 0, min: 0, max: 1, step: 1, d: 0, toggle: true },
     // open the app by itself at the first engine start of a drive (src/motordaten.js _autoOpen); its own group
     { key: 'autoOpenOn', group: 'start', def: 1, min: 0, max: 1, step: 1, d: 0, toggle: true },
     // ready for full load: each temperature on or off, and the one it has to reach

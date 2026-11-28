@@ -83,20 +83,8 @@ const frame = (ecu, uds) => ({ udsResponse: Buffer.from([0, 0, 0, 0, 0, 0, ecu, 
     assert.strictEqual(await t4.maxCooling(true), false);
     await assert.rejects(t4.request(0x2F, [0x03, 0x01]), /nur lesen/, 'request() never writes');
 
-    // MHD exhaust flap: exactly 2F 02 00 / 01 / 02, to the DME only; accepted on the echo; nothing else passes
-    answer4 = (req) => [0x6F].concat(req.slice(1));
-    sent4.length = 0;
-    assert.strictEqual(await t4.exhaustFlap(0x01), true);
-    assert.strictEqual(await t4.exhaustFlap(0x02), true);
-    assert.strictEqual(await t4.exhaustFlap(0x00), true);
-    assert.deepStrictEqual(sent4, [{ target: 0x12, req: [0x2F, 0x02, 0x01] }, { target: 0x12, req: [0x2F, 0x02, 0x02] },
-        { target: 0x12, req: [0x2F, 0x02, 0x00] }]);
-    await assert.rejects(t4.exhaustFlap(0x03), /nicht erlaubt/, 'no other value');
-    assert.strictEqual(sent4.length, 3, 'the refused one never went out');
-    answer4 = () => [0x6F, 0x02, 0x00];                                    // an echo of another value is no answer to this one
-    assert.strictEqual(await t4.exhaustFlap(0x01), false);
-    answer4 = () => [0x7F, 0x2F, 0x31];                                    // an untuned DME refuses it
-    assert.strictEqual(await t4.exhaustFlap(0x01), false);
+    // MHD's exhaust flap is gone (28.11.2026): no way to it, request() refuses 2F 02 as every other write
+    assert.strictEqual(t4.exhaustFlap, undefined, 'no flap command');
     await assert.rejects(t4.request(0x2F, [0x02, 0x01]), /nur lesen/, 'request() never moves the flap');
 
     // status words, sorting: active first

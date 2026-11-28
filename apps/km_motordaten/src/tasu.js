@@ -20,8 +20,8 @@
  * pass request(), and 19 02 to all units at once through faults(); the
  * changes allowed are clearing one unit's fault memory through clearFaults()
  * (14 FF FF FF, never the head unit, never all at once) and, to the DME only,
- * MHD's Max Cooling (maxCooling: 2F 03 00/01) and exhaust flap (exhaustFlap:
- * 2F 02 00/01/02). Everything else is
+ * MHD's Max Cooling (maxCooling: 2F 03 00/01). MHD's exhaust flap (2F 02) is not allowed
+ * since 28.11.2026: its 2F 02 00 set MHD's own flap setting for good. Everything else is
  * refused here, before anything reaches the car. One request at a time, at least GAP_MS
  * apart. Proxy building, init and every call run from a fresh setImmediate
  * tick, as the SDK does (the native binding can deadlock inline), each
@@ -287,23 +287,6 @@ class Tasu extends EventEmitter {
         const data = [0x03, on ? 0x01 : 0x00];
         const run = () => this._request(0x2F, data, 2500, DME);
         const p = this._chain.then(run, run).then((u) => !!(u && u[0] === 0x6F && u[1] === 0x03 && u[2] === data[1]));
-        this._chain = p.catch(() => undefined);
-        return p;
-    }
-
-    /**
-     * MHD's exhaust flap in a DME that runs MHD's code: 2F 02 00 hands it to the DME (auto), 2F 02 01 open,
-     * 2F 02 02 closed, to the DME only (MHD's own app's commands, captured on an S58 with MHD; cauliflowermossgrape/
-     * idrive7-apps' Live Adjustments, MIT; on a G20 with MHD in our iDrive 7 app). Resolves to true when the DME
-     * echoes it (6F 02 0x), false when it refuses (an untuned DME) or stays silent. Any other value is refused here.
-     */
-    exhaustFlap(code) {
-        if ([0x00, 0x01, 0x02].indexOf(code) < 0) {
-            return Promise.reject(new Error(`Klappe ${code} nicht erlaubt`));
-        }
-        const data = [0x02, code];
-        const run = () => this._request(0x2F, data, 2500, DME);
-        const p = this._chain.then(run, run).then((u) => !!(u && u[0] === 0x6F && u[1] === 0x02 && u[2] === code));
         this._chain = p.catch(() => undefined);
         return p;
     }

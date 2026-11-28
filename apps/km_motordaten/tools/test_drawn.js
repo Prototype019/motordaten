@@ -220,18 +220,11 @@ const center = (t) => [t.x + t.w / 2, t.y + t.h / 2];
     d.setPage('settings');
     assert.deepStrictEqual(told, [dash.targets('settings', d.extra).length]);
     assert.deepStrictEqual(dash.targets('settings').slice(5).map((t) => t.id), ['menu:limits', 'menu:ready', 'menu:mhd', 'menu:app']);
-    assert.deepStrictEqual(dash.targets('mhd').slice(5).map((t) => t.id), ['toggle:mhdCoolingOn', 'toggle:mhdFlapOn', 'settings:back']);
-    // the flap's button only while switched on (extra.flap), its state in its words; with Max Cooling both share the place
-    assert.strictEqual(Limits.defaults().mhdFlapOn, 0, 'the flap starts off');
-    assert.ok(!dash.targets('main', {}).some((t) => t.id === 'flap'), 'no flap button while off');
-    assert.strictEqual(dash.targets('main', { flap: { state: 'AUTO' } }).pop().label, 'Klappe: OEM');
-    assert.strictEqual(dash.targets('main', { flap: { state: 'CLOSED', paused: true } }).pop().label, 'Klappe: Zu (OEM)');
-    assert.ok(dash.targets('main', { flap: { state: 'OPEN' } }).pop().on);
-    const both = dash.targets('main', { cooling: { state: null }, flap: { state: 'AUTO' } }).slice(-2);
-    assert.deepStrictEqual(both.map((t) => t.id), ['cooling', 'flap']);
-    assert.ok(both[0].x + both[0].w < both[1].x && both[1].x + both[1].w <= dash.W, 'side by side, inside the page');
-    const alone = dash.targets('main', { flap: { state: 'AUTO' } }).pop();
-    assert.strictEqual(alone.w, 392);
+    assert.deepStrictEqual(dash.targets('mhd').slice(5).map((t) => t.id), ['toggle:mhdCoolingOn', 'settings:back']);
+    // no flap anywhere (removed 28.11.2026), even with an old extra.flap; an old setting mhdFlapOn is dropped
+    assert.ok(!dash.targets('main', { flap: { state: 'OPEN' } }).some((t) => t.id === 'flap'), 'no flap button');
+    assert.strictEqual(Limits.defaults().mhdFlapOn, undefined);
+    assert.strictEqual(dash.targets('main', { cooling: { state: null } }).pop().w, 392);
     // the Max Cooling button only while switched on (extra.cooling), its confirm step, its on state
     assert.ok(!dash.targets('main', {}).some((t) => /^cooling/.test(t.id)), 'no button while off');
     assert.strictEqual(dash.targets('main', { cooling: { state: null } }).pop().label, 'Max Cooling');
