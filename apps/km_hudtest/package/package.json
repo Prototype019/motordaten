@@ -1,6 +1,6 @@
 {
   "name": "km_hudtest",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "M Suite HUD: Warmfahren und Werte im Head-up-Display",
   "private": false,
   "main": "javascript/runner.js",

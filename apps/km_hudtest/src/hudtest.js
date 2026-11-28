@@ -47,6 +47,11 @@ const ROOM_MS = 400;
 const IF_CARPLAY = 'de.bmw.infotainment.a4a.carplay.CarPlayManager';
 const IF_AAUTO = 'de.bmw.infotainment.sdi.aap.androidautoprojectedmanager.AndroidAutoProjectedManager';
 const IF_ROUTING = 'de.bmw.infotainment.navigation.routing.Routing';
+// M setups and M Mode, read only (fields the car reports by itself; gear and shift lights left out, they change all the time)
+const IF_MDRIVE = 'de.bmw.infotainment.misc.MDrive';
+const MDRIVE_FIELDS = ['operationModeButtons', 'controlSetting1MDrive', 'controlSetting2MDrive', 'statusMSystem', 'statusMDriveTwo',
+    'statusMDriveThree', 'statusMConfigurationMDrive', 'controlDisplayMSystems', 'controlDisplayMSystemsMDrive', 'statusActivationMIKO'];
+const MDRIVE_NOTES = 400;
 const SPEED_FACTOR = 0.015625;   // statusCarSpeed2.speedVehicleCentreOfGravity -> km/h (65535 invalid)
 const ACCEL_FACTOR = 0.002;      // statusLongitudinalAccelerationMassCenter -> m/s², offset ACCEL_OFFSET
 const ACCEL_OFFSET = -65;
@@ -111,7 +116,7 @@ class HudApp extends ListApp {
         this._nav = false;              // BMW's route guidance on (guidanceState)
         this._navWord = '';
         this._room = { pos: -1, part: false, rest: '', timer: null };   // the renderer's log: read up to pos; part: less than the whole
-        this._navSrc = { state: false, trips: false };
+        this._navSrc = { state: false, trips: false, provider: false, dest: false };
         this._navNoted = {};     // the picture offered but not shown: since when, offered anew how often
         this._at = {};                  // when each value read through the gateway last came
         this._gateway = 'wait';         // wait | open | failed
@@ -497,6 +502,8 @@ class HudApp extends ListApp {
         watch(IF_GUIDANCE, 'guidingProvider', (v) => {
             const w = String(v && typeof v === 'object' ? (v.guidingProvider !== undefined ? v.guidingProvider : v.name !== undefined ? v.name : v.value) : v);
             if (this._navNoted.provider !== w) { this._navNoted.provider = w; Diag.note(`Navigation: Quelle ${w.slice(0, 30)}`); }
+            // on the G87 a CarPlay route shows here as CAR_PLAY while guidanceState stays INACTIVE (28.11.2026)
+            this._navFrom('provider', !/^(NONE|UNDEFINED|NULL|0|)$/i.test(w.trim()));
         }, 'Main_Instance', none('Quelle'));
         watch(IF_ROUTING, 'currentTrips', (v) => this._trips(v), 'Main_Instance', none('Route'));
         ['finalDestinationInfo', 'nextDestinationInfo'].forEach((attr) => watch(IF_GUIDANCE, attr, (v) => {
@@ -505,7 +512,10 @@ class HudApp extends ListApp {
             const text = `${attr === 'finalDestinationInfo' ? 'Ziel' : 'nächstes Ziel'}: ${isNum(dist) ? `${Math.round(dist)} m` : '–'}, Fahrzeit ${d && isNum(d.travelTime) ? d.travelTime : '–'}`;
             const k = `${attr}:${isNum(dist) ? (dist > 0 ? 'da' : 'null') : 'leer'}`;
             if (this._navNoted[attr] !== k) { this._navNoted[attr] = k; Diag.note(`Navigation: ${text}`); }
+            // a destination ahead: a route runs (it falls to 0 m when the route ends, seen with CarPlay 28.11.2026)
+            if (attr === 'finalDestinationInfo') this._navFrom('dest', isNum(dist) && dist > 0);
         }, 'Main_Instance', none(attr)));
+        this._watchMDrive(watch);
         watch(IF_VEHICLE2, 'statusCarSpeed2', (v) => {
             const raw = v && v.speedVehicleCentreOfGravity;
             this._speed(isNum(raw) && raw !== SIGNAL_INVALID ? raw * SPEED_FACTOR : null, Date.now());
@@ -514,6 +524,21 @@ class HudApp extends ListApp {
             const raw = v && v.longitudinalAccelerationCentreOfGravity;
             this._accel(isNum(raw) && raw !== SIGNAL_INVALID ? raw * ACCEL_FACTOR + ACCEL_OFFSET : null, Date.now());
         });
+    }
+
+    /* The M setups and M Mode (de.bmw.infotainment.misc.MDrive), read only: each change is noted, to learn which
+     * field the M1/M2 buttons and the M Mode (Road/Sport/Track) move. Nothing is ever sent to the car. */
+    _watchMDrive(watch) {
+        let left = MDRIVE_NOTES;
+        const seen = {};
+        MDRIVE_FIELDS.forEach((f) => watch(IF_MDRIVE, f, (v) => {
+            let t;
+            try { t = JSON.stringify(v); } catch (e) { t = String(v); }
+            if (seen[f] === t || left <= 0) return;
+            seen[f] = t;
+            left--;
+            Diag.note(`M: ${f} = ${String(t).slice(0, 400)}${left ? '' : ' (weitere M-Meldungen nicht mehr notiert)'}`);
+        }, '1', (e) => Diag.note(`M: ${f} nicht verfügbar (${String(e && e.message).slice(0, 80)})`)));
     }
 
     /* Follows the renderer's log for the part of the HUD the KOMBI gives our picture (CR_LOG above). */

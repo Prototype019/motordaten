@@ -118,12 +118,15 @@ function catalog(lines) {
     lines.push('', `== Katalog ${CATALOG} (${all.length} Schnittstellen)`);
     const exact = [];
     const rest = [];
+    const mdrive = [];
     all.forEach((name) => {
         const i = ifs[name] || {};
         const inst = db.instanceIDs && db.instanceIDs[name];
         const fields = i.fields || {};
         const flag = (f) => (f.getter ? 'g' : '') + (f.notifier ? 'n' : '') + (f.setter ? 's' : '');
         const hits = [];
+        // the M setups and M Mode (M1/M2 buttons): every field in full, to learn what each one holds
+        if (/\.MDrive$/.test(name)) Object.keys(fields).forEach((k) => mdrive.push(`  MDrive ${k} [${flag(fields[k])}] = ${typ(db, fields[k].dataRef, 0)}`.slice(0, 3000)));
         Object.keys(fields).forEach((k) => {
             const t = typ(db, fields[k].dataRef, 0);
             // by its name, or by its values: a type that knows ROAD and TRACK is the M Mode whatever it is called
@@ -147,7 +150,7 @@ function catalog(lines) {
         if (/ROAD/i.test(keys) && /TRACK/i.test(keys)) exact.push(`  M Typ ${ref} = ${typ(db, ref, 0)}`.slice(0, 900));
     });
     let room = CATALOG_OUT;
-    exact.concat(rest.map((l) => l.slice(0, 2500))).forEach((l) => {
+    mdrive.concat(exact).concat(rest.map((l) => l.slice(0, 2500))).forEach((l) => {
         if ((room -= l.length + 1) >= 0) lines.push(l);
     });
     if (room < 0) lines.push('(gekürzt)');

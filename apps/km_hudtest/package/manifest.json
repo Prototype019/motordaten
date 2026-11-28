@@ -153,6 +153,21 @@
         "currentTrips": "s"
       }
     },
+    "de.bmw.infotainment.misc.MDrive": {
+      "instances": "1",
+      "attributes": {
+        "operationModeButtons": "s",
+        "controlSetting1MDrive": "s",
+        "controlSetting2MDrive": "s",
+        "statusMSystem": "s",
+        "statusMDriveTwo": "s",
+        "statusMDriveThree": "s",
+        "statusMConfigurationMDrive": "s",
+        "controlDisplayMSystems": "s",
+        "controlDisplayMSystemsMDrive": "s",
+        "statusActivationMIKO": "s"
+      }
+    },
     "com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu": {
       "instances": "SystemFunctionsInternalTasuInst1",
       "methods": [

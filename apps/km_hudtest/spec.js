@@ -56,6 +56,10 @@ module.exports = {
         'de.bmw.infotainment.sdi.aap.androidautoprojectedmanager.AndroidAutoProjectedManager': {
             instances: 'AndroidAutoProjectedManagerInst1', attributes: { projectedGuidanceActive: 's' } },
         'de.bmw.infotainment.navigation.routing.Routing': { instances: 'Main_Instance', attributes: { currentTrips: 's' } },
+        // M setups and M Mode, read only: which field the M1/M2 buttons and Road/Sport/Track move (nothing is set)
+        'de.bmw.infotainment.misc.MDrive': { instances: '1', attributes: { operationModeButtons: 's', controlSetting1MDrive: 's',
+            controlSetting2MDrive: 's', statusMSystem: 's', statusMDriveTwo: 's', statusMDriveThree: 's', statusMConfigurationMDrive: 's',
+            controlDisplayMSystems: 's', controlDisplayMSystemsMDrive: 's', statusActivationMIKO: 's' } },
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
             instances: 'SystemFunctionsInternalTasuInst1',
             methods: ['sendTasuRequest'],
