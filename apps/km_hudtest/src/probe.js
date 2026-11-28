@@ -78,6 +78,7 @@ function run(dir, own, version, done) {
             });
             lines.push(`alle: ${files.map((n) => n.replace(/\.json$/, '')).join(' ')}`.slice(0, 20000));
         });
+        raw(lines, own);
         catalog(lines);
         lines.push('', `${dirs} Ordner durchsucht, ${found.length} mit Schnittstellen${queue.length ? ' (abgebrochen: zu viele Ordner)' : ''}`);
         try {
@@ -86,6 +87,70 @@ function run(dir, own, version, done) {
         if (done) done(true, found.length);
     };
     setTimeout(step, 0);
+}
+
+/* The access the installer gave this app (its acl, its MDrive config) and the unit's SOME/IP security files, read
+ * only: why the M setups (MDrive.mDriveThree, service 46367 = 0xb51f) were refused (28.11.2026). Small files whole,
+ * large ones by their start and the lines that name MDrive. */
+const RAW_MAX = 24000;
+const RAW_HIT = /46367|b51f|MDrive|mDrive|"uid"|"gid"|policies|allow|deny|oap/i;
+function raw(lines, own) {
+    const files = ['acl.json', 'acl', 'de_bmw_infotainment_misc_MDrive.json', 'de_bmw_infotainment_vehicle_Vehicle2.json']
+        .map((n) => path.join(own, n));
+    try {
+        fs.readdirSync('/etc/vsomeip').filter((n) => /security|whitelist|acl|std|app/i.test(n)).forEach((n) => files.push(path.join('/etc/vsomeip', n)));
+    } catch (e) { /* not there */ }
+    lines.push('', '== Rechte (roh)');
+    files.forEach((f) => {
+        let t;
+        try { t = fs.readFileSync(f, 'utf8'); } catch (e) { if (!/acl$/.test(f)) lines.push(`-- ${f}: nicht lesbar (${e.code})`); return; }
+        let out = t;
+        if (t.length > RAW_MAX) {
+            const hits = t.split('\n').filter((l) => RAW_HIT.test(l)).join('\n');
+            out = `${t.slice(0, 3000)}\n… (${t.length} Zeichen, Zeilen mit MDrive/46367/uid:)\n${hits.slice(0, RAW_MAX - 3000)}`;
+        }
+        lines.push(`-- ${f} (${t.length} Zeichen)`, out);
+    });
+    mainappCatalogs(lines);
+}
+
+/* The installer that refused the M setups was MainApp-21 (/usr/lib/oap-mainapp21): its own interface catalogs, if it
+ * has any, and in each the MDrive entry with its fields' getter / notifier / setter. A short walk (time-capped). */
+function mainappCatalogs(lines) {
+    const until = Date.now() + 400;
+    const queue = [];
+    try { fs.readdirSync('/usr/lib').filter((n) => /^oap-mainapp/.test(n)).forEach((n) => queue.push({ d: path.join('/usr/lib', n), n: 0 })); } catch (e) { /* none */ }
+    const hits = [];
+    let dirs = 0;
+    while (queue.length && dirs < 3000 && Date.now() < until) {
+        const q = queue.shift();
+        let list;
+        try { list = fs.readdirSync(q.d); } catch (e) { continue; }
+        dirs++;
+        list.forEach((name) => {
+            const p = path.join(q.d, name);
+            let st;
+            try { st = fs.lstatSync(p); } catch (e) { return; }
+            if (st.isDirectory() && q.n < 7 && name !== 'preinstalled_apps') queue.push({ d: p, n: q.n + 1 });
+            else if (st.isFile() && /(interface|someip|acl).*\.(json|js)$/i.test(name)) hits.push({ p, size: st.size });
+        });
+    }
+    lines.push('', `== MainApp-Kataloge (${dirs} Ordner${queue.length ? ', abgebrochen' : ''})`);
+    hits.slice(0, 60).forEach((h) => {
+        let note = '';
+        if (/\.json$/.test(h.p) && h.size < CATALOG_MAX) {
+            try {
+                const j = JSON.parse(fs.readFileSync(h.p, 'utf8'));
+                const ifs = j.interfaces || j;
+                const md = ifs && ifs['de.bmw.infotainment.misc.MDrive'];
+                if (md) {
+                    const f = md.fields || md.attributes || {};
+                    note = ` MDrive: ${Object.keys(f).map((k) => `${k}[${(f[k].getter ? 'g' : '') + (f[k].notifier ? 'n' : '') + (f[k].setter ? 's' : '')}]`).join(', ')}`.slice(0, 2500);
+                } else note = ' (ohne MDrive)';
+            } catch (e) { note = ' (kein JSON)'; }
+        }
+        lines.push(`* ${h.p} (${h.size} B)${note}`);
+    });
 }
 
 /* What a type is, short: an enum with its values, a struct with its members. */
