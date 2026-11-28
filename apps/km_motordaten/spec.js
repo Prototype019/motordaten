@@ -44,9 +44,9 @@ module.exports = {
     }],
     proxies: {
         'de.bmw.infotainment.vehicle.CDS': { instances: '1', attributes: { statusEngineSpeed2: 's', statusEngineTemperature: 's' } },
-        // M setups and M Mode: the mode now and the M1/M2 messages (read); mDriveThree read and written by the
-        // M-Tasten test, by hand and only at a standstill (shared/mdrive.js). 'w' = the setter (MIT kit's note)
-        'de.bmw.infotainment.misc.MDrive': { instances: '1', attributes: { statusMDriveThree: 's', controlDisplayMSystems: 's', mDriveThree: 'rw' } },
+        // M setups and M Mode: the mode now and the M1/M2 messages (read); mDriveThree read only. With 'rw' (the
+        // setter) the G87's installer refused the whole app (0.31.0, 28.11.2026): writing is not for this app
+        'de.bmw.infotainment.misc.MDrive': { instances: '1', attributes: { statusMDriveThree: 's', controlDisplayMSystems: 's', mDriveThree: 'r' } },
         'de.bmw.infotainment.vehicle.Vehicle2': { instances: '1', attributes: { statusCarSpeed2: 's' } },
         'com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu': {
             instances: 'SystemFunctionsInternalTasuInst1',

@@ -119,7 +119,7 @@
       "attributes": {
         "statusMDriveThree": "s",
         "controlDisplayMSystems": "s",
-        "mDriveThree": "rw"
+        "mDriveThree": "r"
       }
     },
     "de.bmw.infotainment.vehicle.Vehicle2": {

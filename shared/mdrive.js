@@ -96,7 +96,12 @@ class MDrive {
             .then((r) => this._note(`M-Test: mDriveThree ${what}: ${short(r)}`))
             .catch((e) => this._note(`M-Test: mDriveThree ${what} nicht lesbar (${String(e && e.message).slice(0, 120)})`));
         return read('vorher')
-            .then(() => { this._note(`M-Test: schreibe ${short(v)}`); return p.mDriveThree.setValue(v, TIMEOUT_MS); })
+            .then(() => {
+                this._note(`M-Test: schreibe ${short(v)}`);
+                // without the setter in the app's manifest the proxy has no setValue (0.31.1: refused by the installer)
+                if (typeof p.mDriveThree.setValue !== 'function') throw new Error('kein Schreibrecht für diese App');
+                return p.mDriveThree.setValue(v, TIMEOUT_MS);
+            })
             .then((r) => read('nachher').then(() => done(true, `${setup.toUpperCase()} = ${word(DRIVING[mode])} geschrieben${r !== undefined ? ` (Antwort ${short(r).slice(0, 80)})` : ''}`)))
             .catch((e) => done(false, `abgelehnt: ${String(e && e.message).slice(0, 160)}`));
     }
