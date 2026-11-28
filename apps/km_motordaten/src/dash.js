@@ -76,7 +76,8 @@ function mainTargets(extra) {
  * exhaust flap (extra.flap: { state AUTO / OPEN / CLOSED, paused: Zu handed to the DME at high engine speed }).
  * One alone takes the whole width there, both share it with smaller words.
  */
-const FLAP_WORD = { AUTO: 'Auto', OPEN: 'Auf', CLOSED: 'Zu' };
+// AUTO is MHD's "OEM" (2F 02 00): MHD's own flap setting, which MHD keeps across restarts (seen 28.11.2026)
+const FLAP_WORD = { AUTO: 'OEM', OPEN: 'Auf', CLOSED: 'Zu' };
 function mhdTargets(extra) {
     const c = extra && extra.cooling;
     const f = extra && extra.flap;
@@ -86,7 +87,7 @@ function mhdTargets(extra) {
         out.push({ id: c.confirm ? 'cooling!' : 'cooling', label, danger: !!c.confirm, live: false, on: c.state === 'ON' });
     }
     if (f) {
-        const label = f.note ? f.note : f.busy ? 'Sende …' : `Klappe: ${FLAP_WORD[f.state] || '?'}${f.paused ? ' (Auto)' : ''}`;
+        const label = f.note ? f.note : f.busy ? 'Sende …' : `Klappe: ${FLAP_WORD[f.state] || '?'}${f.paused ? ' (OEM)' : ''}`;
         out.push({ id: 'flap', label, live: false, on: f.state !== 'AUTO' });
     }
     const gap = 16;
@@ -783,12 +784,12 @@ function mhdPage(rec, cfg, ui) {
     rec.text('Max Cooling-Knopf auf der Live-Seite', MHD_SWITCH.x + MHD_SWITCH.w + 56, MHD_SWITCH.y + 64, 44, on ? C.text : C.dim, { font: 'label' });
     const flap = !!cfg.mhdFlapOn;
     toggleSwitch(rec, MHD_FLAP_SWITCH, flap, ui);
-    rec.text('Klappen-Knopf auf der Live-Seite (Auto / Auf / Zu)', MHD_FLAP_SWITCH.x + MHD_FLAP_SWITCH.w + 56, MHD_FLAP_SWITCH.y + 64, 44,
+    rec.text('Klappen-Knopf auf der Live-Seite (OEM / Auf / Zu)', MHD_FLAP_SWITCH.x + MHD_FLAP_SWITCH.w + 56, MHD_FLAP_SWITCH.y + 64, 44,
         flap ? C.text : C.dim, { font: 'label' });
     const lines = [
         'Max Cooling: Wasserpumpe und Lüfter auf voller Leistung. An nur bei laufendem Motor (2F 03 01 / 2F 03 00).',
-        'Klappe: Auto lässt die Motorsteuerung entscheiden, Auf / Zu halten die Abgasklappe (2F 02 00 / 01 / 02).',
-        'Zu gibt über 4.000 U/min an die Motorsteuerung ab und schließt unter 3.500 U/min wieder.',
+        'Klappe: setzt die Klappen-Einstellung von MHD (OEM / Auf / Zu, 2F 02 00 / 01 / 02). MHD behält sie auch nach dem Neustart.',
+        'Zu stellt über 4.000 U/min auf OEM und schließt unter 3.500 U/min wieder. Aus und App-Ende stellen auf OEM.',
         'MHD meldet den Zustand nicht zurück: die App zeigt den zuletzt bestätigten Befehl.'
     ];
     lines.forEach((l, i) => rec.text(l, X0, MHD_FLAP_SWITCH.y + 170 + i * 50, 30, C.dim, { font: 'label' }));
